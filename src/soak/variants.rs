@@ -1736,6 +1736,7 @@ pub fn expected_types(index: u8) -> &'static [&'static str] {
             "packet_rate_spike",
             "suricata_alert",
             "novel_burst_peer",
+            "ingest_volume_anomaly",
         ],
         Pattern::Sweep | Pattern::PortSweep => &[
             "unexpected_traffic",
@@ -1788,6 +1789,8 @@ pub fn expected_types(index: u8) -> &'static [&'static str] {
             "source_volume_outlier",
             "packet_rate_spike",
             "beacon_periodic",
+            "slow_egress",
+            "link_saturation",
         ],
         // provozni vzory: vsechno, co engine k vypadku a degradaci umi rict
         Pattern::Outage | Pattern::Flap | Pattern::Degrade | Pattern::Cascade | Pattern::Drift => {
@@ -1808,6 +1811,9 @@ pub fn expected_types(index: u8) -> &'static [&'static str] {
             "unexpected_traffic",
             "connection_timeout_burst",
             "egress_volume_anomaly",
+            "broadcast_storm",
+            "link_saturation",
+            "ingest_volume_anomaly",
         ],
     }
 }
@@ -2462,20 +2468,30 @@ fn emit_fault(
 /// Sloupce: label, kategorie, ATT&CK, vzor, smer, protokol, port, ocekavane typy.
 pub fn families_tsv() -> String {
     use std::fmt::Write as _;
-    let mut out = String::from("label	category	attack	pattern	actor	proto	port	expected_types
-");
+    let mut out = String::from(
+        "label	category	attack	pattern	actor	proto	port	expected_types	tactic	tempo	volume	topology	sources	port_class
+",
+    );
     for family in Family::ALL {
+        let f = base_features(family.label());
         let _ = writeln!(
             out,
-            "{}	security		base				{}",
+            "{}	security		base				{}	{}	{}	{}	{}	{}	{}",
             family.label(),
-            family.expected_types().join(",")
+            family.expected_types().join(","),
+            f.tactic,
+            f.tempo,
+            f.volume,
+            f.topology,
+            f.sources,
+            f.port_class
         );
     }
     for (i, s) in SPECS.iter().enumerate() {
+        let f = features(s);
         let _ = writeln!(
             out,
-            "{}	{}	{}	{:?}	{:?}	{}	{}	{}",
+            "{}	{}	{}	{:?}	{:?}	{}	{}	{}	{}	{}	{}	{}	{}	{}",
             s.label,
             s.cat.label(),
             s.attack,
@@ -2483,10 +2499,148 @@ pub fn families_tsv() -> String {
             s.actor,
             s.proto,
             s.port,
-            expected_types(i as u8).join(",")
+            expected_types(i as u8).join(","),
+            f.tactic,
+            f.tempo,
+            f.volume,
+            f.topology,
+            f.sources,
+            f.port_class
         );
     }
     out
+}
+
+/// Abstraktni rysy chování (slovniky `analyst_feedback`): zadna adresa, seed ani sit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Features {
+    pub tactic: &'static str,
+    pub tempo: &'static str,
+    pub volume: &'static str,
+    pub topology: &'static str,
+    pub sources: &'static str,
+    pub port_class: &'static str,
+}
+
+/// Taktika ATT&CK podle ID techniky (tabulka studie 09 plus doplnek pro ICS a nadrazene ID).
+pub fn tactic_of(attack: &str) -> &'static str {
+    static TABLE: &str = include_str!("../../docs/diplomka/studie/09-attack-technik.txt");
+    if attack == "-" || attack.is_empty() {
+        return "none";
+    }
+    let lookup = |id: &str| -> Option<&'static str> {
+        TABLE.lines().find_map(|line| {
+            let mut cols = line.split('\t');
+            (cols.next() == Some(id)).then(|| cols.next()).flatten()
+        })
+    };
+    let raw = lookup(attack).or_else(|| lookup(attack.split('.').next().unwrap_or(attack)));
+    match raw {
+        Some("defense-impairment") | Some("stealth") => "defense-evasion",
+        Some(t) => TACTICS_CANON
+            .iter()
+            .copied()
+            .find(|c| *c == t)
+            .unwrap_or("none"),
+        None => match attack.split('.').next().unwrap_or(attack) {
+            "T0801" => "collection",
+            "T0814" | "T0836" | "T1485" | "T1490" | "T1499" => "impact",
+            "T0843" | "T0858" | "T1047" => "execution",
+            "T0846" | "T1580" => "discovery",
+            "T1048" => "exfiltration",
+            "T1071" | "T1102" => "command-and-control",
+            "T1114" => "collection",
+            "T1195" => "initial-access",
+            "T1590" => "reconnaissance",
+            _ => "none",
+        },
+    }
+}
+
+const TACTICS_CANON: &[&str] = &[
+    "reconnaissance",
+    "initial-access",
+    "execution",
+    "persistence",
+    "privilege-escalation",
+    "defense-evasion",
+    "credential-access",
+    "discovery",
+    "lateral-movement",
+    "collection",
+    "command-and-control",
+    "exfiltration",
+    "impact",
+];
+
+pub fn features(s: &Spec) -> Features {
+    let tempo = match s.pattern {
+        Pattern::Periodic if s.period <= 600.0 => "periodic_fast",
+        Pattern::Periodic => "periodic_slow",
+        Pattern::Burst | Pattern::Flood | Pattern::Storm | Pattern::Peak | Pattern::BulkOut | Pattern::BulkIn => "burst",
+        Pattern::Sustained | Pattern::SlowConn | Pattern::Saturate => "sustained",
+        Pattern::Trickle => "trickle",
+        _ => "instant",
+    };
+    let per_cycle = (s.ob + s.rb) as f64 * s.rate.max(1.0);
+    let volume = match per_cycle {
+        v if v < 1.0e5 => "tiny",
+        v if v < 1.0e7 => "small",
+        v if v < 1.0e8 => "medium",
+        v if v < 1.0e9 => "large",
+        _ => "huge",
+    };
+    let topology = match (s.pattern, s.actor) {
+        (Pattern::Sweep | Pattern::FanOut, _) | (_, Actor::ExtToMany) => "one_to_many",
+        (_, Actor::FleetToExt) => "many_to_one",
+        (Pattern::Flood, _) if s.srcs > 1 => "many_to_one",
+        (_, Actor::IntToInt) => "internal_chain",
+        _ if s.srcs > 1 => "many_to_one",
+        _ => "one_to_one",
+    };
+    let sources = match s.srcs {
+        0 | 1 => "1",
+        2..=5 => "few",
+        _ => "many",
+    };
+    let proto = if s.proto == "icmp" { "icmp" } else { s.proto };
+    Features {
+        tactic: tactic_of(s.attack),
+        tempo,
+        volume,
+        topology,
+        sources,
+        port_class: crate::analyst_feedback::port_class(proto, s.port),
+    }
+}
+
+/// Rysy puvodnich osmnacti rodin (ruční tabulka; rodiny nemaji `Spec`).
+pub fn base_features(label: &str) -> Features {
+    let f = |tactic, tempo, volume, topology, sources, port_class| Features {
+        tactic,
+        tempo,
+        volume,
+        topology,
+        sources,
+        port_class,
+    };
+    match label {
+        "port_scan_vertical" | "slow_scan" => f("discovery", "burst", "small", "one_to_one", "1", "high"),
+        "port_scan_horizontal" => f("discovery", "burst", "small", "one_to_many", "1", "other"),
+        "ssh_bruteforce" | "credential_stuffing" => f("credential-access", "burst", "small", "one_to_one", "few", "remote_admin"),
+        "c2_beacon" | "fleet_beacon" => f("command-and-control", "periodic_fast", "tiny", "one_to_one", "1", "web"),
+        "dns_tunnel" => f("command-and-control", "sustained", "small", "one_to_one", "1", "dns"),
+        "exfiltration" | "insider_hoarding" => f("exfiltration", "burst", "huge", "one_to_one", "1", "web"),
+        "ddos_volume" => f("impact", "burst", "large", "many_to_one", "many", "web"),
+        "cryptomining" => f("impact", "sustained", "small", "one_to_one", "1", "high"),
+        "lateral_movement" => f("lateral-movement", "burst", "small", "internal_chain", "1", "remote_admin"),
+        "ransomware" => f("impact", "burst", "large", "one_to_many", "1", "file_share"),
+        "rogue_device" => f("initial-access", "instant", "tiny", "one_to_one", "1", "other"),
+        "exploit_attempt" | "web_exploit" => f("initial-access", "instant", "tiny", "one_to_one", "1", "web"),
+        "ics_attack" => f("impact", "burst", "tiny", "one_to_one", "1", "ics"),
+        "apt_chain" => f("lateral-movement", "sustained", "medium", "internal_chain", "1", "remote_admin"),
+        _ => f("none", "instant", "tiny", "one_to_one", "1", "other"),
+    }
 }
 
 /// Je tvar vzoru "provozni" (porucha nebo zmena), ne utok.
