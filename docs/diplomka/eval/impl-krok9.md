@@ -86,8 +86,69 @@ Obecné detektory a kontext (ne pravidla na míru). Ověřovací žebřík a pl�
 
 ## D) Průběh a odchylky
 
-(vyplní se po měření)
+Datum 2026-11-14. Tabulky: `k9/vysledky.md` (ladicí seedy, před a po po rodinách s Wilsonovými intervaly), `k9/endpoint.md` (koncová telemetrie zapnuto proti vypnuto), `k9/pokryti.md` (technika → rodina → detektor → výsledek), `k9/held.md` (držené seedy, jednou), `k9/datasety.md`, `k9/realismus.md`. Přepočet jedním příkazem: `python tools/k9_finish.py`.
+
+### Co se implementovalo
+
+| blok | soubory | co |
+|---|---|---|
+| svět `k9` | `src/soak/variants.rs`, `coverage.rs`, `traffic.rs` | 113 parametrických variant (72 bezpečnostních podle ATT&CK, 28 provozních poruch a incidentů a neškodné změny) s kategorií a ID techniky; `salticus-program soak families` vypisuje tabulku (včetně taktiky, tempa, objemu, topologie) |
+| obecné detektory | `src/behavior/breadth.rs`, přepínače `breadth`, `breadth_volume` | `broadcast_storm`, `slow_egress` (kumulace pomalého úniku, jen zralý host), a volitelně `ingest_volume_anomaly`, `link_saturation`; žádný nezná rodinu; kontext záloh a oken údržby je pokrývá |
+| třída provoz | `src/ops_evidence.rs` | `broadcast_storm` jde do fronty provoz jako E2 (nikdy se nezavírá) |
+| ověřování | `src/verification_chain.rs` | řetěz 12 nezávislých kontrol (DNS, TLS a JA3, časování, GeoIP a ASN, baseline hosta, peery, koncová telemetrie, historie případu, reputace, konfigurační kontext, opakované měření, aktivní čtecí ověření); bez dat nulová váha; „vyvráceno“ jen ze dvou skupin a nikdy u chráněného případu; vyčerpaný rozpočet = nerozhodnuto |
+| zpětná vazba | `src/analyst_feedback.rs`, `server.rs` | viz `impl-krok10.md` |
+| nástroje | `tools/soak_k9.py`, `k9_final.py`, `k9_finish.py`, `k9_coverage_table.py`, `k9_cmp.py`, `datasets/luflow_to_zeek.py` | vyhodnocení, tabulky, převod LUFlow pro přehrání |
+
+### Měření na ladicích seedech
+
+Svět `k9`, 40 sítí na seed, `--engine v3` s presetem kroku 7 a `--endpoint on`, `--no-legs --no-feedback --counterfactual`. Základ `k8ref` (jádro kroku 8), kandidát = základ + `--v3-on breadth`. Přesná čísla jsou v `k9/vysledky.md`; stav tabulky odpovídá seedům, které doběhly (viz její hlavička).
+
+Postup ladění (poctivý záznam, měřeno vždy na ladicím seedu 20261102):
+
+| rameno | změna | detekce | FP / síť-den | výsledek |
+|---|---|---:|---:|---|
+| `k8ref` | základ | 83,4 % | 8,27 | |
+| `b1` | všechny čtyři detektory `breadth` | 86,0 % | 14,17 | FP × 1,71, neprošlo |
+| `b3` | zralost hosta, mez střední objem pomalého úniku, aktér linky jen při podílu ≥ 50 % | 84,8 % | 11,88 | FP × 1,44, neprošlo |
+| `b4` | kontext záloh a údržby pro nové typy | 84,8 % | 11,91 | bez účinku na FP |
+| `b5ops` | + `ops_class`, `ops_annotate` | 84,6 % | 11,70 | třída provoz nepomáhá (jako v kroku 7) |
+| `c8` | `breadth_volume` vypnuto (objemové detektory jen volitelně) | 84,5 % (3 seedy) | 9,05 (× 1,04) | **prošlo K9-3**, kandidát |
+
+Důvod rozdělení: `ingest_volume_anomaly` a `link_saturation` přidaly kolem 3,4 zobrazených FP na síť-den (aktualizace, zálohy a migrace do cloudu mají stejný tvar jako stahování dat a hromadný únik) a část jejich „zisku“ byla náhodná atribuce (nález uváděl více hostů). Bez obsahu spojení (reputace cíle, SNI, DNS) je odlišit nelze; zůstávají volitelné (`--v3-on breadth,breadth_volume`) a jsou v registru jako (b).
+
+### Odchylky od předregistrace
+
+1. Rodiny s n < 50 jsou uvedeny s detekcí, ale ve stavu „nedostatek dat“; na úrovni jednotlivých variant dosáhlo n ≥ 50 jen několik rodin ani při několika seedech, proto jsou prahy vyhodnocené i na úrovni vzorů chování, taktik a kategorií (tabulky v `k9/vysledky.md`).
+2. Počet nálezů na incident (O3), čistota seskupení a první nález (O4) se neměřily: generátor nenese společný `incident_id` mezi nálezy téže poruchy a jádro nálezy poruch do incidentů neseskupuje (kromě incidentu grafu). Prahy O3 a O4 jsou proto nesplněné (kategorie c); změna prahu se nepovolila.
+3. Kalibrace posteriorů žebříku (V3, ECE) se z výstupu soaku nedá odvodit (neukládá posterior případu); neměřeno.
+4. Přehrání veřejných datasetů (LUFlow) je jen kontrola průchodu produkční cestou, ne důkaz detekce (viz `k9/datasety.md`).
 
 ## E) Registr slepých míst a nerealistických částí simulace
 
-(vyplní se po měření)
+Kategorie: (a) uzavřeno měřeným účinkem, (b) zadrženo opatřením vynuceným kódem nebo zmírněno, (c) otevřené. Seznam rodin pod prahem s n ≥ 50 je v `k9/vysledky.md` (sekce „Rodiny pod prahem“); zde jsou příčiny.
+
+| slepé místo | stav | kategorie |
+|---|---|---|
+| broadcast a multicast bouře | detekce výrazně nahoře (z 14 na 30 % u vzoru Storm), zbytek jsou nízké intenzity pod `storm_min` | (b) |
+| pomalý únik (Trickle, tempo `trickle`) | detekce 63 → 69 %, typ 31 → 54 % | (b) |
+| hromadné stahování a odesílání (BulkIn, BulkOut) | `breadth_volume` zvedá detekci o 10 p. b., ale za cenu FP × 1,44 | (b) volitelné |
+| rodiny odlišné od legitimního provozu jen obsahem (DNS, TLS, cloudové logy; viz `CONTENT_ONLY` v `tools/k9_final.py`) | v tocích nerozlišitelné; vyžadují DNS a TLS záznamy | (c) |
+| exploit_attempt, c2_beacon, port_scan_*, cryptomining, credential_stuffing | 85 až 90 %; zbytek tvoří útoky s 1 až 2 toky v cyklu a okna se zhoršenou telemetrií | (c) |
+| ics_attack | v ladicích seedech bez průmyslových sítí nepokryto | (c) nepokryto |
+| incidenty a seskupení poruch (O3, O4), klasifikace bezpečnostní/provozní (O2, O7) | `ops_class` nepomáhá, seskupení v jádře není | (c) |
+| koncová telemetrie v `recommended()` | viz `k9/endpoint.md` a rozhodnutí níže | podle práhu B5 |
+| nerealistické části simulace | `k9/realismus.md` | |
+
+### Rozhodnutí o koncové telemetrii (B5)
+
+Práh: detekce `on` − `off` ≥ +3 p. b., FP poměr ≤ 1,10, omylem zavřeno `on` ≤ `off` + 1 % útoků, 0 chráněných zavření. Hodnoty jsou v `k9/endpoint.md`. Rozhodnutí se zapíše po doběhnutí všech seedů (viz „Stav běhů“ níže); `recommended()` se nemění, dokud práh není splněn na všech ladicích seedech a nepotvrdí ho držený běh, protože měření je simulované.
+
+### Stav běhů a držené seedy
+
+Držené seedy (20261901, 20262001, 20262101, 20262102, 20261201, 20261301) se pouští jednou, kandidátem zamčeným tímto commitem; výsledek je v `k9/held.md`. Pokud soubor chybí, běh ještě nedoběhl: `python tools/k9_finish.py` ho vyrobí z `F:/Projekty/bakula-soak/k9/held{ref,c}-*`.
+
+### Návrh dalšího dlouhého běhu
+
+```
+salticus-program soak run --out F:\Projektyakula-soakun-mega-k9 --seed 20262501 --wall-hours 96 --threads 6 --block-size 4 --engine v3 --coverage k10 --endpoint on --endpoint-coverage 60 --v3-on breadth --noise-mix 1:0.6,10:0.3,50:0.1 --xxxl-share 0.015 --cf-share 0.2 --families all
+```
