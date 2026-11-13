@@ -128,6 +128,11 @@ pub async fn serve_with_config(addr: SocketAddr, config: AppConfig) -> Result<()
             "/runs/{run_id}/findings/{finding_id}/verdict",
             post(post_finding_verdict),
         )
+        .route(
+            "/feedback",
+            get(get_analyst_feedback).post(post_analyst_feedback),
+        )
+        .route("/feedback/{id}/revoke", post(post_analyst_feedback_revoke))
         .route("/closure-audit", get(get_closure_audit))
         .route("/closure-audit/{id}/review", post(post_closure_review))
         .route(
@@ -1212,6 +1217,98 @@ async fn post_closure_review(
             StatusCode::NOT_FOUND,
             "Vzorek neexistuje nebo uz byl posouzen.",
         ),
+        Err(response) => response,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct FeedbackBody {
+    #[serde(flatten)]
+    lesson: crate::analyst_feedback::Lesson,
+    #[serde(default)]
+    note: String,
+}
+
+/// Krok 10 (B): abstraktni poucení analytika, i na zmeskany utok a spatne zarazeni.
+async fn post_analyst_feedback(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<FeedbackBody>,
+) -> Response {
+    let auth = match authorize_for(&headers, &state, &["findings.write"]) {
+        Ok(auth) => auth,
+        Err(error) => return pair_to_response(error),
+    };
+    if let Err(error) = ensure_csrf_guard_header(&auth, &headers) {
+        return pair_to_response(error);
+    }
+    if body.lesson.validate().is_err() {
+        return error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Poucení musi pouzivat jen uzavrene slovniky (zadne adresy ani volny text).",
+        );
+    }
+    let root = state.workspace_root.clone();
+    let actor = auth.subject.clone();
+    match run_blocking(move || {
+        let store = crate::engine_state::EngineStateStore::open(&root.join("engine-state.sqlite"))?;
+        crate::analyst_feedback::submit(store.conn(), &body.lesson, &actor, &body.note, Utc::now())
+    })
+    .await
+    {
+        Ok(id) => Json(serde_json::json!({ "recorded": id })).into_response(),
+        Err(response) => response,
+    }
+}
+
+async fn post_analyst_feedback_revoke(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Json(body): Json<NoteBody>,
+) -> Response {
+    let auth = match authorize_for(&headers, &state, &["findings.write"]) {
+        Ok(auth) => auth,
+        Err(error) => return pair_to_response(error),
+    };
+    if let Err(error) = ensure_csrf_guard_header(&auth, &headers) {
+        return pair_to_response(error);
+    }
+    let root = state.workspace_root.clone();
+    let actor = auth.subject.clone();
+    match run_blocking(move || {
+        let store = crate::engine_state::EngineStateStore::open(&root.join("engine-state.sqlite"))?;
+        crate::analyst_feedback::revoke(store.conn(), id, &actor, &body.note, Utc::now())
+    })
+    .await
+    {
+        Ok(true) => Json(serde_json::json!({ "revoked": id })).into_response(),
+        Ok(false) => error_response(
+            StatusCode::NOT_FOUND,
+            "Zaznam neexistuje nebo uz byl odvolan.",
+        ),
+        Err(response) => response,
+    }
+}
+
+async fn get_analyst_feedback(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(error) = authorize_for(&headers, &state, &["runs.read"]) {
+        return pair_to_response(error);
+    }
+    let root = state.workspace_root.clone();
+    match run_blocking(move || {
+        let store = crate::engine_state::EngineStateStore::open(&root.join("engine-state.sqlite"))?;
+        let active = crate::analyst_feedback::active(store.conn())?;
+        let lessons: Vec<_> = active.iter().map(|(_, l)| l.clone()).collect();
+        Ok(serde_json::json!({
+            "active": active.iter().map(|(id, l)| serde_json::json!({ "id": id, "lesson": l })).collect::<Vec<_>>(),
+            "summary": crate::analyst_feedback::summarize(&lessons),
+            "note": "Souhrn je doporuceni; zadne zavirani se kvuli nemu samo nezapina ani nevypina.",
+        }))
+    })
+    .await
+    {
+        Ok(value) => Json(value).into_response(),
         Err(response) => response,
     }
 }
