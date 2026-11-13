@@ -181,6 +181,29 @@ def render(args):
     for name in sorted(cat):
         a = cat[name]
         out.append(f"| {name} | {a[0]} | {k.ci(a[4], a[3])} | {k.ci(a[1], a[0])} | {k.ci(a[2], a[0])} | {pc(a[5] / max(a[0], 1))} % |")
+    # protokol LOTO a LOFO (impl-krok10.md, C): predregistrovane foldy
+    loto = ["credential-access", "discovery", "lateral-movement"]
+    lofo = ["c2_slow_long_interval", "ssh_spray_slow_distributed", "data_staging_smb_internal",
+            "kerberos_ticket_request_burst", "ics_attack", "cloud_api_discovery_burst", "rdp_bruteforce",
+            "ddos_syn_flood_distributed"]
+    out += ["", "## Neviděné taktiky a rodiny (protokol z `impl-krok10.md`, C)", "",
+            "Foldy byly stanoveny před měřením a při ladění detektorů se nepoužily. Práh K10-1: detekce ≥ 90 % a dolní mez Wilsonova intervalu ≥ 85 %.", "",
+            "| fold | n | detekce před | detekce po | správný typ po | K10-1 |", "|---|---:|---|---|---|---|"]
+    def fold_row(name, labels):
+        n = sum(rc[l]["n"] for l in labels if l in rc)
+        hit = sum(rc[l]["hit"] for l in labels if l in rc)
+        typed = sum(rc[l]["typed"] for l in labels if l in rc)
+        nb = sum(rb[l]["n"] for l in labels if l in rb)
+        hb = sum(rb[l]["hit"] for l in labels if l in rb)
+        if n == 0:
+            return f"| {name} | 0 | - | - | - | nepokryto v běhu |"
+        p, lo, _ = wilson(hit, n)
+        ok = "splněno" if (n >= 50 and p >= 0.90 and lo >= 0.85) else ("nedostatek dat" if n < 50 else "nedosaženo")
+        return f"| {name} | {n} | {k.ci(hb, nb)} | {k.ci(hit, n)} | {k.ci(typed, n)} | {ok} |"
+    for t in loto:
+        out.append(fold_row("taktika " + t, [l for l, c in rc.items() if c["info"].get("tactic") == t and c["info"]["category"] == "security"]))
+    for fam in lofo:
+        out.append(fold_row("rodina " + fam, [fam]))
     out += ["", "## Rodiny pod prahem (n ≥ 50; detekce < 90 % nebo dolní mez < 85 %)", "",
             "| rodina | n | detekce % | kategorie slepého místa |", "|---|---:|---:|---|"]
     for label, n, p, reg, cat_name in sorted(below, key=lambda x: x[2]):
