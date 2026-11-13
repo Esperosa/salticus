@@ -48,6 +48,11 @@ DEFAULT_FINAL_REPORT = "F:/Projekty/bakula-soak/run-mega-4d/final-report.json"
 K7_HELD = "docs/diplomka/eval/k7/held.md"
 K7_IMPL = "docs/diplomka/eval/impl-krok7.md"
 K8_RESULTS = "docs/diplomka/eval/k8/vysledky.md"
+K9_RESULTS = (
+    ("Krok 9, ladicí seedy", "docs/diplomka/eval/k9/vysledky.md"),
+    ("Krok 9, držené seedy (jednou)", "docs/diplomka/eval/k9/held.md"),
+    ("Krok 10, tvrdé záporné scénáře", "docs/diplomka/eval/k10/vysledky.md"),
+)
 
 
 # ---------------------------------------------------------------- pomocné
@@ -255,6 +260,20 @@ def section_k8(root: Path) -> str:
     return "\n".join(out)
 
 
+def section_k9(root: Path) -> str:
+    """Souhrn kroku 9 a 10: první tabulka s ukazateli z každého dokumentu (kandidát proti základu)."""
+    out = []
+    for title, rel in K9_RESULTS:
+        text = read_text(root, rel)
+        if text is None:
+            continue
+        table = find_table(parse_tables(text), "", "ukazatel")
+        if table:
+            out.append(f"#### {title}\n")
+            out.append(md_table(table["header"], table["rows"]))
+    return "\n".join(out)
+
+
 def section_thresholds(root: Path) -> str:
     lines = []
     impl7 = read_text(root, K7_IMPL)
@@ -345,6 +364,7 @@ def build_block(root: Path, tests: Optional[int], final_report: Optional[Path]) 
         section_thresholds(root),
         section_k7(root),
         section_k8(root),
+        section_k9(root),
         section_long_run(final_report) if final_report else "",
         section_blind_spots(root),
     ]
