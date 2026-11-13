@@ -503,6 +503,11 @@ pub fn classify(
     sources: &[String],
     subnets: &[ipnet::IpNet],
 ) -> Option<String> {
+    // krok 9: bouře na broadcast a multicast je chyba konfigurace nebo smyčka (RFC 919,
+    // RFC 1112), ne útok na hosta; nález zdroje jde do fronty provoz, nikdy se nezavírá
+    if finding_type == "broadcast_storm" {
+        return Some("provoz E2: bouře na broadcast nebo multicast".to_string());
+    }
     if !E1_TYPES.contains(&finding_type) {
         return None;
     }
@@ -558,6 +563,14 @@ mod tests {
             sources,
             &scope(),
         )
+    }
+
+    #[test]
+    fn broadcast_storm_is_classified_as_operations_but_not_other_types() {
+        let window = OpsWindow::default();
+        let reason = classify(&window, "broadcast_storm", None, "10.0.0.9", &[]);
+        assert!(reason.is_some_and(|r| r.contains("E2")));
+        assert!(classify(&window, "slow_egress", None, "10.0.0.9", &[]).is_none());
     }
 
     fn flow(src: &str, dst: &str, port: u16, state: &str, rb: u64) -> ConnectionObservation {

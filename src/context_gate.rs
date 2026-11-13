@@ -96,11 +96,16 @@ impl ContextKind {
                 "connection_timeout_burst",
                 "service_overload_risk",
                 "service_unreachable",
+                // krok 9: hromadne stazeni aktualizaci v okne udrzby
+                "ingest_volume_anomaly",
             ],
             ContextKind::Backup | ContextKind::BatchJob => &[
                 "inductive_volume_anomaly",
                 "packet_rate_spike",
                 "service_overload_risk",
+                // krok 9: objem v okne zalohy (zaplneni linky, stazeny a odeslany objem)
+                "link_saturation",
+                "ingest_volume_anomaly",
             ],
             ContextKind::AuthorizedScanner => &[
                 "scan_attempts",

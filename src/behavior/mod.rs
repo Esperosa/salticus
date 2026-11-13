@@ -51,6 +51,8 @@ pub struct BehaviorSwitches {
     pub saas_group: bool,
     /// Krok 9: obecné detektory rysů provozu (`breadth`).
     pub breadth: bool,
+    /// Krok 9: objemové detektory `breadth`.
+    pub breadth_volume: bool,
 }
 
 impl BehaviorSwitches {
@@ -67,6 +69,7 @@ impl BehaviorSwitches {
             fanout2: engine.fanout2(),
             saas_group: engine.saas_group(),
             breadth: engine.breadth(),
+            breadth_volume: engine.breadth_volume(),
         }
     }
 
@@ -265,6 +268,7 @@ pub fn run_window(
             input.internal,
             now,
             &habit,
+            switches.breadth_volume,
         ));
     }
     if switches.novelty && switches.egress {

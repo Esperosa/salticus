@@ -589,6 +589,9 @@ fn checks_for(input: &CaseInput, policy: &LadderPolicy) -> Vec<CheckId> {
             | "egress_volume_anomaly"
             | "novel_persistent_peer"
             | "novel_fanout"
+            | "ingest_volume_anomaly"
+            | "slow_egress"
+            | "link_saturation"
     ) {
         checks.push(CheckId::Peers);
     }

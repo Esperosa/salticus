@@ -55,19 +55,25 @@ pub struct BreadthThresholds {
     pub history: usize,
     pub max_hosts: usize,
     pub max_pairs: usize,
+    /// Host musi byt pozorovan aspon tolik sekund, nez se u nej hlasi pomaly unik.
+    pub host_mature_s: i64,
+    /// Horni mez prumerneho nahraneho objemu dvojice na okno (B); nad ni jde o objemovy detektor.
+    pub slow_max_mean: f64,
+    /// Nejmensi podil prispevatele na objemu site, aby byl uveden jako aktér.
+    pub link_actor_share: f64,
 }
 
 impl Default for BreadthThresholds {
     fn default() -> Self {
         Self {
-            storm_min: 150.0,
-            storm_cold: 600.0,
+            storm_min: 60.0,
+            storm_cold: 240.0,
             down_min: 10.0e6,
             down_cold: 300.0e6,
             slow_windows: 6,
             slow_bytes: 4.0e6,
             slow_ratio: 8.0,
-            link_min: 200.0e6,
+            link_min: 120.0e6,
             link_cold: 2.0e9,
             z: 6.0,
             ratio: 4.0,
@@ -75,6 +81,9 @@ impl Default for BreadthThresholds {
             history: 96,
             max_hosts: 50_000,
             max_pairs: 100_000,
+            host_mature_s: 12 * 3600,
+            slow_max_mean: 12.0e6,
+            link_actor_share: 0.5,
         }
     }
 }
@@ -124,7 +133,9 @@ pub struct BreadthState {
     storm: Series,
     link: Series,
     down: HashMap<String, Series>,
-    pairs: HashMap<(String, String, u16), PairAcc>,
+    /// Prvni pozorovani hosta (zahrivani: bez zralosti se pomaly unik nehlasi).
+    host_first: HashMap<String, i64>,
+    pairs: HashMap<String, PairAcc>,
     pub evicted: u64,
 }
 
@@ -161,11 +172,20 @@ pub fn detect(
     internal: &[ConnectionObservation],
     now: i64,
     habit: &dyn Fn(&str, &str, &str, u16) -> bool,
+    volume: bool,
 ) -> Vec<BehaviorFinding> {
     let mut out = Vec::new();
     // prazdne okno nic neuci a nic nehlasi
     if outbound.is_empty() && internal.is_empty() {
         return out;
+    }
+
+    for flow in outbound.iter().chain(internal.iter()) {
+        if let Some(src) = flow.src_ip.as_deref()
+            && state.host_first.len() < t.max_hosts
+        {
+            state.host_first.entry(src.to_string()).or_insert(now);
+        }
     }
 
     // --- broadcast_storm ---
@@ -239,7 +259,7 @@ pub fn detect(
             *e.1.entry(flow.dst_ip.as_str()).or_default() += net;
         }
     }
-    for (host, (bytes, by_peer)) in &down {
+    for (host, (bytes, by_peer)) in down.iter().filter(|_| volume) {
         let entry = state.down.entry((*host).to_string()).or_default();
         let x = (1.0 + bytes).ln();
         let alarm = if *bytes < t.down_min {
@@ -251,6 +271,7 @@ pub fn detect(
                 .outlier(x, t)
                 .map(|(z, r)| format!("{r:.0}x median historie hostu, z = {z:.1}"))
         };
+        let habitual = |peer: &str, port: u16| habit(host, peer, "tcp", port);
         match alarm {
             Some(basis) => {
                 entry.last = now;
@@ -265,6 +286,10 @@ pub fn detect(
                     .find(|f| f.src_ip.as_deref() == Some(host) && f.dst_ip == peer)
                     .and_then(|f| f.dst_port)
                     .unwrap_or(0);
+                if habitual(&peer, port) {
+                    // zavedeny zvyk hosta (aktualizace, zaloha): neni novost
+                    continue;
+                }
                 let f = finding(
                     "ingest_volume_anomaly",
                     host,
@@ -311,7 +336,7 @@ pub fn detect(
     }
     for ((src, dst, port), (up, dn)) in pair_now {
         // jen male a stredni objemy: velke jdou pres egress_volume_anomaly
-        let key = (src.to_string(), dst.to_string(), port);
+        let key = format!("{src}|{dst}|{port}");
         let acc = state.pairs.entry(key).or_default();
         if acc.windows == 0 || now - acc.last > 12 * 1800 {
             *acc = PairAcc {
@@ -324,7 +349,13 @@ pub fn detect(
         acc.up += up;
         acc.down += dn;
         let proto = "tcp";
+        let mature = state
+            .host_first
+            .get(src)
+            .is_some_and(|first| acc.first - first >= t.host_mature_s);
         if acc.windows >= t.slow_windows
+            && mature
+            && acc.up / f64::from(acc.windows) <= t.slow_max_mean
             && acc.up - acc.down >= t.slow_bytes
             && acc.up >= t.slow_ratio * acc.down.max(1.0)
             && (acc.alarmed_at == 0 || now - acc.alarmed_at > 48 * 1800)
@@ -375,7 +406,9 @@ pub fn detect(
         })
         .sum();
     let x = (1.0 + total).ln();
-    let alarm = if total < t.link_min {
+    let alarm = if !volume {
+        None
+    } else if total < t.link_min {
         None
     } else if state.link.history.len() < t.min_history {
         (total >= t.link_cold).then(|| "bez historie, absolutni mez".to_string())
@@ -394,7 +427,10 @@ pub fn detect(
             }
             let mut top: Vec<(&&str, &f64)> = by_host.iter().collect();
             top.sort_by(|a, b| b.1.total_cmp(a.1).then(a.0.cmp(b.0)));
-            let actor = top.first().map(|(h, _)| (**h).to_string()).unwrap_or_default();
+            let actor = match top.first() {
+                Some((h, b)) if **b >= t.link_actor_share * total => (**h).to_string(),
+                _ => "network".to_string(),
+            };
             let port = outbound.iter().find_map(|f| f.dst_port).unwrap_or(0);
             let f = finding(
                 "link_saturation",
@@ -409,13 +445,19 @@ pub fn detect(
                 ),
                 top.iter()
                     .take(8)
+                    .filter(|(_, b)| **b >= 0.2 * total)
                     .map(|(h, b)| format!("{h}: {:.0} MB", **b / 1e6))
                     .collect(),
                 "Rozlisit zalohu a aktualizace (kalendar) od neplanovaneho zaplneni linky; zjistit, zda je pricinou jeden host nebo vice.",
             );
             out.push(BehaviorFinding {
                 finding: f,
-                sources: top.iter().take(8).map(|(h, _)| (**h).to_string()).collect(),
+                sources: top
+                    .iter()
+                    .take(8)
+                    .filter(|(_, b)| **b >= 0.2 * total)
+                    .map(|(h, _)| (**h).to_string())
+                    .collect(),
                 targets: vec![("0.0.0.0".into(), port)],
                 count: (total / 1e6).min(f64::from(u32::MAX)) as u32,
                 actor,
@@ -469,7 +511,7 @@ mod tests {
     #[test]
     fn empty_window_neither_learns_nor_reports() {
         let mut state = BreadthState::default();
-        let out = detect(&mut state, &BreadthThresholds::default(), &[], &[], 100, &no_habit);
+        let out = detect(&mut state, &BreadthThresholds::default(), &[], &[], 100, &no_habit, true);
         assert!(out.is_empty() && state.link.history.is_empty());
     }
 
@@ -481,14 +523,14 @@ mod tests {
             .map(|_| flow("10.0.0.5", "224.0.0.251", 5353, 100, 0))
             .collect();
         for w in 0..10 {
-            let out = detect(&mut state, &t, &quiet, &[], 1800 * w, &no_habit);
+            let out = detect(&mut state, &t, &quiet, &[], 1800 * w, &no_habit, true);
             assert!(out.is_empty());
         }
         let burst: Vec<_> = (0..900)
             .map(|_| flow("10.0.0.9", "255.255.255.255", 137, 90, 0))
             .collect();
         let before = state.storm.history.len();
-        let out = detect(&mut state, &t, &burst, &[], 1800 * 11, &no_habit);
+        let out = detect(&mut state, &t, &burst, &[], 1800 * 11, &no_habit, true);
         assert!(out.iter().any(|f| f.finding.finding_type == "broadcast_storm"));
         assert_eq!(state.storm.history.len(), before, "poplach se neuci");
         assert!(
@@ -500,27 +542,47 @@ mod tests {
         );
     }
 
+    /// Host se nejdriv ustali (40 oken beznym symetrickym provozem), pak zacne unikat.
+    fn warmed(state: &mut BreadthState, t: &BreadthThresholds) {
+        for w in 0..40 {
+            let flows = vec![flow("10.0.0.7", "198.51.100.5", 443, 2_000, 2_000)];
+            detect(state, t, &flows, &[], 1800 * w, &no_habit, true);
+        }
+    }
+
     #[test]
     fn slow_egress_accumulates_over_windows_but_not_habit() {
         let t = BreadthThresholds::default();
         let mut state = BreadthState::default();
+        warmed(&mut state, &t);
         let mut got = 0;
-        for w in 0..10 {
+        for w in 40..52 {
             let flows = vec![flow("10.0.0.7", "203.0.113.9", 443, 900_000, 1_000)];
-            got += detect(&mut state, &t, &flows, &[], 1800 * w, &no_habit)
+            got += detect(&mut state, &t, &flows, &[], 1800 * w, &no_habit, true)
                 .iter()
                 .filter(|f| f.finding.finding_type == "slow_egress")
                 .count();
         }
         assert_eq!(got, 1);
         let mut habitual = BreadthState::default();
+        warmed(&mut habitual, &t);
         let mut got = 0;
-        for w in 0..10 {
+        for w in 40..52 {
             let flows = vec![flow("10.0.0.7", "203.0.113.9", 443, 900_000, 1_000)];
-            got += detect(&mut habitual, &t, &flows, &[], 1800 * w, &|_, _, _, _| true)
-                .len();
+            got += detect(&mut habitual, &t, &flows, &[], 1800 * w, &|_, _, _, _| true, true).len();
         }
         assert_eq!(got, 0);
+    }
+
+    #[test]
+    fn slow_egress_waits_for_host_maturity() {
+        let t = BreadthThresholds::default();
+        let mut state = BreadthState::default();
+        for w in 0..10 {
+            let flows = vec![flow("10.0.0.7", "203.0.113.9", 443, 900_000, 1_000)];
+            let out = detect(&mut state, &t, &flows, &[], 1800 * w, &no_habit, true);
+            assert!(out.iter().all(|f| f.finding.finding_type != "slow_egress"));
+        }
     }
 
     #[test]
@@ -529,7 +591,7 @@ mod tests {
         let mut state = BreadthState::default();
         for w in 0..20 {
             let flows = vec![flow("10.0.0.7", "203.0.113.9", 443, 900_000, 800_000)];
-            let out = detect(&mut state, &t, &flows, &[], 1800 * w, &no_habit);
+            let out = detect(&mut state, &t, &flows, &[], 1800 * w, &no_habit, true);
             assert!(out.iter().all(|f| f.finding.finding_type != "slow_egress"));
         }
     }
@@ -540,13 +602,44 @@ mod tests {
         let mut state = BreadthState::default();
         let small = vec![flow("10.0.0.5", "203.0.113.1", 443, 1_000, 200_000)];
         for w in 0..10 {
-            assert!(detect(&mut state, &t, &small, &[], 1800 * w, &no_habit).is_empty());
+            assert!(detect(&mut state, &t, &small, &[], 1800 * w, &no_habit, true).is_empty());
         }
         let big = vec![flow("10.0.0.5", "203.0.113.1", 443, 1_000, 60_000_000)];
-        let out = detect(&mut state, &t, &big, &[], 1800 * 11, &no_habit);
+        let out = detect(&mut state, &t, &big, &[], 1800 * 11, &no_habit, true);
         assert!(
             out.iter()
                 .any(|f| f.finding.finding_type == "ingest_volume_anomaly")
         );
+    }
+
+    #[test]
+    fn state_survives_json_roundtrip() {
+        let t = BreadthThresholds::default();
+        let mut state = BreadthState::default();
+        for w in 0..8 {
+            let flows = vec![flow("10.0.0.7", "203.0.113.9", 443, 900_000, 1_000)];
+            detect(&mut state, &t, &flows, &[], 1800 * w, &no_habit, true);
+        }
+        let json = serde_json::to_string(&state).expect("stav musi jit serializovat");
+        let back: BreadthState = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.pairs.len(), state.pairs.len());
+    }
+
+    #[test]
+    fn volume_detectors_are_off_without_the_volume_switch() {
+        let t = BreadthThresholds::default();
+        let mut state = BreadthState::default();
+        let small = vec![flow("10.0.0.5", "203.0.113.1", 443, 1_000, 200_000)];
+        for w in 0..10 {
+            detect(&mut state, &t, &small, &[], 1800 * w, &no_habit, false);
+        }
+        let big = vec![flow("10.0.0.5", "203.0.113.1", 443, 1_000, 900_000_000)];
+        let out = detect(&mut state, &t, &big, &[], 1800 * 11, &no_habit, false);
+        assert!(out.iter().all(|f| {
+            !matches!(
+                f.finding.finding_type.as_str(),
+                "ingest_volume_anomaly" | "link_saturation"
+            )
+        }));
     }
 }

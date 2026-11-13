@@ -129,6 +129,10 @@ pub struct V3Features {
     /// pomalý únik, zaplnění linky). Výchozí vypnuto (impl-krok9.md).
     #[serde(default)]
     pub breadth: bool,
+    /// Krok 9: objemove detektory `breadth` (`ingest_volume_anomaly`, `link_saturation`).
+    /// Vypnuto: na ladicim seedu pridaly 3,4 zobrazenych FP na sit-den (impl-krok9.md, D).
+    #[serde(default)]
+    pub breadth_volume: bool,
 }
 
 impl Default for V3Features {
@@ -138,7 +142,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 29] = [
+    pub const NAMES: [&'static str; 30] = [
         "memory",
         "rate",
         "volume",
@@ -168,6 +172,7 @@ impl V3Features {
         "saas_group",
         "endpoint",
         "breadth",
+        "breadth_volume",
     ];
 
     pub fn all() -> Self {
@@ -201,6 +206,7 @@ impl V3Features {
             saas_group: true,
             endpoint: true,
             breadth: true,
+            breadth_volume: true,
         }
     }
 
@@ -242,6 +248,7 @@ impl V3Features {
             saas_group: false,
             endpoint: false,
             breadth: false,
+            breadth_volume: false,
             ..Self::all()
         }
     }
@@ -286,6 +293,7 @@ impl V3Features {
             saas_group: false,
             endpoint: false,
             breadth: false,
+            breadth_volume: false,
         }
     }
 
@@ -344,6 +352,7 @@ impl V3Features {
             "saas_group" => &mut self.saas_group,
             "endpoint" => &mut self.endpoint,
             "breadth" => &mut self.breadth,
+            "breadth_volume" => &mut self.breadth_volume,
             _ => return None,
         })
     }
@@ -513,6 +522,10 @@ impl EngineConfig {
     pub fn breadth(&self) -> bool {
         self.on(|f| f.egress && f.breadth)
     }
+    /// Krok 9: objemové detektory `breadth` (jen s `breadth`).
+    pub fn breadth_volume(&self) -> bool {
+        self.breadth() && self.v3.breadth_volume
+    }
     /// Krok 7 (B5): seskupení nové vazby ven (jen s novostí).
     pub fn saas_group(&self) -> bool {
         self.novelty() && self.v3.saas_group
@@ -572,7 +585,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,
