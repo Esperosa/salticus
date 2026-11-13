@@ -125,6 +125,10 @@ pub struct V3Features {
     /// Platí jen s `protect` a `memory`; výchozí vypnuto (impl-krok8.md).
     #[serde(default)]
     pub endpoint: bool,
+    /// Krok 9: obecné detektory rysů provozu (bouře na broadcast, stažený objem,
+    /// pomalý únik, zaplnění linky). Výchozí vypnuto (impl-krok9.md).
+    #[serde(default)]
+    pub breadth: bool,
 }
 
 impl Default for V3Features {
@@ -134,7 +138,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 28] = [
+    pub const NAMES: [&'static str; 29] = [
         "memory",
         "rate",
         "volume",
@@ -163,6 +167,7 @@ impl V3Features {
         "cross_source",
         "saas_group",
         "endpoint",
+        "breadth",
     ];
 
     pub fn all() -> Self {
@@ -195,6 +200,7 @@ impl V3Features {
             cross_source: true,
             saas_group: true,
             endpoint: true,
+            breadth: true,
         }
     }
 
@@ -235,6 +241,7 @@ impl V3Features {
             cross_source: false,
             saas_group: false,
             endpoint: false,
+            breadth: false,
             ..Self::all()
         }
     }
@@ -278,6 +285,7 @@ impl V3Features {
             cross_source: false,
             saas_group: false,
             endpoint: false,
+            breadth: false,
         }
     }
 
@@ -335,6 +343,7 @@ impl V3Features {
             "cross_source" => &mut self.cross_source,
             "saas_group" => &mut self.saas_group,
             "endpoint" => &mut self.endpoint,
+            "breadth" => &mut self.breadth,
             _ => return None,
         })
     }
@@ -500,13 +509,17 @@ impl EngineConfig {
     pub fn endpoint(&self) -> bool {
         self.on(|f| f.endpoint && f.protect && f.memory)
     }
+    /// Krok 9: obecné detektory rysů provozu (potřebují odchozí toky).
+    pub fn breadth(&self) -> bool {
+        self.on(|f| f.egress && f.breadth)
+    }
     /// Krok 7 (B5): seskupení nové vazby ven (jen s novostí).
     pub fn saas_group(&self) -> bool {
         self.novelty() && self.v3.saas_group
     }
     /// Běží behaviorální vrstva kroku 3 (aspoň jedna její část)?
     pub fn behavior(&self) -> bool {
-        self.egress() || self.graph() || self.profile()
+        self.egress() || self.graph() || self.profile() || self.breadth()
     }
     /// Běží v3 detektor (aspoň jedna detekční změna)?
     pub fn v3_detector(&self) -> bool {
@@ -559,7 +572,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,

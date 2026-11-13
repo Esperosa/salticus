@@ -18,6 +18,7 @@
 #![allow(private_interfaces)]
 
 pub mod beacon;
+pub mod breadth;
 pub mod egress_volume;
 pub mod graph;
 pub mod interactive;
@@ -48,6 +49,8 @@ pub struct BehaviorSwitches {
     pub novel_burst: bool,
     pub fanout2: bool,
     pub saas_group: bool,
+    /// Krok 9: obecné detektory rysů provozu (`breadth`).
+    pub breadth: bool,
 }
 
 impl BehaviorSwitches {
@@ -63,11 +66,12 @@ impl BehaviorSwitches {
             novel_burst: engine.novel_burst(),
             fanout2: engine.fanout2(),
             saas_group: engine.saas_group(),
+            breadth: engine.breadth(),
         }
     }
 
     pub fn any(&self) -> bool {
-        self.egress || self.graph || self.profile
+        self.egress || self.graph || self.profile || self.breadth
     }
 }
 
@@ -82,6 +86,10 @@ pub const BEHAVIOR_TYPES: &[&str] = &[
     "novel_persistent_peer",
     "novel_fanout",
     "novel_burst_peer",
+    "broadcast_storm",
+    "ingest_volume_anomaly",
+    "slow_egress",
+    "link_saturation",
 ];
 
 pub fn is_behavior_type(kind: &str) -> bool {
@@ -100,6 +108,8 @@ pub struct BehaviorState {
     pub profile: profile::HostProfiles,
     /// Krok 6: novost vztahů.
     pub novelty: novelty::NoveltyState,
+    /// Krok 9: obecné detektory rysů.
+    pub breadth: breadth::BreadthState,
     /// Začátek prvního okna (stáří senzoru, zahřívání).
     pub first_window: Option<i64>,
 }
@@ -152,6 +162,7 @@ pub struct BehaviorThresholds {
     pub interactive: interactive::InteractiveThresholds,
     pub graph: graph::GraphThresholds,
     pub novelty: novelty::NoveltyThresholds,
+    pub breadth: breadth::BreadthThresholds,
 }
 
 impl BehaviorThresholds {
@@ -241,6 +252,20 @@ pub fn run_window(
             graph::detect(&mut state.graph, &graph_t, input.internal, &roots, now);
         out.findings.extend(findings);
         out.chains = chains;
+    }
+    if switches.breadth {
+        let profile = &state.profile;
+        let habit = |host: &str, peer: &str, proto: &str, port: u16| {
+            profile.is_habit(host, peer, proto, port)
+        };
+        out.findings.extend(breadth::detect(
+            &mut state.breadth,
+            &thresholds.breadth,
+            input.outbound,
+            input.internal,
+            now,
+            &habit,
+        ));
     }
     if switches.novelty && switches.egress {
         // profil zna jen minula okna (uci se az po rozhodnuti o tomto okne)
