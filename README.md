@@ -108,8 +108,8 @@ Postup podle kroků je v [`docs/diplomka/eval/`](docs/diplomka/eval/) (`impl-kro
 <!-- STATUS:BEGIN -->
 _Tento blok generuje `tools/readme_status.py` z dokumentů v `docs/diplomka/eval/` a z gitu. Ručně se neupravuje._
 
-- Poslední commit: `ce294a0` ze dne 2026-11-13 (feat(brand): koncepty znaku Salticus ve vizualnim jazyce aplikace (monogram S, skok, wordmark, ikony), generator a nahledy)
-- Počet unit testů knihovny (`cargo test --lib -- --list`): 566
+- Poslední commit: `83d565e` ze dne 2026-11-13 (fix(tools): srovnání koncové telemetrie po seedech)
+- Počet unit testů knihovny (`cargo test --lib -- --list`): 592
 
 - Výkon sítí XXXL (G4, držené seedy): p99 cyklu 1,08 s a 0,43 s, práh < 3 s, splněno.
 
@@ -160,6 +160,17 @@ Detekce a podíl zavřených omylem jsou s 95% Wilsonovým intervalem v závorce
 | on30 | 200 | 6362 | 86,5 (85,6 až 87,3) | 15,3 | 141,4 | 2,3 % (1,9 až 2,8) | 62 |
 | comp-silent | 200 | 6362 | 83,9 (82,9 až 84,8) | 15,3 | 140,6 | 1,4 % (1,1 až 1,9) | 45 |
 | comp-ok | 200 | 6362 | 83,9 (83,0 až 84,8) | 16,0 | 142,0 | 1,6 % (1,2 až 2,1) | 50 |
+
+#### Krok 9, ladicí seedy
+
+| ukazatel | základ | kandidát | poznámka |
+|---|---|---|---|
+| detekce útoků | 84,0 (83,0 až 85,0) | 84,5 (83,4 až 85,4) | kontrafaktuální zobrazená detekce |
+| zobrazené FP na síť-den | 8,70 | 9,05 | poměr 1,041 (1,025 až 1,062); práh K9-3 ≤ 1,15 |
+| všechny zobrazené položky na síť-den | 126,1 | 128,2 | poměr 1,017 (1,010 až 1,026) |
+| útoky s omylem zavřeným nálezem | 46 (0,9 %) | 51 (1,0 %) | práh K9-4 ≤ 2,2 % |
+| chráněná automatická zavření | 0 | 0 | práh K9-5 = 0 |
+| paniky / porušené invarianty | 0 / 0 | 0 / 0 | práh K9-7 = 0 |
 
 #### Dlouhý běh (soak, závěrečný report)
 
