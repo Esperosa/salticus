@@ -53,7 +53,11 @@ def main():
              "--cand", "cand", ",".join(c), "--out", os.path.join(ROOT, out), "--title", title])
 
     compare(["k8ref"], ["c8", "c9"], tuning, "docs/diplomka/eval/k9/vysledky.md", "Výsledky kroku 9, ladicí seedy")
-    compare(["c9off", "b6noep"], ["c8", "c9", "b4"], tuning, "docs/diplomka/eval/k9/endpoint.md", "Koncová telemetrie: vypnuto (základ) proti zapnuto (kandidát)")
+    off = [d for a, sd in (("b6noep", ["20261102"]), ("c9off", ["20261103", "20261104"])) for d in dirs(soak, a, sd)[0]]
+    on = [d for a, sd in (("b4", ["20261102"]), ("c8", ["20261103", "20261104"])) for d in dirs(soak, a, sd)[0]]
+    if off and on:
+        run(["tools/k9_final.py", "--families", families, "--base", "off", ",".join(off), "--cand", "on", ",".join(on),
+             "--out", os.path.join(ROOT, "docs/diplomka/eval/k9/endpoint.md"), "--title", "Koncová telemetrie: vypnuto (základ) proti zapnuto (kandidát)"])
     compare(["heldref"], ["heldc"], held, "docs/diplomka/eval/k9/held.md", "Výsledky kroku 9, držené seedy (jednou)")
     compare(["k10ref"], ["k10c"], ["20262401", "20262402"], "docs/diplomka/eval/k10/vysledky.md", "Krok 10: tvrdé záporné scénáře a nové seedy (svět k10)")
     compare(["noise10ref"], ["noise10"], ["20262301"], "docs/diplomka/eval/k10/sum10x.md", "Krok 10: šum 10x (kombinace útok + porucha + šum + výpadek senzoru)")
