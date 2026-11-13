@@ -37,6 +37,8 @@ pub enum CoverageMode {
     K7,
     /// Krok 9: `K7` + parametricke varianty podle ATT&CK a provozni poruchy (impl-krok9.md).
     K9,
+    /// Krok 10: `K9` + tvrde zaporne scenare (neskodne, ale podobne utoku; impl-krok10.md).
+    K10,
 }
 
 impl CoverageMode {
@@ -54,8 +56,9 @@ impl std::str::FromStr for CoverageMode {
             "full" => Ok(CoverageMode::Full),
             "k7" => Ok(CoverageMode::K7),
             "k9" => Ok(CoverageMode::K9),
+            "k10" => Ok(CoverageMode::K10),
             other => Err(format!(
-                "neznamy svet pokryti {other} (off | tuning | full | k7 | k9)"
+                "neznamy svet pokryti {other} (off | tuning | full | k7 | k9 | k10)"
             )),
         }
     }
@@ -302,7 +305,10 @@ pub fn plan_coverage(
         return;
     }
     // k7 obsahuje cely drzeny svet `full` a k nemu nove urovne (vlastni vetev vyberu)
-    let k7 = matches!(mode, CoverageMode::K7 | CoverageMode::K9);
+    let k7 = matches!(
+        mode,
+        CoverageMode::K7 | CoverageMode::K9 | CoverageMode::K10
+    );
     let full = mode == CoverageMode::Full || k7;
     let mut rng = Rng::new(derive(model.seed, 0xC0E5_5005));
     let cycles = hours * 2;
@@ -512,8 +518,11 @@ pub fn plan_coverage(
         }
     }
     // --- krok 9: varianty podle ATT&CK a provozni poruchy (vlastni proud) ---
-    if mode == CoverageMode::K9 {
-        crate::soak::variants::plan_variants(model, &pools, truths, hours, telemetry);
+    if matches!(mode, CoverageMode::K9 | CoverageMode::K10) {
+        crate::soak::variants::plan_variants(model, &pools, truths, hours, telemetry, false);
+    }
+    if mode == CoverageMode::K10 {
+        crate::soak::variants::plan_variants(model, &pools, truths, hours, telemetry, true);
     }
 }
 

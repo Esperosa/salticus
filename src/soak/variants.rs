@@ -143,6 +143,9 @@ pub struct Spec {
     pub night: bool,
     /// IDS signatura (id, text), jen pri pokryti IDS.
     pub ids: Option<(u32, &'static str)>,
+    /// Tvrdy zaporny scenar (krok 10): neskodny, ale tvarem podobny utoku; planuje se
+    /// jen ve svete `k10` vlastnim proudem.
+    pub hard: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -175,6 +178,7 @@ const fn sp(
         srcs: 1,
         night: false,
         ids: None,
+        hard: false,
     }
 }
 
@@ -210,6 +214,10 @@ impl Spec {
     }
     const fn night(mut self) -> Self {
         self.night = true;
+        self
+    }
+    const fn hard(mut self) -> Self {
+        self.hard = true;
         self
     }
     const fn ids(mut self, id: u32, text: &'static str) -> Self {
@@ -1706,6 +1714,125 @@ pub static SPECS: &[Spec] = &[
     .period(1.0)
     .night()
     .len(4, 10),
+    // --- krok 10: tvrde zaporne scenare (neskodne, ale tvarem podobne utoku) ---
+    sp(
+        "hn_nightly_cloud_backup_upload",
+        "-",
+        BC,
+        P::BulkOut,
+        A::IntToExt,
+        N::Any,
+        "tcp",
+        443,
+    )
+    .rate(3.0)
+    .bytes(30000000, 9000)
+    .dur(180.0)
+    .night()
+    .len(2, 6)
+    .hard(),
+    sp(
+        "hn_cdn_update_download",
+        "-",
+        BC,
+        P::BulkIn,
+        A::IntToExt,
+        N::Any,
+        "tcp",
+        443,
+    )
+    .rate(4.0)
+    .bytes(3000, 25000000)
+    .dur(90.0)
+    .len(1, 4)
+    .hard(),
+    sp(
+        "hn_monitoring_snmp_sweep",
+        "-",
+        BC,
+        P::Sweep,
+        A::IntToInt,
+        N::Server,
+        "udp",
+        161,
+    )
+    .rate(40.0)
+    .bytes(90, 800)
+    .len(1, 2)
+    .hard(),
+    sp(
+        "hn_password_sync_periodic",
+        "-",
+        BC,
+        P::Periodic,
+        A::IntToExt,
+        N::Any,
+        "tcp",
+        443,
+    )
+    .period(300.0)
+    .jitter(0.1)
+    .bytes(800, 1500)
+    .len(24, 96)
+    .hard(),
+    sp(
+        "hn_admin_bulk_ssh",
+        "-",
+        BC,
+        P::FanOut,
+        A::IntToInt,
+        N::Server,
+        "tcp",
+        22,
+    )
+    .rate(6.0)
+    .bytes(5000, 9000)
+    .dur(40.0)
+    .len(1, 4)
+    .hard(),
+    sp(
+        "hn_db_replication_bulk",
+        "-",
+        BC,
+        P::BulkIn,
+        A::IntToInt,
+        N::Server,
+        "tcp",
+        5432,
+    )
+    .rate(3.0)
+    .bytes(2000, 40000000)
+    .dur(150.0)
+    .night()
+    .len(2, 8)
+    .hard(),
+    sp(
+        "hn_mail_newsletter_burst",
+        "-",
+        BC,
+        P::Burst,
+        A::IntToExt,
+        N::Any,
+        "tcp",
+        587,
+    )
+    .rate(60.0)
+    .bytes(30000, 900)
+    .len(1, 2)
+    .hard(),
+    sp(
+        "hn_authorized_internal_scan",
+        "-",
+        BC,
+        P::PortSweep,
+        A::IntToInt,
+        N::Server,
+        "tcp",
+        0,
+    )
+    .rate(400.0)
+    .len(1, 2)
+    .hard(),
 ];
 
 /// Pocet variant (index do `SPECS`).
@@ -1850,19 +1977,32 @@ pub(crate) fn plan_variants(
     truths: &mut Vec<Truth>,
     hours: u32,
     telemetry: &Telemetry,
+    hard_only: bool,
 ) {
-    let mut rng = Rng::new(derive(model.seed, 0x4B39_0001));
+    let mut rng = Rng::new(derive(
+        model.seed,
+        if hard_only { 0x4B31_0001 } else { 0x4B39_0001 },
+    ));
     let cycles = hours * 2;
     let days = hours as f64 / 24.0;
     let size_scale = (model.devices.len() as f64 / 60.0)
         .max(1.0)
         .powf(0.45)
         .min(4.0);
-    let sec_n = (rng.poisson(2.5 * days * size_scale) as usize).min(60);
-    let ops_n = (rng.poisson(1.3 * days * size_scale.sqrt()) as usize).min(30);
+    let sec_n = if hard_only {
+        0
+    } else {
+        (rng.poisson(2.5 * days * size_scale) as usize).min(60)
+    };
+    let ops_n = if hard_only {
+        (rng.poisson(2.0 * days * size_scale.sqrt()) as usize).min(30)
+    } else {
+        (rng.poisson(1.3 * days * size_scale.sqrt()) as usize).min(30)
+    };
     let plan = |security: bool, rng: &mut Rng, truths: &mut Vec<Truth>| {
         let eligible: Vec<usize> = (0..SPECS.len())
             .filter(|&i| (SPECS[i].cat == Category::Security) == security)
+            .filter(|&i| SPECS[i].hard == hard_only)
             .filter(|&i| !pool_for(SPECS[i].needs, model, pools).is_empty())
             .filter(|&i| {
                 // zdroj z vnitrni site potrebuje klienta
@@ -2750,5 +2890,28 @@ mod tests {
             "nevyemitovane varianty: {missing:?} (planovano {})",
             planned.len()
         );
+    }
+
+    #[test]
+    fn hard_negatives_only_in_k10_and_k9_plan_is_unchanged() {
+        let mut hard_seen = 0;
+        for id in 0..30u64 {
+            let model = NetworkModel::generate(20269902, id);
+            let mut rng = Rng::new(id);
+            let base = plan_episode(&model, &mut rng, 168, &telemetry());
+            let mut k9 = base.clone();
+            plan_coverage(&model, &mut k9, 168, &telemetry(), CoverageMode::K9);
+            let mut k10 = base.clone();
+            plan_coverage(&model, &mut k10, 168, &telemetry(), CoverageMode::K10);
+            let is_hard = |t: &Truth| matches!(t.kind, Kind::Attack(Family::Var(v)) if spec(v).hard);
+            assert!(!k9.iter().any(is_hard), "k9 nesmi mit tvrde zaporne");
+            let non_hard: Vec<_> = k10.iter().filter(|t| !is_hard(t)).collect();
+            assert_eq!(non_hard.len(), k9.len(), "k10 = k9 + tvrde zaporne");
+            for (a, b) in non_hard.iter().zip(k9.iter()) {
+                assert_eq!((a.start_cycle, a.end_cycle), (b.start_cycle, b.end_cycle));
+            }
+            hard_seen += k10.iter().filter(|t| is_hard(t)).count();
+        }
+        assert!(hard_seen > 0);
     }
 }
