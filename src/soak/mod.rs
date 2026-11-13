@@ -18,3 +18,4 @@ pub mod scoring;
 pub mod stats;
 pub mod traffic;
 pub mod v3;
+pub mod variants;

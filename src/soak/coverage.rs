@@ -35,6 +35,8 @@ pub enum CoverageMode {
     Full,
     /// Krok 7: `Full` + nove drzene parametricke varianty (impl-krok7.md, B1).
     K7,
+    /// Krok 9: `K7` + parametricke varianty podle ATT&CK a provozni poruchy (impl-krok9.md).
+    K9,
 }
 
 impl CoverageMode {
@@ -51,8 +53,9 @@ impl std::str::FromStr for CoverageMode {
             "tuning" => Ok(CoverageMode::Tuning),
             "full" => Ok(CoverageMode::Full),
             "k7" => Ok(CoverageMode::K7),
+            "k9" => Ok(CoverageMode::K9),
             other => Err(format!(
-                "neznamy svet pokryti {other} (off | tuning | full | k7)"
+                "neznamy svet pokryti {other} (off | tuning | full | k7 | k9)"
             )),
         }
     }
@@ -299,7 +302,7 @@ pub fn plan_coverage(
         return;
     }
     // k7 obsahuje cely drzeny svet `full` a k nemu nove urovne (vlastni vetev vyberu)
-    let k7 = mode == CoverageMode::K7;
+    let k7 = matches!(mode, CoverageMode::K7 | CoverageMode::K9);
     let full = mode == CoverageMode::Full || k7;
     let mut rng = Rng::new(derive(model.seed, 0xC0E5_5005));
     let cycles = hours * 2;
@@ -507,6 +510,10 @@ pub fn plan_coverage(
                 &mut dormant_cursor,
             );
         }
+    }
+    // --- krok 9: varianty podle ATT&CK a provozni poruchy (vlastni proud) ---
+    if mode == CoverageMode::K9 {
+        crate::soak::variants::plan_variants(model, &pools, truths, hours, telemetry);
     }
 }
 

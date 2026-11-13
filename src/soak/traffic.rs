@@ -51,6 +51,8 @@ pub enum Family {
     FleetBeacon,
     /// Vicefazova kampan (recon -> exploit -> pohyb -> exfiltrace) rozlozena na dny.
     ApChain,
+    /// Krok 9: parametricka varianta z tabulky `variants::SPECS` (svet `--coverage k9`).
+    Var(u8),
 }
 
 impl Family {
@@ -97,6 +99,7 @@ impl Family {
             Family::IcsAttack => "ics_attack",
             Family::FleetBeacon => "fleet_beacon",
             Family::ApChain => "apt_chain",
+            Family::Var(i) => crate::soak::variants::spec(i).label,
         }
     }
 
@@ -124,6 +127,7 @@ impl Family {
     /// detekce = nalez jednoho z nich. (Ne vsechny rodiny maji specificky typ.)
     pub fn expected_types(self) -> &'static [&'static str] {
         match self {
+            Family::Var(i) => crate::soak::variants::expected_types(i),
             Family::PortScanVertical | Family::PortScanHorizontal | Family::SlowScan => &[
                 "unexpected_traffic",
                 "connection_timeout_burst",
@@ -569,7 +573,7 @@ pub(crate) fn public_ip(rng: &mut Rng) -> String {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn obs(
+pub(crate) fn obs(
     at: i64,
     src: &str,
     sport: u16,
@@ -603,7 +607,7 @@ fn obs(
     }
 }
 
-fn eve_line(
+pub(crate) fn eve_line(
     at: i64,
     flow: u64,
     src: &str,
@@ -726,7 +730,7 @@ pub fn plan_episode(
         2.0, 3.0,
     ];
     if !plcs.is_empty() && model.archetype == Archetype::Industrial {
-        weights[Family::IcsAttack as usize] *= 5.0;
+        weights[16] *= 5.0; // Family::IcsAttack
     }
     let eligible = |family: Family| -> bool {
         match family {
@@ -1007,6 +1011,7 @@ pub(crate) fn len_range(family: Family) -> (u64, u64) {
         Family::IcsAttack => (1, 6),
         Family::FleetBeacon => (24, 400),
         Family::ApChain => (96, 720),
+        Family::Var(i) => crate::soak::variants::spec(i).len,
     }
 }
 
@@ -1027,6 +1032,13 @@ pub(crate) fn ids_share(family: Family) -> f64 {
         Family::WebExploit => 0.8,
         Family::IcsAttack | Family::ApChain => 0.4,
         Family::FleetBeacon => 0.15,
+        Family::Var(i) => {
+            if crate::soak::variants::spec(i).ids.is_some() {
+                0.5
+            } else {
+                0.0
+            }
+        }
     }
 }
 
@@ -1550,7 +1562,7 @@ fn emit_regular(ctx: &CycleContext<'_>, t0: i64, out: &mut CycleOutput, truths: 
 /// Pridani toku s kontrolou kernelu: zablokovany zdroj tok "nikdy nedorazi".
 /// Utok s variaci (svet pokryti, krok 5) projde nejdriv transformaci tempa, rozptylu,
 /// objemu a zdroju; bez variace je cesta beze zmeny.
-fn push(
+pub(crate) fn push(
     out: &mut CycleOutput,
     ctx: &CycleContext<'_>,
     observation: ConnectionObservation,
@@ -1673,6 +1685,9 @@ fn emit_truth(
     };
 
     match truth.kind {
+        Kind::Attack(Family::Var(variant)) => {
+            crate::soak::variants::emit(truth, variant, ctx, t0, flow_id, rng, out, truths, index);
+        }
         Kind::Attack(Family::PortScanVertical) => {
             let (Some(src), Some(&victim)) = (&attacker_ip, truth.victim_devices.first()) else {
                 return;

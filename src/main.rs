@@ -72,6 +72,8 @@ enum SoakCommand {
     Run(SoakRunArgs),
     Verify(SoakVerifyArgs),
     Report(SoakReportArgs),
+    /// Vypise tabulku rodin a variant (TSV: label, kategorie, ATT&CK, vzor, smer, protokol, port, ocekavane typy).
+    Families,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1086,6 +1088,9 @@ fn main() -> anyhow::Result<()> {
             if ok != total {
                 anyhow::bail!("reprodukovatelnost porusena: {} bloku se lisi", total - ok);
             }
+        }
+        Command::Soak(SoakCommand::Families) => {
+            print!("{}", salticus_program::soak::variants::families_tsv());
         }
         Command::Soak(SoakCommand::Report(args)) => {
             let state = salticus_program::soak::runner::load_state(&args.out)?;
