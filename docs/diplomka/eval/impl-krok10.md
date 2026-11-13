@@ -46,8 +46,27 @@ Měření na ladicích seedech 20262301 a 20262302 plus nových 20262401, 202624
 
 ## D) Měření
 
-(vyplní se po měření)
+Stav k 2026-11-14. Implementováno a otestováno (jednotkové testy zelené): abstraktní záznamy a API zpětné vazby (`analyst_feedback`, K10-4), zákaz paměti seedů (`soak::no_memory`, K10-3), nástroj smyčky chyba → poučení (`tools/soak_k10.py`; výstup `k10/causes.md`, `k10/corpus.jsonl`, `k10/lessons.jsonl`), svět `--coverage k10` se 8 tvrdými zápornými scénáři (neškodné, ale tvarem podobné útoku: noční záloha do cloudu, stažení aktualizací, monitorovací SNMP sweep, synchronizace hesel, hromadné SSH správce, replikace databáze, hromadná pošta, autorizovaný interní sken) a vyhodnocení neviděných taktik a rodin podle předregistrovaných foldů (`k9_final.py`, sekce „Neviděné taktiky a rodiny“ v `k9/vysledky.md`).
+
+Běhy ve frontě (jedno rameno najednou, Idle, 4 vlákna), vyhodnocení jedním příkazem `python tools/k9_finish.py`:
+
+| úloha | běh | výstup |
+|---|---|---|
+| K10-6 tvrdé záporné scénáře, nové seedy | `k10ref`, `k10c` na 20262401, 20262402 | `k10/vysledky.md` |
+| K10-5 kombinace s šumem 10× | `noise10ref`, `noise10` na 20262301 | `k10/sum10x.md` |
+| K10-7 stres XXXL | `xxxlc` (3 sítě třídy XXXL, 20262302) | výpis `final-report.md` v `F:/Projekty/bakula-soak/k9/xxxlc-20262302` (paniky, `cycle_p99_s`, paměť) |
+| K10-1 neviděné taktiky a rodiny | z běhů kroku 9 | `k9/vysledky.md` |
+| K10-8 drift v čase | rozdělení běhů na první a druhou polovinu | neměřeno; generátor nemá vestavěný drift, takže je to otevřené (kategorie c) |
+| držené seedy | `heldref`, `heldc` | `k9/held.md` (jednou) |
+
+Mezivýsledek K10-1 (seedy 20261102 a 20261103, 80 sítí): taktika `lateral-movement` 93,5 % (dolní mez 89,7, splněno), `credential-access` 86,8 % a `discovery` 85,9 % (nedosaženo); rodiny jednotlivě mají n < 50 (nedostatek dat). Poctivé omezení: detektory kroku 9 se na těchto foldech neladěly, ale celé pole rodin jsem viděl při návrhu, takže jde o odolnost detektorů, ne o plnou nezávislost.
 
 ## E) Registr otevřených míst
 
-(vyplní se po měření)
+| místo | kategorie |
+|---|---|
+| Zachycení neznámé rodiny taktikou/chováním nad 90 % | splněno jen u `lateral-movement`; `credential-access` a `discovery` kolem 86 % (c) |
+| Drift v čase (K10-8) | neměřeno (c) |
+| Zpětná vazba nemění kalibraci automaticky | jen doporučení (`Summary`): přirážka nejistoty a návrh vypnutí zavírání; napojení na kalibraci jádra je navazující krok (c) |
+| Řetěz nezávislých kontrol (`verification_chain`) není napojen na žebřík | modul je samostatný, testovaný; simulace nemá DNS ani TLS data, takže přínos nelze změřit (c) |
+| Korpus regresních scénářů se zatím negeneruje zpět do soaku | `corpus.jsonl` je abstraktní popis; mapování na `SPECS` je navazující krok (c) |

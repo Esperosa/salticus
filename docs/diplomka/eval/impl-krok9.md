@@ -131,9 +131,9 @@ Kategorie: (a) uzavřeno měřeným účinkem, (b) zadrženo opatřením vynucen
 |---|---|---|
 | broadcast a multicast bouře | detekce výrazně nahoře (z 14 na 30 % u vzoru Storm), zbytek jsou nízké intenzity pod `storm_min` | (b) |
 | pomalý únik (Trickle, tempo `trickle`) | detekce 63 → 69 %, typ 31 → 54 % | (b) |
-| hromadné stahování a odesílání (BulkIn, BulkOut) | `breadth_volume` zvedá detekci o 10 p. b., ale za cenu FP × 1,44 | (b) volitelné |
+| hromadné stahování a odesílání (BulkIn, BulkOut) | `breadth_volume` zvedá detekci o 10 až 14 p. b., ale za cenu FP × 1,44 | (b) volitelné |
 | rodiny odlišné od legitimního provozu jen obsahem (DNS, TLS, cloudové logy; viz `CONTENT_ONLY` v `tools/k9_final.py`) | v tocích nerozlišitelné; vyžadují DNS a TLS záznamy | (c) |
-| exploit_attempt, c2_beacon, port_scan_*, cryptomining, credential_stuffing | 85 až 90 %; zbytek tvoří útoky s 1 až 2 toky v cyklu a okna se zhoršenou telemetrií | (c) |
+| exploit_attempt, c2_beacon, port_scan_*, cryptomining, credential_stuffing | 85 až 90 %; příčina nebyla rozebrána po jednotlivých útocích (u části zmeškaných útoků engine nevydal žádný nález, u zbytku byl nález v kontrafaktuálním světě také přítomen); nezávislé na intenzitě a tempu, bez vazby na IDS | (c) |
 | ics_attack | v ladicích seedech bez průmyslových sítí nepokryto | (c) nepokryto |
 | incidenty a seskupení poruch (O3, O4), klasifikace bezpečnostní/provozní (O2, O7) | `ops_class` nepomáhá, seskupení v jádře není | (c) |
 | koncová telemetrie v `recommended()` | viz `k9/endpoint.md` a rozhodnutí níže | podle práhu B5 |
