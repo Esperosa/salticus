@@ -6,15 +6,13 @@ Datum 2026-11-14. Navazuje na krok 11. Studie: `../studie/12-telemetrie-a-zavira
 
 | část | stav |
 |---|---|
-| A studie | první verze hotová, zdroje jen domovské, **ověření a citace primárních zdrojů nehotové** |
-| D rozbor příčin omylem zavřených | hotový rozbor dat (studie, oddíl 4); **oprava nenapsána** |
-| G předregistrace | tento dokument |
-| B vstupy TLS/DNS/HTTP, inbound toky, endpoint do vrstvy chování | **nezačato** |
-| C veřejné datasety, kalibrace simulátoru, reálné přehrání, příčina LUFlow 1/259 | **nezačato** |
-| D oprava politiky zavírání a regresní testy | **nezačato** |
-| E pokrytí senzorů | **nezačato** |
-| F hlubší žebřík, ECE, incident_id | **nezačato** |
-| měření a držené seedy | **nezačato** |
+| A studie | hotová; pole Zeek, Suricata, JA3, JA4 a RITA ověřena proti primárním stránkám (studie, oddíl 7); SOC zavírání je moje syntéza, citace chybí |
+| D politika zavírání | `strict_close` implementován a otestován (commit `feat(context_gate)`); **ověření na datech běží** (rameno `sA`, seedy 20263101 a 20263102) |
+| B vstupy | `src/l7.rs` (parsery Zeek ssl/x509/dns/http a EVE tls/dns/http, fuzz test), `behavior/l7.rs` (`tls_rare_transfer`, `tls_novel_burst`, `dns_zone_enumeration`), přepínače `l7_tls`, `l7_dns`, inbound toky a L7 v `BehaviorInput`, načítání z `zeek_dir` a EVE; endpointová telemetrie z kroku 8 je přepínač `endpoint`, beze změny |
+| C simulace | svět `--l7 on` (`soak/l7sim.rs`): TLS a DNS metadata ke tokům po degradaci. **Nehotové:** kalibrace na veřejných datech, datasety, reálné přehrání, příčina LUFlow 1/259 |
+| E pokrytí senzorů | nezačato |
+| F žebřík s ECE, incident_id | nezačato |
+| měření na držených seedech, soak verify, celý test | nezačato |
 
 Důvod: rozsah (nové datové typy napříč parserem, modelem, behaviorální vrstvou, žebříkem a simulátorem, plus stahování a zpracování datasetů) přesahuje jeden průchod; raději stav přiznávám, než abych odevzdal polovinu jako hotovou.
 
