@@ -17,6 +17,7 @@ Pouziti:
          [--window 1800] [--max-windows N] [--protect] [--out FILE]
 """
 import argparse
+import re
 import ipaddress
 import json
 import os
@@ -134,6 +135,7 @@ def main():
         handle.write(EMPTY_NMAP)
 
     phases = {"cold": Counter(), "mature": Counter()}
+    mentioned = {"cold": set(), "mature": set()}
     shown_hosts = {"cold": defaultdict(set), "mature": defaultdict(set)}
     failures = 0
     for index in order:
@@ -160,6 +162,12 @@ def main():
             f = findings.get(record["finding_id"], {})
             host = f.get("host_key") or ""
             if record.get("displayed"):
+                # krok 12: nalez nese jako host_key cil (napr. honeypot), skodlivy zdroj je
+                # v textu (titulek, zduvodneni, dukazy); kredit podle zminky, ne jen podle host_key
+                text = " ".join([str(f.get("title", "")), str(f.get("rationale", ""))] + [str(e) for e in f.get("evidence", [])])
+                for ip in re.findall(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", text):
+                    if ip in malicious:
+                        mentioned[phase].add(ip)
                 bad = host in malicious
                 p["displayed"] += 1
                 p["displayed_malicious_host" if bad else "displayed_other"] += 1
@@ -186,6 +194,9 @@ def main():
             f"{p['displayed_other']} | {p['protected']} | {p['auto_resolved']} | "
             f"{p['ladder_confirmed']}/{p['ladder_refuted']}/{p['ladder_escalated']} | "
             f"{len(shown_hosts[phase]['bad'])} z {len(malicious)} | {len(shown_hosts[phase]['other'])} |")
+    lines += ["", "Krok 12 (kredit podle zminky zdroje v zobrazenem nalezu, ne jen podle host_key): "
+              f"skodlive zdroje zminene v zobrazenych nalezech: cold {len(mentioned['cold'])}, mature {len(mentioned['mature'])} "
+              f"z {len(malicious)} (spolecne {len(mentioned['cold'] | mentioned['mature'])})."]
     cov = sorted(k for p in phases.values() for k in p if k.startswith("coverage:"))
     lines += ["", "Degradace pokrytí (oken s důvodem): " + ", ".join(
         f"{k[9:]} {phases['cold'][k] + phases['mature'][k]}" for k in dict.fromkeys(cov)), ""]
