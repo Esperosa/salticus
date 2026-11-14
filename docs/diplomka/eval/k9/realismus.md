@@ -22,3 +22,18 @@ Kvantitativní kalibrace simulace na veřejných datech zatím provedena není. 
 6. **Telemetrie.** Výpadky senzoru, ztráty a duplicity jsou parametrické; skutečné chyby (asymetrické směrování, NAT, vzorkování SPAN, zpožděné toky) jsou zastoupeny jen částečně.
 7. **Koncová telemetrie** (`endpoint`) je odvozená z týchž rodin jako provoz, takže přínos je nadhodnocený; skutečné záznamy Sysmon a Wazuh slouží jen k testům parserů.
 8. **Chyby datasetů.** U veřejných datasetů jsou známé problémy štítků a nástrojů (Engelen a kol. o CIC-IDS2017); replay datasetů je proto vedlejší důkaz a neslouží k ladění.
+
+## Krok 12: metadata TLS a DNS v simulaci (`soak/l7sim.rs`), co sedí a co ne
+
+Stav 2026-11-15. **Žádná z hodnot níže není kalibrována na veřejných datech.** Jsou to autorovy předpoklady z dokumentace nástrojů (studie 12, oddíl 7) a z obecné zkušenosti; kvantitativní porovnání s PCAP daty (CTU-13, Stratosphere, CIC) nebylo provedeno, protože na stroji není Zeek a PCAPy se nestahovaly (viz `k12/prehrani-luflow.md`).
+
+| prvek | předpoklad v simulaci | ověřeno na datech |
+|---|---|---|
+| otisk klienta (JA4) neškodného hosta | 3 stabilní otisky na host z množiny 4 | ne |
+| cíle TLS pozadí | 55 % dlouhý chvost (3 000 jmen, Zipf), jinak 24 sdílených populárních jmen | ne |
+| neškodné změny (záloha, aktualizace, pošta) | sdílené populární jméno, otisk hosta, starý certifikát | ne |
+| útok | 30 % populární jméno, 75 % nástrojový otisk (mimo masking), 2/3 čerstvý nebo self-signed certifikát u vzácného jména | ne |
+| DNS pozadí | NXDOMAIN 5 %, 4 % dlouhé hashované značky typu A (CDN), 2 % TXT na běžných jménech | ne |
+| DNS útok | výčet zóny: jména po řadě, NXDOMAIN 55 %, 10 % ANY, 5 % AXFR; tunel: značka 20 až 40 znaků, TXT | ne |
+
+Důsledek: detekce nad `--l7` světem (bucket_mass_download, cloud_api_discovery_burst, dns_zone_enum_burst a další) ukazuje, že **logika detektorů funguje nad metadaty s těmito vlastnostmi**; nic neříká o skutečné četnosti útočníků s novým nástrojovým otiskem nebo čerstvým certifikátem. Zejména „75 % nástrojový otisk“ je přímo to, co detektor využívá, a je to moje volba.
