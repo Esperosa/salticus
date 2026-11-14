@@ -2056,6 +2056,44 @@ mod tests {
         assert!(out.events.iter().any(|e| e.event_type == "scan_attempts"));
     }
 
+    /// Krok 11: vnejsi zdroj bez uspechu hlasi sken uz od 4 cilu, ale jen s `scan_fresh`;
+    /// zdroj s uspesnym spojenim v okne (bezny klient) a vnitrni zdroj ne.
+    #[test]
+    fn scan_fresh_lowers_threshold_only_for_unknown_source_without_success() {
+        let open: Vec<(String, u16)> = (2..6).map(|i| (format!("10.0.0.{i}"), 22)).collect();
+        let services: HashSet<ServiceKey> = open
+            .iter()
+            .map(|(ip, port)| (ip.clone(), "tcp".to_string(), *port))
+            .collect();
+        let hosts: HashSet<String> = open.iter().map(|(ip, _)| ip.clone()).collect();
+        let known = (services, hosts);
+        let none = HashMap::new();
+        let fresh = V3Switches {
+            scan_fresh: true,
+            ..RECALL
+        };
+        let scan: Vec<_> = open
+            .iter()
+            .map(|(ip, port)| flow("198.51.100.4", ip, *port, 1, 0.0, "S0", 0))
+            .collect();
+        let has = |out: &V3Output| out.events.iter().any(|e| e.event_type == "scan_attempts");
+        assert!(!has(&run(&scan, &known, &mut DetectorState::default(), RECALL, 0, &none)));
+        assert!(has(&run(&scan, &known, &mut DetectorState::default(), fresh, 0, &none)));
+        // zdroj s uspesnym spojenim v okne neni cisty sken
+        let mut with_success = scan.clone();
+        with_success.push(flow("198.51.100.4", "10.0.0.2", 443, 10, 1.0, "SF", 900));
+        assert!(!has(&run(&with_success, &known, &mut DetectorState::default(), fresh, 0, &none)));
+        // vnitrni (znamy) zdroj se nesnizuje
+        let internal: Vec<_> = open
+            .iter()
+            .map(|(ip, port)| flow("10.0.0.5", ip, *port, 1, 0.0, "S0", 0))
+            .collect();
+        let mut hosts2 = known.1.clone();
+        hosts2.insert("10.0.0.5".into());
+        let known2 = (known.0.clone(), hosts2);
+        assert!(!has(&run(&internal, &known2, &mut DetectorState::default(), fresh, 0, &none)));
+    }
+
     /// Krok 2D: studeny start srovnava sluzbu se stejnym typem zarizeni a podsiti.
     #[test]
     fn peer_group_of_device_type_is_preferred_over_port_group() {
