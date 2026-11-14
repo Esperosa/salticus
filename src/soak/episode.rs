@@ -278,6 +278,8 @@ impl CheckRunner for SimRunner<'_> {
 struct Ledger {
     /// Krok 11: cykly okna utoku, kdy senzor nedodal nic (vypadek).
     sensor_lost_cycles: u32,
+    /// Krok 12: duvody, proc se pripsany nalez utoku nezobrazil (pocty podle `show.reason`).
+    hidden: std::collections::BTreeMap<&'static str, u32>,
     /// Krok 11: toky utoku, ktere prezily degradaci telemetrie.
     visible_flows: u64,
     first_detect: Option<u32>,
@@ -779,6 +781,7 @@ fn run_episode_inner(
         .iter()
         .map(|_| Ledger {
             sensor_lost_cycles: 0,
+            hidden: Default::default(),
             visible_flows: 0,
             first_detect: None,
             typed: false,
@@ -2212,6 +2215,9 @@ fn run_episode_inner(
                             attacked = true;
                             attack_family.get_or_insert(family.label());
                             let ledger = &mut ledgers[index];
+                            if !suspect {
+                                *ledger.hidden.entry(show.reason).or_default() += 1;
+                            }
                             if ledger.first_detect.is_none() {
                                 ledger.first_detect = Some(cycle);
                             }
@@ -3299,6 +3305,11 @@ fn run_episode_inner(
                             max_cycle_flows: truth.cov.diag.max_cycle_flows,
                             sensor_lost_cycles: ledger.sensor_lost_cycles,
                             visible_flows: ledger.visible_flows,
+                            hidden: ledger
+                                .hidden
+                                .iter()
+                                .map(|(k, v)| ((*k).to_string(), *v))
+                                .collect(),
                         }),
                         k7: v3.as_ref().filter(|r| r.memory.is_some()).map(|_| {
                             crate::soak::coverage::AttackK7 {

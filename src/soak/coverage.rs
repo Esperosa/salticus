@@ -200,6 +200,8 @@ pub struct AttackDiag {
     pub max_cycle_flows: u64,
     pub sensor_lost_cycles: u32,
     pub visible_flows: u64,
+    /// Krok 12: duvody nezobrazeni pripsanych nalezu (`show.reason` : pocet).
+    pub hidden: std::collections::BTreeMap<String, u32>,
 }
 
 /// Sablony kampani (A2): rodiny v poradi, drzena = obsahuje drzenou rodinu.
