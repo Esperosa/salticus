@@ -88,3 +88,15 @@ Provedení: A/B proti rameni bez fáze (stejné seedy, svět k10 s `--l7 on`), l
 | 7 spis případu | `case_file.rs` (modul s testy); do API nezapojeno |
 | 8 forenzní žádosti | `forensic.rs` (broker, dvojí klíč, katalog, expirace, audit; testy) |
 | strict_close (zavírání) | kontext a vyvrácení žebříkem; měření probíhá |
+
+## 6) Cílová hodnota detekce: 100 % u pozorovatelných útoků (doplnění zadání)
+
+Předregistrované minimum zůstává (K12-2: ≥ 90 %, dolní mez Wilson ≥ 85 % při n ≥ 50). **Cíl je 100 %** u útoků, jejichž toky přežily degradaci telemetrie (`diag.visible_flows` > 0). Minimum není důvod přestat: u každé rodiny po opravě se zapíše, co ji drží pod 100 %, a co je řešitelné (chybějící signál, vstup, pravidlo, kontrola), se dodělá, dokud to jde bez ceny na dvou pevných hranicích: **omylem zavřené = 0** a **FP poměr ≤ 1,15 proti k8ref**. Co principiálně nejde (útok není v telemetrii, obsahově nerozlišitelné), se zapíše kvantitativně (počty útoků a příčina).
+
+Tabulka zbytků po rodinách (doplňuje se z `tools/k11_diag.py` na držených seedech; sloupce: n, detekce, detekce z útoků s viditelnými toky, zbytek podle příčiny a, b, c, řešitelné ano/ne, co by pomohlo):
+
+| rodina | n | detekce | z viditelných | zbytek (a viditelné / b / c) | co drží pod 100 % | řešitelné |
+|---|---|---|---|---|---|---|
+| (vyplní se po měření na držených seedech) | | | | | | |
+
+Hlášení blízkosti: pro každou rodinu uvedu rozdíl do 100 % v procentních bodech a dolní mez Wilson; souhrnně počet rodin nad 90 %, nad 95 % a na 100 % mezi pozorovatelnými útoky.
