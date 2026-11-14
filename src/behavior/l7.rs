@@ -7,8 +7,11 @@
 //!
 //! - `tls_rare_transfer`: zralý host přenesl ≥ `bulk_bytes` (čistě stažení nebo nahrání)
 //!   k TLS cíli, který **host dosud nepoužil**, a zároveň aspoň jeden druhý rys:
-//!   host nikdy neviděný otisk klienta (JA3 nebo JA4), cíl známý nejvýš `fleet_max`
-//!   vnitřním hostům, čerstvý nebo self-signed certifikát, nebo bez SNI (přímá IP).
+//!   host nikdy neviděný otisk klienta (JA3 nebo JA4), čerstvý nebo self-signed
+//!   certifikát, nebo bez SNI (přímá IP). Rarita cíle v síti (známý nejvýš `fleet_max`
+//!   hostům) se do poplachu jen připisuje jako okolnost: v malé síti je málo používané
+//!   každé jméno, takže sama o sobě druhým rysem není (měření 2026-11-14: bez tohoto
+//!   pravidla zobrazovala 46 až 54 % neškodných aktualizací a pošty).
 //! - `tls_novel_burst`: ≥ `burst_flows` TLS spojení do `burst_span_s` na cíl, který host
 //!   dosud nepoužil, se stejným druhým rysem.
 //! - `dns_zone_enumeration`: jeden zdroj položil ≥ `enum_names` různých jmen pod jednou
@@ -212,9 +215,6 @@ pub fn detect(
             if new_print {
                 second.push("novy otisk klienta");
             }
-            if rare {
-                second.push("cil zna nejvyse par hostu");
-            }
             if g.young {
                 second.push("cerstvy certifikat");
             }
@@ -225,7 +225,10 @@ pub fn detect(
                 second.push("bez SNI");
             }
             if second.is_empty() {
-                continue;
+                continue; // rarita cile sama o sobe neni druhy rys (v mensich sitich ji ma kazde jmeno)
+            }
+            if rare {
+                second.push("cil zna nejvyse par hostu");
             }
             let transfer = g.bytes_up.max(g.bytes_down);
             let kind = if transfer >= t.bulk_bytes {
