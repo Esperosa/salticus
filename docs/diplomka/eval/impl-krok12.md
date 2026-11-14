@@ -74,16 +74,17 @@ Metriky a prahy (hodnoty se po měření nemění):
 
 Provedení: A/B proti rameni bez fáze (stejné seedy, svět k10 s `--l7 on`), ladění na ladicích seedech a ladicích hn_*, držené seedy 20264101 až 20264302 a držené hn_* jednou; leave-one-family-out stejné rodiny jako K10-1; kombinace útok + porucha + šum 10× a XXXL jednou na konci. Soak musí od této fáze ukládat posteriory žebříku (`ladder_posteriors` v `networks.jsonl`), jinak ECE nejde změřit.
 
-### Stav fáze
+### Stav fáze (aktualizováno 2026-11-14 večer)
 
 | úkol | stav |
 |---|---|
-| rešerše 12b | hotová, zdroje ověřeny s uvedenými výhradami |
-| 1 konkurenční hypotézy a EVOI | nezačato |
-| 2 sekvenční vážení | nezačato |
-| 3 žádost o chybějící data | nezačato |
-| 4 retrospektivní vyhledávání | nezačato |
-| 5 znovuotevření a audit | nezačato |
-| 6 kalibrace, ECE, konformální, ukládání posteriorů | nezačato |
-| 7 spis případu | nezačato |
-| 8 forenzní žádosti | nezačato |
+| rešerše 12b | hotová |
+| 1 konkurenční hypotézy a EVOI | modul `competing.rs` (hypotézy s předpověďmi, EVOI, zastavení podle ceny) a režim `hypotheses` v žebříku (změřené věrohodnosti, rozhodnutí podle ceny omylu); **EVOI ještě neřadí plán kontrol v žebříku** (plán zůstává pevný) a `verification_chain::assess` se nevolá přímo (žebřík používá jeho druhy kontrol, skupiny a ceny); kontroly TLS a DNS v žebříku **nezapojeny** |
+| 2 sekvenční vážení | v `competing.rs` (skupiny, poloviční váha závislých, nic = váha 0) a v žebříku přes `hypotheses` |
+| 3 žádost o chybějící data | `case_file::data_requests` (log, segment, senzor) + pokrytí senzorů; do reportu API nezapojeno |
+| 4 retrospektivní vyhledávání | `retro.rs` (indikátor, pacient nula, časová osa, fáze, incidenty s příčinou); do soaku a pipeline nezapojeno |
+| 5 znovuotevření a audit | `reassess.rs` (jen modul s testy) |
+| 6 kalibrace, ECE, konformální | `conformal.rs` (třídně podmíněná), posteriory ukládá soak (`ladder_log`), `tools/k12_boundary.py` měří ECE a hranici automatizace; **konformální pokrytí na soak datech zatím neměřeno** |
+| 7 spis případu | `case_file.rs` (modul s testy); do API nezapojeno |
+| 8 forenzní žádosti | `forensic.rs` (broker, dvojí klíč, katalog, expirace, audit; testy) |
+| strict_close (zavírání) | kontext a vyvrácení žebříkem; měření probíhá |
