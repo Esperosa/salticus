@@ -339,6 +339,7 @@ impl SimContext {
         coverage: &ContextCoverage,
         phantoms: &[(u32, u32, u32)],
         cycle: u32,
+        scanner_scope: bool,
     ) -> Self {
         let at = |c: u32| ts(cycle_start_abs(start_offset_s, c));
         let window = |start: u32, end: u32, extra_end: u32| {
@@ -412,9 +413,15 @@ impl SimContext {
                 ),
                 Lookalike::AuthorizedScanner if known(seed, id, 0xB3, coverage.scanners) => {
                     if let Some(scanner) = truth.attacker_device {
+                        // krok 12: pri `strict_close` ma zaznam skeneru i rozsah cilu
+                        let scope = if scanner_scope {
+                            truth.victim_devices.iter().map(|d| ip(*d)).collect()
+                        } else {
+                            Vec::new()
+                        };
                         push(
                             ContextKind::AuthorizedScanner,
-                            Vec::new(),
+                            scope,
                             vec![ip(scanner)],
                             window(truth.start_cycle, truth.end_cycle, 0),
                         );

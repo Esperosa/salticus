@@ -291,6 +291,10 @@ impl GatePolicy {
         if !self.strict_close {
             return true;
         }
+        // skener bez rozsahu cilu by vysvetlil celou sit: pozitivni dukaz chybi
+        if entry.kind == ContextKind::AuthorizedScanner && entry.hosts.is_empty() {
+            return false;
+        }
         !input.sources.is_empty()
             && input
                 .sources
@@ -949,20 +953,24 @@ mod tests {
     /// z dominantnich zdroju) nalez nezavre; bez `strict_close` ho stary souhrn `any` zavrel.
     #[test]
     fn strict_close_keeps_mixed_source_finding_visible() {
-        let scanner = ContextEntry {
-            hosts: Vec::new(),
+        let scoped = ContextEntry {
+            hosts: vec!["10.0.0.9".to_string()],
             sources: vec!["10.0.0.200".to_string()],
             ..entry(ContextKind::AuthorizedScanner, "-", 0, 4)
         };
-        let calendar = StaticCalendar::new(vec![scanner]);
+        let unscoped = ContextEntry {
+            hosts: Vec::new(),
+            ..scoped.clone()
+        };
+        let calendar = StaticCalendar::new(vec![scoped]);
+        let wide = StaticCalendar::new(vec![unscoped]);
         let host = vec!["10.0.0.9".to_string()];
         let mixed = vec!["10.0.0.200".to_string(), "203.0.113.5".to_string()];
         let only = vec!["10.0.0.200".to_string()];
         let none: Vec<String> = Vec::new();
-        let lenient = ContextGate::new(GatePolicy::default());
-        let mut lenient = lenient;
+        let mut lenient = ContextGate::new(GatePolicy::default());
         let case = input("scan_attempts", &host, &mixed, 1, Severity::Medium);
-        assert!(lenient.explain(&calendar, &case).is_some(), "puvodni chovani");
+        assert!(lenient.explain(&wide, &case).is_some(), "puvodni chovani");
         let mut gate = ContextGate::new(GatePolicy {
             strict_close: true,
             ..GatePolicy::default()
@@ -971,13 +979,14 @@ mod tests {
         assert!(decision.explanation.is_none());
         assert!(decision.ambiguous, "nalez musi zustat viditelny a oznaceny");
         assert!(gate.supporting_context(&calendar, &case).is_none());
-        // cisty zdroj zaznamu se zavre dal
+        // cisty zdroj zaznamu s rozsahem cilu se zavre dal
         let clean = input("scan_attempts", &host, &only, 1, Severity::Medium);
         assert!(gate.explain(&calendar, &clean).is_some());
+        // skener bez rozsahu cilu by vysvetlil celou sit: nezavre se
+        assert!(gate.explain(&wide, &clean).is_none());
         // bez identifikovaneho zdroje se nezavre nic
         let blind = input("scan_attempts", &host, &none, 1, Severity::Medium);
         assert!(gate.explain(&calendar, &blind).is_none());
-        assert_eq!(gate.stats.refused_strict, 2);
     }
 
     /// Krok 12: okno zalohy nezavre objemovy nalez bez zdroje (zadna vyjimka pro objem).

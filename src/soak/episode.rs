@@ -1577,6 +1577,7 @@ fn run_episode_inner(
                         &coverage,
                         &phantoms,
                         cycle,
+                        cfg.engine.strict_close(),
                     )
                 });
                 let at = ts(t0);
