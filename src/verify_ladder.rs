@@ -236,6 +236,9 @@ pub struct Case {
     deferred: u32,
     pub status: Status,
     benign_evidence: bool,
+    /// Krok 12: nezávislé skupiny neškodného důkazu (`benign_group`), pro přísné vyvrácení.
+    #[serde(default)]
+    benign_groups: std::collections::BTreeSet<u8>,
     /// Cykly po otevření, ve kterých se nález znovu objevil (L2 přetrvání).
     #[serde(default)]
     seen_after_open: u32,
@@ -438,6 +441,8 @@ pub struct LadderPolicy {
     pub protect: bool,
     /// Krok 8: kontrola koncové telemetrie v plánu.
     pub endpoint: bool,
+    /// Krok 12: vyvrácení jen s pozitivním důkazem z ≥ 2 nezávislých skupin.
+    pub strict_refute: bool,
 }
 
 impl Default for LadderPolicy {
@@ -458,6 +463,7 @@ impl Default for LadderPolicy {
             lr: LrTable::default(),
             profile: false,
             profile_new_evidence: false,
+            strict_refute: false,
             protect: false,
             endpoint: false,
         }
@@ -511,6 +517,9 @@ pub struct LadderStats {
     pub explored: u64,
     pub confirmed: u64,
     pub refuted: u64,
+    /// Krok 12: vyvrácení odmítnuto pro nedostatek pozitivního důkazu (předáno člověku).
+    #[serde(default)]
+    pub strict_escalated: u64,
     pub escalated: u64,
     pub escalated_budget: u64,
     pub needs_approval: u64,
@@ -644,6 +653,22 @@ fn plan_for(input: &CaseInput, secret: u64, policy: &LadderPolicy) -> VecDeque<C
 
 /// Značka výsledku kontroly pro měření a učení (`benign`, `malicious`, `undetermined`,
 /// `unavailable`).
+/// Nezávislá skupina neškodného důkazu (krok 12): 1 kontext (schválený kalendář),
+/// 2 provozní příčina (dostupnost), 3 vlastní zvyk hosta (historie a profil, závislé),
+/// 4 koncová telemetrie, 5 dobrá reputace. Srovnání s peery, přetrvání, intel, profil
+/// zařízení a pivot se do vyvrácení nezapočítávají (v měření kroku 11 byl podíl útoků
+/// mezi případy s neškodným výsledkem „peers“ 32 %).
+pub fn benign_group(check: CheckId) -> Option<u8> {
+    match check {
+        CheckId::Context => Some(1),
+        CheckId::Liveness => Some(2),
+        CheckId::History | CheckId::Profile => Some(3),
+        CheckId::Endpoint => Some(4),
+        CheckId::Reputation => Some(5),
+        _ => None,
+    }
+}
+
 pub fn outcome_tag(outcome: &Outcome) -> &'static str {
     match outcome {
         Outcome::Evidence { lr, .. } if *lr < 1.0 => "benign",
@@ -859,6 +884,7 @@ impl Ladder {
                 deferred: 0,
                 status: Status::Open,
                 benign_evidence: false,
+                benign_groups: Default::default(),
                 seen_after_open: 0,
                 same_source_seen: false,
                 last_seen_cycle: cycle,
@@ -917,6 +943,7 @@ impl Ladder {
                 case.wait_until = None;
                 case.deferred = 0;
                 case.benign_evidence = false;
+                case.benign_groups.clear();
             }
         }
         keys.len()
@@ -1089,6 +1116,9 @@ impl Ladder {
                 case.log_odds += lr.max(1e-6).ln();
                 if lr < 1.0 {
                     case.benign_evidence = true;
+                    if let Some(group) = benign_group(check) {
+                        case.benign_groups.insert(group);
+                    }
                 }
             }
             Outcome::Undetermined(_) | Outcome::Unavailable(_) => {}
@@ -1123,8 +1153,25 @@ impl Ladder {
             self.policy.p_refute
         };
         let shielded = self.policy.protect && case.input.is_protected();
+        // krok 12: vyvraceni jen na pozitivni dukaz z aspon dvou nezavislych skupin,
+        // z nichz aspon jedna je silna (kontext, provozni pricina, koncova telemetrie)
+        let proven = !self.policy.strict_refute
+            || (case.benign_groups.len() >= 2
+                && case.benign_groups.iter().any(|g| matches!(g, 1 | 2 | 4)));
         let status = if posterior >= self.policy.p_confirm {
             Some(Status::Confirmed)
+        } else if posterior <= refute_at && case.benign_evidence && !shielded && !proven {
+            // nizka pravdepodobnost utoku bez dostatecneho pozitivniho dukazu: nezavirat,
+            // predat cloveku (zustava viditelne)
+            self.stats.strict_escalated += 1;
+            let decision = self.finish(key, Status::Escalated, cycle, false);
+            return decision.map(|mut d| {
+                d.reason = format!(
+                    "pozitivni dukaz neskodnosti nestaci (mene nez dve nezavisle skupiny nebo zadna silna): {}",
+                    d.reason
+                );
+                d
+            });
         } else if posterior <= refute_at && case.benign_evidence && !shielded {
             Some(Status::Refuted)
         } else if posterior <= refute_at && case.benign_evidence {
@@ -1895,6 +1942,45 @@ mod tests {
             (decision.posterior - 0.15).abs() < 1e-9,
             "prazdne dotazy viru nemeni"
         );
+    }
+
+    /// Krok 12: `strict_refute` nevyvrati pripad na historii a peerech (jedna skupina, zadna
+    /// silna); pridani schvaleneho kontextu (druha nezavisla skupina, silna) ano.
+    #[test]
+    fn strict_refute_needs_two_independent_groups_one_strong() {
+        let strict = LadderPolicy {
+            strict_refute: true,
+            ..LadderPolicy::default()
+        };
+        let mut ladder = Ladder::new(strict, 7);
+        let mut env = Env {
+            recurrence: Some(Recurrence::Seen { days: 4 }),
+            peers: Some((5, 6)),
+            ..Env::default()
+        };
+        ladder.open(input("inductive_volume_anomaly", "10.0.0.5", &[]), 0);
+        let decision = run_until_decided(&mut ladder, &mut env);
+        assert_ne!(decision.status, Status::Refuted, "{}", decision.reason);
+        assert_eq!(decision.status, Status::Escalated);
+        assert!(decision.reason.contains("pozitivni dukaz"), "{}", decision.reason);
+        assert_eq!(ladder.stats.strict_escalated, 1);
+        // s kontextem (kalendar) je dukaz ze dvou nezavislych skupin, jedna silna
+        let mut ladder = Ladder::new(
+            LadderPolicy {
+                strict_refute: true,
+                ..LadderPolicy::default()
+            },
+            7,
+        );
+        let mut env = Env {
+            recurrence: Some(Recurrence::Seen { days: 4 }),
+            peers: Some((5, 6)),
+            context: Some("backup (schvalil spravce)".into()),
+            ..Env::default()
+        };
+        ladder.open(input("inductive_volume_anomaly", "10.0.0.5", &[]), 0);
+        let decision = run_until_decided(&mut ladder, &mut env);
+        assert_eq!(decision.status, Status::Refuted, "{}", decision.reason);
     }
 
     #[test]

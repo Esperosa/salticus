@@ -502,7 +502,10 @@ impl V3Session {
             match self.store.load::<crate::verify_ladder::Ladder>("ladder")? {
                 Some(ladder) => ladder,
                 None => crate::verify_ladder::Ladder::new(
-                    crate::verify_ladder::LadderPolicy::default(),
+                    crate::verify_ladder::LadderPolicy {
+                        strict_refute: self.engine.strict_close(),
+                        ..Default::default()
+                    },
                     u64::from_le_bytes(
                         uuid::Uuid::new_v4().as_bytes()[..8]
                             .try_into()

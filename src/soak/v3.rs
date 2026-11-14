@@ -86,6 +86,7 @@ impl V3Runtime {
                     profile: engine.profile(),
                     protect: engine.protect(),
                     endpoint: engine.endpoint(),
+                    strict_refute: engine.strict_close(),
                     ..Default::default()
                 },
                 secret,
