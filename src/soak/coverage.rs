@@ -136,6 +136,70 @@ pub struct TruthCoverage {
     pub split: u64,
     /// Krok 7: drzena varianta poruchy sveta `k7`.
     pub variant: Option<&'static str>,
+    /// Krok 11: merici souhrn toku utoku (jen diagnostika, nic nerozhoduje).
+    pub diag: FlowDiag,
+}
+
+/// Krok 11: souhrn toku jednoho utoku po emisi (pred degradaci telemetrie).
+#[derive(Debug, Clone, Default)]
+pub struct FlowDiag {
+    pub flows: u64,
+    pub src_ips: BTreeSet<String>,
+    pub dst_ips: BTreeSet<String>,
+    pub dst_ports: BTreeSet<u16>,
+    pub udp: u64,
+    pub failed: u64,
+    pub bytes: u64,
+    pub max_cycle_flows: u64,
+    cur_cycle: i64,
+    cur_flows: u64,
+}
+
+impl FlowDiag {
+    pub fn add(&mut self, o: &crate::passive::ConnectionObservation) {
+        self.flows += 1;
+        if self.src_ips.len() < 64 {
+            self.src_ips.insert(o.src_ip.clone().unwrap_or_default());
+        }
+        if self.dst_ips.len() < 256 {
+            self.dst_ips.insert(o.dst_ip.clone());
+        }
+        if let Some(port) = o.dst_port
+            && self.dst_ports.len() < 1024
+        {
+            self.dst_ports.insert(port);
+        }
+        if o.proto == "udp" {
+            self.udp += 1;
+        }
+        if matches!(o.conn_state.as_deref(), Some("S0" | "REJ" | "RSTO" | "RSTR" | "RSTOS0")) {
+            self.failed += 1;
+        }
+        self.bytes += o.total_bytes.unwrap_or(0);
+        let cycle = o.timestamp.timestamp() / CYCLE_SECS;
+        if cycle != self.cur_cycle {
+            self.cur_cycle = cycle;
+            self.cur_flows = 0;
+        }
+        self.cur_flows += 1;
+        self.max_cycle_flows = self.max_cycle_flows.max(self.cur_flows);
+    }
+}
+
+/// Krok 11: zaznam souhrnu toku v networks.jsonl.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AttackDiag {
+    pub flows: u64,
+    pub src_n: u32,
+    pub dst_n: u32,
+    pub port_n: u32,
+    pub udp: u64,
+    pub failed: u64,
+    pub bytes: u64,
+    pub max_cycle_flows: u64,
+    pub sensor_lost_cycles: u32,
+    pub visible_flows: u64,
 }
 
 /// Sablony kampani (A2): rodiny v poradi, drzena = obsahuje drzenou rodinu.
@@ -847,6 +911,9 @@ pub struct AttackRecord {
     /// Krok 7: tiche potlaceni, latence, omylem zavrene nalezy (jen v3 s pameti).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub k7: Option<AttackK7>,
+    /// Krok 11: souhrn toku a ztracenych cyklu senzoru (diagnostika).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diag: Option<AttackDiag>,
 }
 
 /// Krok 7 (A2, C2): viditelnost utoku a pocty po utoku.

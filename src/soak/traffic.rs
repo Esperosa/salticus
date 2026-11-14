@@ -1594,6 +1594,7 @@ fn push_one(
         Some(index) => {
             let item = &mut truths[index];
             item.flows_emitted += 1;
+            item.cov.diag.add(&observation);
             item.touched_ips.insert(src.clone());
             item.touched_ips.insert(observation.dst_ip.clone());
             if let Some(port) = observation.dst_port {

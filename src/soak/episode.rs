@@ -272,6 +272,10 @@ impl CheckRunner for SimRunner<'_> {
 }
 
 struct Ledger {
+    /// Krok 11: cykly okna utoku, kdy senzor nedodal nic (vypadek).
+    sensor_lost_cycles: u32,
+    /// Krok 11: toky utoku, ktere prezily degradaci telemetrie.
+    visible_flows: u64,
     first_detect: Option<u32>,
     typed: bool,
     ranked_prod: bool,
@@ -770,6 +774,8 @@ fn run_episode_inner(
     let mut ledgers: Vec<Ledger> = truths
         .iter()
         .map(|_| Ledger {
+            sensor_lost_cycles: 0,
+            visible_flows: 0,
             first_detect: None,
             typed: false,
             ranked_prod: false,
@@ -1078,6 +1084,36 @@ fn run_episode_inner(
         agg.alerts += output.alerts.len() as u64;
         agg.outage_cycles += output.outage as u64;
         agg.ops.sensor_down_cycles += output.sensor_down as u64;
+        for (index, truth) in truths.iter().enumerate() {
+            if matches!(truth.kind, Kind::Attack(_))
+                && cycle >= truth.start_cycle
+                && cycle <= truth.end_cycle
+                && !truth.cycle_sources.is_empty()
+            {
+                ledgers[index].visible_flows += output
+                    .observations
+                    .iter()
+                    .filter(|o| {
+                        o.src_ip
+                            .as_deref()
+                            .is_some_and(|s| truth.cycle_sources.contains(s))
+                            && truth
+                                .cycle_targets
+                                .contains(&(o.dst_ip.clone(), o.dst_port.unwrap_or(0)))
+                    })
+                    .count() as u64;
+            }
+        }
+        if output.outage || output.sensor_down {
+            for (index, truth) in truths.iter().enumerate() {
+                if matches!(truth.kind, Kind::Attack(_))
+                    && cycle >= truth.start_cycle
+                    && cycle <= truth.end_cycle
+                {
+                    ledgers[index].sensor_lost_cycles += 1;
+                }
+            }
+        }
         agg.ops.corrupt_alert_lines += output
             .alerts
             .iter()
@@ -3221,6 +3257,18 @@ fn run_episode_inner(
                         auto_closed: ledger.auto_closed,
                         auto_closed_first: ledger.auto_closed_first,
                         ops_shown: ledger.ops_shown,
+                        diag: Some(crate::soak::coverage::AttackDiag {
+                            flows: truth.cov.diag.flows,
+                            src_n: truth.cov.diag.src_ips.len() as u32,
+                            dst_n: truth.cov.diag.dst_ips.len() as u32,
+                            port_n: truth.cov.diag.dst_ports.len() as u32,
+                            udp: truth.cov.diag.udp,
+                            failed: truth.cov.diag.failed,
+                            bytes: truth.cov.diag.bytes,
+                            max_cycle_flows: truth.cov.diag.max_cycle_flows,
+                            sensor_lost_cycles: ledger.sensor_lost_cycles,
+                            visible_flows: ledger.visible_flows,
+                        }),
                         k7: v3.as_ref().filter(|r| r.memory.is_some()).map(|_| {
                             crate::soak::coverage::AttackK7 {
                                 vis_cycles: ledger.vis_cycles,
