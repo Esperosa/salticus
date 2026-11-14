@@ -156,6 +156,9 @@ pub struct V3Features {
     /// Krok 12: konkurencni hypotezy a rozhodnuti podle ceny omylu v zebricku.
     #[serde(default)]
     pub hypotheses: bool,
+    /// Krok 12: citlivejsi znovuzobrazeni opakovaneho nalezu pri zmene objemu (faktor 2, min. 8).
+    #[serde(default)]
+    pub redisplay: bool,
     /// Krok 11: sken vnejsiho zdroje s mene cili, ale bez jedineho uspechu (`scan_attempts`).
     #[serde(default)]
     pub scan_fresh: bool,
@@ -168,7 +171,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 38] = [
+    pub const NAMES: [&'static str; 39] = [
         "memory",
         "rate",
         "volume",
@@ -207,6 +210,7 @@ impl V3Features {
         "l7_tls",
         "l7_dns",
         "hypotheses",
+        "redisplay",
     ];
 
     pub fn all() -> Self {
@@ -249,6 +253,7 @@ impl V3Features {
             l7_tls: true,
             l7_dns: true,
             hypotheses: true,
+            redisplay: true,
         }
     }
 
@@ -299,6 +304,7 @@ impl V3Features {
             l7_tls: false,
             l7_dns: false,
             hypotheses: false,
+            redisplay: false,
             ..Self::all()
         }
     }
@@ -352,6 +358,7 @@ impl V3Features {
             l7_tls: false,
             l7_dns: false,
             hypotheses: false,
+            redisplay: false,
         }
     }
 
@@ -419,6 +426,7 @@ impl V3Features {
             "l7_tls" => &mut self.l7_tls,
             "l7_dns" => &mut self.l7_dns,
             "hypotheses" => &mut self.hypotheses,
+            "redisplay" => &mut self.redisplay,
             _ => return None,
         })
     }
@@ -600,6 +608,9 @@ impl EngineConfig {
     pub fn strict_close(&self) -> bool {
         self.on(|f| f.strict_close)
     }
+    pub fn redisplay(&self) -> bool {
+        self.on(|f| f.redisplay && f.memory)
+    }
     pub fn hypotheses(&self) -> bool {
         self.on(|f| f.hypotheses && f.ladder && f.memory)
     }
@@ -637,6 +648,8 @@ impl EngineConfig {
         crate::finding_memory::MemoryConfig {
             escalate_first_source: self.recall(),
             protect: self.protect(),
+            volume_factor: if self.redisplay() { 2.0 } else { 4.0 },
+            min_escalation_count: if self.redisplay() { 8 } else { 20 },
             ..Default::default()
         }
     }
@@ -678,7 +691,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,
