@@ -51,3 +51,39 @@ Důvod: rozsah (nové datové typy napříč parserem, modelem, behaviorální v
 ## 4) Poznámky a odchylky
 
 (zapisuje se průběžně)
+
+## 5) Fáze „chytřejší korelace a práce s nejistotou“ (předregistrace, před kódem této fáze)
+
+Studie: `../studie/12b-korelace-a-nejistota.md`. Přepínače: `hypotheses`, `evidence_lr`, `ladder_chain`, `retro`, `reopen`, `conformal`, `case_file`, `forensic_requests`; všechny výchozí vypnuto.
+
+Metriky a prahy (hodnoty se po měření nemění):
+
+| id | metrika | práh |
+|---|---|---|
+| K12-12 | správné rozhodnutí u případů, které žebřík dnes nechává nerozhodnuté (kontrafaktuální pravda) | ≥ 80 % z rozhodnutých; podíl rozhodnutých se hlásí zvlášť |
+| K12-13 | ECE posteriorů žebříku (10 košů) a spolehlivostní diagram | ECE ≤ 0,10; Brier a log-loss vedle |
+| K12-14 | autonomní zavření neškodného případu: omylem zavřený útok | 0 pozorováno, horní mez Wilson 95 % uvést; cíl horní meze ≤ 0,5 % při N ≥ 600 autonomních zavření, jinak „záruka nedosažena, rozhoduje člověk“ |
+| K12-15 | omylem eskalovaný neškodný případ z autonomních rozhodnutí | horní mez Wilson 95 % ≤ 5 % |
+| K12-16 | podíl autonomních rozhodnutí a podíl předaných člověku podle důvodu | hlásit; bez prahu (měření hranice automatizace) |
+| K12-17 | konformální pokrytí na držených seedech | empirické pokrytí ≥ nominální 90 % − 2 p. b. |
+| K12-18 | čas k rozhodnutí (cykly) a počet kontrol na případ | hlásit medián a p90; cíl: bez nárůstu mediánu o víc než 20 % proti stavu bez fáze |
+| K12-19 | čistota seskupení do incidentů (podíl nálezů incidentu patřících jedné pravdě) a nálezů na incident; čas k prvnímu nálezu | čistota ≥ 90 %; ostatní hlásit |
+| K12-20 | správné oddělení útoku od poruchy (kontrafaktuál, jen případy s oběma typy ve stejném okně) | ≥ 85 % |
+| K12-21 | audit: každé autonomní rozhodnutí a každé přehodnocení má záznam s důkazy | 100 % |
+| K12-22 | forenzní žádost bez schválení nikdy neprovedena | 0 provedení |
+
+Provedení: A/B proti rameni bez fáze (stejné seedy, svět k10 s `--l7 on`), ladění na ladicích seedech a ladicích hn_*, držené seedy 20264101 až 20264302 a držené hn_* jednou; leave-one-family-out stejné rodiny jako K10-1; kombinace útok + porucha + šum 10× a XXXL jednou na konci. Soak musí od této fáze ukládat posteriory žebříku (`ladder_posteriors` v `networks.jsonl`), jinak ECE nejde změřit.
+
+### Stav fáze
+
+| úkol | stav |
+|---|---|
+| rešerše 12b | hotová, zdroje ověřeny s uvedenými výhradami |
+| 1 konkurenční hypotézy a EVOI | nezačato |
+| 2 sekvenční vážení | nezačato |
+| 3 žádost o chybějící data | nezačato |
+| 4 retrospektivní vyhledávání | nezačato |
+| 5 znovuotevření a audit | nezačato |
+| 6 kalibrace, ECE, konformální, ukládání posteriorů | nezačato |
+| 7 spis případu | nezačato |
+| 8 forenzní žádosti | nezačato |
