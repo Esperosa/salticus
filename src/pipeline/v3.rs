@@ -421,7 +421,7 @@ impl V3Session {
             None
         };
         if !self.engine.memory() {
-            report.coverage_status = Some(self.coverage(report, &behavior_state, false, now));
+            report.coverage_status = Some(self.coverage(report, &mut behavior_state, false, now));
             if self.engine.behavior() {
                 self.store.save("behavior", &behavior_state)?;
             }
@@ -917,7 +917,10 @@ impl V3Session {
         memory.flush(self.store.conn_mut())?;
         self.store.save("closure_audit", &audit)?;
         report.closure_audit = Some(audit.status(&audit_policy, now));
-        report.coverage_status = Some(self.coverage(report, &behavior_state, sensor_gap, now));
+        report.coverage_status = Some(self.coverage(report, &mut behavior_state, sensor_gap, now));
+        if self.engine.behavior() {
+            self.store.save("behavior", &behavior_state)?;
+        }
         report.finding_lifecycle = lifecycle;
         Ok(())
     }
@@ -972,7 +975,7 @@ impl V3Session {
     fn coverage(
         &self,
         report: &RunReport,
-        behavior: &crate::behavior::BehaviorState,
+        behavior: &mut crate::behavior::BehaviorState,
         sensor_gap: bool,
         now: DateTime<Utc>,
     ) -> crate::coverage_status::CoverageStatus {
@@ -1007,7 +1010,28 @@ impl V3Session {
             .iter()
             .filter(|h| h.services.iter().any(|s| ICS_PORTS.contains(&s.port)))
             .count();
+        // krok 12: pokryti senzoru po hostech a segmentech (jen s odchozimi toky)
+        let (silent_hosts, dark_segments) = match self.behavior_flows.as_ref() {
+            Some(flows) if self.engine.egress() && !sensor_gap && flows_in_window > 0 => {
+                let inventory: Vec<String> = report.hosts.iter().map(|h| h.ip.clone()).collect();
+                let active = flows
+                    .outbound
+                    .iter()
+                    .chain(flows.internal.iter())
+                    .chain(flows.to_scope.iter())
+                    .flat_map(|f| {
+                        f.src_ip
+                            .as_deref()
+                            .into_iter()
+                            .chain(std::iter::once(f.dst_ip.as_str()))
+                    });
+                behavior.sensor.observe(active, &inventory)
+            }
+            _ => (Vec::new(), Vec::new()),
+        };
         assess(&CoverageInput {
+            silent_hosts,
+            dark_segments,
             ids_configured: report.run.sources.suricata_eve.is_some(),
             sensor_gap,
             flows_in_window,

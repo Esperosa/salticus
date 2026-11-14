@@ -134,6 +134,8 @@ pub struct BehaviorState {
     pub breadth: breadth::BreadthState,
     /// Krok 12: historie TLS cilu a otisku klientu.
     pub l7: l7::L7State,
+    /// Krok 12: pokryti senzoru po hostech a segmentech.
+    pub sensor: crate::coverage_status::SensorCoverage,
     /// Začátek prvního okna (stáří senzoru, zahřívání).
     pub first_window: Option<i64>,
 }
