@@ -61,6 +61,16 @@ Běhy ve frontě (jedno rameno najednou, Idle, 4 vlákna), vyhodnocení jedním 
 
 Mezivýsledek K10-1 (seedy 20261102 a 20261103, 80 sítí): taktika `lateral-movement` 93,5 % (dolní mez 89,7, splněno), `credential-access` 86,8 % a `discovery` 85,9 % (nedosaženo); rodiny jednotlivě mají n < 50 (nedostatek dat). Poctivé omezení: detektory kroku 9 se na těchto foldech neladěly, ale celé pole rodin jsem viděl při návrhu, takže jde o odolnost detektorů, ne o plnou nezávislost.
 
+### Výsledky měření (2026-11-14)
+
+| práh | výsledek | stav |
+|---|---|---|
+| K10-6 tvrdé záporné scénáře (`k10/vysledky.md`, 80 sítí, 20262401 a 20262402) | zobrazené FP na síť-den 10,37 → 10,86, poměr 1,048 (1,029 až 1,071) ≤ 1,15; zavřeno omylem 0,5 %; chráněná zavření 0, paniky 0. Zobrazování neškodných změn (kandidát): hn_cdn_update_download 6,5 %, hn_mail_newsletter_burst 7,5 %, hn_nightly_cloud_backup_upload 48,2 %, hn_db_replication_bulk 79,0 %, hn_admin_bulk_ssh 82,9 %, hn_monitoring_snmp_sweep 83,1 % | FP splněno; „klasifikace záporných jako útok ≤ 15 %“ se zvlášť neměřila (tabulka udává podíl zobrazených), u čtyř rodin je zobrazeno většina případů, takže nepotvrzeno (c) |
+| K10-5 šum 10× + porucha + výpadek (`k10/sum10x.md`, 40 sítí, 20262301) | detekce 82,3 % (základ 81,5 %); proti ladicím seedům kandidáta 84,7 % je to −2,4 p. b. (jiná množina seedů, jen orientačně) ≤ 5 p. b.; zavřeno omylem 0,9 % ≤ 2,2 %; FP poměr 1,080; paniky 0 | splněno (orientačně) |
+| K10-7 XXXL (`xxxlc-20262302`, 4 sítě XXXL, 384 cyklů, 15,1 mil. toků, 4 vlákna, stroj zatížený dlouhým během) | paniky 0, porušené invarianty 0; p99 cyklu 3,17 s (p50 1,95 s, max 4,71 s) proti stropu 3 s kroku 7 (G4, 1 vlákno, klidný stroj); peak haldy 2 145 MiB, RSS na konci 45 MiB, bez růstu, ale jen 3 vzorky | p99 těsně nad stropem při zatíženém stroji a 4 vláknech (podmínky G4 nesplněny): **nesplněno, nerozhodnuto** |
+| K10-1 neviděné taktiky (držené seedy, `k9/held.md`) | credential-access 90,5 % (splněno), lateral-movement 94,9 % (splněno), discovery 83,5 % (nedosaženo); rodiny n ≥ 50: ssh_spray_slow_distributed 85,5 %, data_staging_smb_internal 82,4 %, c2_slow_long_interval 87,0 %, cloud_api_discovery_burst 9,2 %, ddos_syn_flood_distributed 91,4 % s dolní mezí pod 85 % (nedosaženo), kerberos_ticket_request_burst 98,9 % a rdp_bruteforce 98,8 % (splněno) | částečně |
+| K10-8 drift | neměřeno | (c) |
+
 ## E) Registr otevřených míst
 
 | místo | kategorie |

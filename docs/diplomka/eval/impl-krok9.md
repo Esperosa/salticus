@@ -141,14 +141,28 @@ Kategorie: (a) uzavřeno měřeným účinkem, (b) zadrženo opatřením vynucen
 
 ### Rozhodnutí o koncové telemetrii (B5)
 
-Práh: detekce `on` − `off` ≥ +3 p. b., FP poměr ≤ 1,10, omylem zavřeno `on` ≤ `off` + 1 % útoků, 0 chráněných zavření. Hodnoty jsou v `k9/endpoint.md`. Rozhodnutí se zapíše po doběhnutí všech seedů (viz „Stav běhů“ níže); `recommended()` se nemění, dokud práh není splněn na všech ladicích seedech a nepotvrdí ho držený běh, protože měření je simulované.
+Práh: detekce `on` − `off` ≥ +3 p. b., FP poměr ≤ 1,10, omylem zavřeno `on` ≤ `off` + 1 % útoků, 0 chráněných zavření. Měření (`k9/endpoint.md`, seedy 20261102 až 20261104, 120 sítí): detekce 82,5 → 85,0 % (+2,5 p. b.), FP poměr 1,043, omylem zavřeno 0,9 → 0,8 %, chráněných zavření 0. **Práh na detekci (+3 p. b.) není splněn, proto `endpoint` zůstává mimo `recommended()`.** Omezení měření: rameno `off` a `on` nejsou tytéž binárky na všech seedech (`b6noep`/`b4` na 20261102, `c9off`/`c8` na 20261103 a 20261104), takže rozdíl zahrnuje i drobné rozdíly kódu mezi nimi; měření je navíc simulované.
 
-### Stav běhů a držené seedy
+### Výsledek držených seedů (jednou)
 
-Držené seedy (20261901, 20262001, 20262101, 20262102, 20261201, 20261301) se pouští jednou, kandidátem zamčeným tímto commitem; výsledek je v `k9/held.md`. Pokud soubor chybí, běh ještě nedoběhl: `python tools/k9_finish.py` ho vyrobí z `F:/Projekty/bakula-soak/k9/held{ref,c}-*`.
+Držené seedy 20261901, 20262001, 20262101, 20262102, 20261201, 20261301, 240 sítí, `heldref` (krok 8) proti `heldc` (kandidát `breadth`), vše v `k9/held.md`.
+
+| práh | předregistrováno | držené seedy | stav |
+|---|---|---|---|
+| K9-3 FP na síť-den | ≤ 1,15 × krok 8 | 20,38 → 21,58, poměr 1,059 (1,042 až 1,083) | splněno |
+| K9-3 všechny zobrazené položky | ≤ 1,15 × | poměr 1,027 | splněno |
+| K9-4 zavřeno omylem | ≤ 2,2 % | 0,4 → 0,5 % | splněno |
+| K9-5 chráněná zavření | 0 | 0 | splněno |
+| K9-7 paniky a invarianty | 0 | 0 / 0 | splněno |
+| detekce útoků celkem | (bez prahu) | 83,4 → 84,0 % | +0,6 p. b. |
+| K9-1 detekce rodiny ≥ 90 % (dolní mez ≥ 85 %) | každá rodina n ≥ 50 | 41 splněno, 75 pod prahem, 9 nedostatek dat | **nesplněno** (kategorie c/b) |
+| K9-6 determinismus | stejný seed dvakrát | v tomto vyhodnocení neověřeno | viz jednotkové testy |
+
+Rozhodnutí o `breadth` v `recommended()`: bezpečnostní prahy (K9-3 až K9-5, K9-7) prošly i na držených seedech, přínos je ale malý (+0,6 p. b.; na ladicích +0,5 p. b.) a K9-1 zůstává z velké části nesplněno. Doporučení: zapnout `breadth` (bez `breadth_volume`) lze, nepoškozuje bezpečnostní prahy; nepovažovat to za splnění K9-1. Kód `recommended()` tímto commitem změněn není.
 
 ### Návrh dalšího dlouhého běhu
 
 ```
-salticus-program soak run --out F:\Projektyakula-soakun-mega-k9 --seed 20262501 --wall-hours 96 --threads 6 --block-size 4 --engine v3 --coverage k10 --endpoint on --endpoint-coverage 60 --v3-on breadth --noise-mix 1:0.6,10:0.3,50:0.1 --xxxl-share 0.015 --cf-share 0.2 --families all
+salticus-program soak run --out F:\Projektyakula-soak
+un-mega-k9 --seed 20262501 --wall-hours 96 --threads 6 --block-size 4 --engine v3 --coverage k10 --endpoint on --endpoint-coverage 60 --v3-on breadth --noise-mix 1:0.6,10:0.3,50:0.1 --xxxl-share 0.015 --cf-share 0.2 --families all
 ```

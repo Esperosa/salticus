@@ -108,7 +108,7 @@ Postup podle kroků je v [`docs/diplomka/eval/`](docs/diplomka/eval/) (`impl-kro
 <!-- STATUS:BEGIN -->
 _Tento blok generuje `tools/readme_status.py` z dokumentů v `docs/diplomka/eval/` a z gitu. Ručně se neupravuje._
 
-- Poslední commit: `83d565e` ze dne 2026-11-13 (fix(tools): srovnání koncové telemetrie po seedech)
+- Poslední commit: `dddfc1a` ze dne 2026-11-13 (docs: krok 10 - průběh a registr otevřených míst (průběžný stav), upřesnění registru kroku 9)
 - Počet unit testů knihovny (`cargo test --lib -- --list`): 592
 
 - Výkon sítí XXXL (G4, držené seedy): p99 cyklu 1,08 s a 0,43 s, práh < 3 s, splněno.
@@ -165,10 +165,30 @@ Detekce a podíl zavřených omylem jsou s 95% Wilsonovým intervalem v závorce
 
 | ukazatel | základ | kandidát | poznámka |
 |---|---|---|---|
-| detekce útoků | 84,0 (83,0 až 85,0) | 84,5 (83,4 až 85,4) | kontrafaktuální zobrazená detekce |
-| zobrazené FP na síť-den | 8,70 | 9,05 | poměr 1,041 (1,025 až 1,062); práh K9-3 ≤ 1,15 |
-| všechny zobrazené položky na síť-den | 126,1 | 128,2 | poměr 1,017 (1,010 až 1,026) |
-| útoky s omylem zavřeným nálezem | 46 (0,9 %) | 51 (1,0 %) | práh K9-4 ≤ 2,2 % |
+| detekce útoků | 84,2 (83,6 až 84,8) | 84,7 (84,2 až 85,3) | kontrafaktuální zobrazená detekce |
+| zobrazené FP na síť-den | 11,17 | 11,72 | poměr 1,050 (1,031 až 1,072); práh K9-3 ≤ 1,15 |
+| všechny zobrazené položky na síť-den | 153,0 | 155,9 | poměr 1,019 (1,014 až 1,025) |
+| útoky s omylem zavřeným nálezem | 123 (0,9 %) | 137 (0,9 %) | práh K9-4 ≤ 2,2 % |
+| chráněná automatická zavření | 0 | 0 | práh K9-5 = 0 |
+| paniky / porušené invarianty | 0 / 0 | 0 / 0 | práh K9-7 = 0 |
+#### Krok 9, držené seedy (jednou)
+
+| ukazatel | základ | kandidát | poznámka |
+|---|---|---|---|
+| detekce útoků | 83,4 (82,9 až 84,0) | 84,0 (83,5 až 84,5) | kontrafaktuální zobrazená detekce |
+| zobrazené FP na síť-den | 20,38 | 21,58 | poměr 1,059 (1,042 až 1,083); práh K9-3 ≤ 1,15 |
+| všechny zobrazené položky na síť-den | 194,0 | 199,2 | poměr 1,027 (1,021 až 1,033) |
+| útoky s omylem zavřeným nálezem | 76 (0,4 %) | 91 (0,5 %) | práh K9-4 ≤ 2,2 % |
+| chráněná automatická zavření | 0 | 0 | práh K9-5 = 0 |
+| paniky / porušené invarianty | 0 / 0 | 0 / 0 | práh K9-7 = 0 |
+#### Krok 10, tvrdé záporné scénáře
+
+| ukazatel | základ | kandidát | poznámka |
+|---|---|---|---|
+| detekce útoků | 78,4 (77,4 až 79,4) | 78,9 (77,9 až 79,9) | kontrafaktuální zobrazená detekce |
+| zobrazené FP na síť-den | 10,37 | 10,86 | poměr 1,048 (1,029 až 1,071); práh K9-3 ≤ 1,15 |
+| všechny zobrazené položky na síť-den | 167,0 | 170,0 | poměr 1,018 (1,011 až 1,026) |
+| útoky s omylem zavřeným nálezem | 34 (0,5 %) | 34 (0,5 %) | práh K9-4 ≤ 2,2 % |
 | chráněná automatická zavření | 0 | 0 | práh K9-5 = 0 |
 | paniky / porušené invarianty | 0 / 0 | 0 / 0 | práh K9-7 = 0 |
 
