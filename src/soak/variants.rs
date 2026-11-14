@@ -1864,6 +1864,8 @@ pub fn expected_types(index: u8) -> &'static [&'static str] {
             "suricata_alert",
             "novel_burst_peer",
             "ingest_volume_anomaly",
+            "novel_bulk_transfer",
+            "novel_peer_burst",
         ],
         Pattern::Sweep | Pattern::PortSweep => &[
             "unexpected_traffic",
@@ -1918,6 +1920,7 @@ pub fn expected_types(index: u8) -> &'static [&'static str] {
             "beacon_periodic",
             "slow_egress",
             "link_saturation",
+            "novel_bulk_transfer",
         ],
         // provozni vzory: vsechno, co engine k vypadku a degradaci umi rict
         Pattern::Outage | Pattern::Flap | Pattern::Degrade | Pattern::Cascade | Pattern::Drift => {

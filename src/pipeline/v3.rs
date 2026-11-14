@@ -256,6 +256,7 @@ impl V3Session {
                     volume: engine.volume_baseline(),
                     unexpected: engine.unexpected_v3(),
                     recall: engine.recall(),
+                    scan_fresh: engine.scan_fresh(),
                 },
                 known,
                 known_hosts,

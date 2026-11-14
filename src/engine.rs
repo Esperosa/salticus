@@ -133,6 +133,19 @@ pub struct V3Features {
     /// Vypnuto: na ladicim seedu pridaly 3,4 zobrazenych FP na sit-den (impl-krok9.md, D).
     #[serde(default)]
     pub breadth_volume: bool,
+    /// Krok 11: velky prenos s prvne videnym vnejsim protejskem (`novel_bulk_transfer`).
+    /// Vychozi vypnuto (impl-krok11.md).
+    #[serde(default)]
+    pub bulk_novel: bool,
+    /// Krok 11: rychly shluk toku na prvne videne vnejsi protejsky (`novel_peer_burst`).
+    #[serde(default)]
+    pub peer_burst: bool,
+    /// Krok 11: jako `bulk_novel`, ale jen pro prenos po nesifrovanych portech.
+    #[serde(default)]
+    pub bulk_clear: bool,
+    /// Krok 11: sken vnejsiho zdroje s mene cili, ale bez jedineho uspechu (`scan_attempts`).
+    #[serde(default)]
+    pub scan_fresh: bool,
 }
 
 impl Default for V3Features {
@@ -142,7 +155,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 30] = [
+    pub const NAMES: [&'static str; 34] = [
         "memory",
         "rate",
         "volume",
@@ -173,6 +186,10 @@ impl V3Features {
         "endpoint",
         "breadth",
         "breadth_volume",
+        "bulk_novel",
+        "peer_burst",
+        "scan_fresh",
+        "bulk_clear",
     ];
 
     pub fn all() -> Self {
@@ -207,6 +224,10 @@ impl V3Features {
             endpoint: true,
             breadth: true,
             breadth_volume: true,
+            bulk_novel: true,
+            peer_burst: true,
+            scan_fresh: true,
+            bulk_clear: true,
         }
     }
 
@@ -249,6 +270,10 @@ impl V3Features {
             endpoint: false,
             breadth: false,
             breadth_volume: false,
+            bulk_novel: false,
+            peer_burst: false,
+            scan_fresh: false,
+            bulk_clear: false,
             ..Self::all()
         }
     }
@@ -294,6 +319,10 @@ impl V3Features {
             endpoint: false,
             breadth: false,
             breadth_volume: false,
+            bulk_novel: false,
+            peer_burst: false,
+            scan_fresh: false,
+            bulk_clear: false,
         }
     }
 
@@ -353,6 +382,10 @@ impl V3Features {
             "endpoint" => &mut self.endpoint,
             "breadth" => &mut self.breadth,
             "breadth_volume" => &mut self.breadth_volume,
+            "bulk_novel" => &mut self.bulk_novel,
+            "peer_burst" => &mut self.peer_burst,
+            "scan_fresh" => &mut self.scan_fresh,
+            "bulk_clear" => &mut self.bulk_clear,
             _ => return None,
         })
     }
@@ -526,6 +559,20 @@ impl EngineConfig {
     pub fn breadth_volume(&self) -> bool {
         self.breadth() && self.v3.breadth_volume
     }
+    /// Krok 11: detektory prvniho videni protejsku (potrebuji odchozi toky a profil).
+    pub fn bulk_novel(&self) -> bool {
+        self.on(|f| f.egress && f.profile && f.bulk_novel)
+    }
+    pub fn bulk_clear(&self) -> bool {
+        self.on(|f| f.egress && f.profile && f.bulk_clear)
+    }
+    pub fn peer_burst(&self) -> bool {
+        self.on(|f| f.egress && f.profile && f.peer_burst)
+    }
+    /// Krok 11: nizsi prah skenu pro vnejsi zdroj bez uspesneho spojeni.
+    pub fn scan_fresh(&self) -> bool {
+        self.on(|f| f.unexpected && f.recall && f.scan_fresh)
+    }
     /// Krok 7 (B5): seskupení nové vazby ven (jen s novostí).
     pub fn saas_group(&self) -> bool {
         self.novelty() && self.v3.saas_group
@@ -585,7 +632,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,

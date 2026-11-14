@@ -209,6 +209,7 @@ impl V3Runtime {
             volume: self.engine.volume_baseline(),
             unexpected: self.engine.unexpected_v3(),
             recall: self.engine.recall(),
+            scan_fresh: self.engine.scan_fresh(),
         };
         let out = detect_v3(
             observations,

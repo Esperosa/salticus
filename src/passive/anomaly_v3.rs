@@ -102,6 +102,8 @@ pub struct V3Switches {
     /// Krok 2A: obnova recallu (pokusy i na známé služby, timeouty podle rozložení
     /// zdrojů a binomického testu, rozptyl zdroje po hostech, odlehlý zdroj služby).
     pub recall: bool,
+    /// Krok 11: nizsi prah skenu pro vnejsi zdroj bez jedineho uspesneho spojeni.
+    pub scan_fresh: bool,
 }
 
 /// Prahy v3 (volba autora; verze kvůli dohledatelnosti, A05).
@@ -133,6 +135,8 @@ pub struct V3Thresholds {
     pub qualified_min_flows: usize,
     /// Pokusy: distinktní cíle zdroje v okně pro `scan_attempts`.
     pub scan_min_targets: usize,
+    /// Krok 11 (`scan_fresh`): prah distinktnich cilu pro neznamy zdroj bez uspechu.
+    pub scan_fresh_min: usize,
     pub scan_window_cycles: u64,
     pub unexpected_min_success: u32,
     /// Dominantní zdroj: podíl a minimální počet toků.
@@ -184,6 +188,7 @@ impl Default for V3Thresholds {
             qualified_min_duration_s: 1.0,
             qualified_min_flows: 5,
             scan_min_targets: 8,
+            scan_fresh_min: 4,
             scan_window_cycles: 48,
             unexpected_min_success: 3,
             dominant_share: 0.2,
@@ -516,6 +521,12 @@ pub(crate) fn detect_v3(
     // krok 2A: zdroje selhání po klíči a distinktní cíle zdroje na správcovských portech
     let mut fail_sources: HashMap<ServiceKey, HashMap<String, u32>> = HashMap::new();
     let mut fanout: HashMap<String, (HashSet<String>, DateTime<Utc>)> = HashMap::new();
+    // krok 11: zdroje s aspon jednim uspesnym spojenim v okne (nejsou cisty sken)
+    let succeeded_sources: HashSet<&str> = connections
+        .iter()
+        .filter(|c| is_success(c))
+        .filter_map(|c| c.src_ip.as_deref())
+        .collect();
 
     for connection in connections {
         let Some(port) = connection.dst_port else {
@@ -1030,7 +1041,15 @@ pub(crate) fn detect_v3(
                 .targets
                 .retain(|(_, last)| cycle.saturating_sub(*last) < th.scan_window_cycles);
             let distinct = record.targets.len();
-            if distinct < th.scan_min_targets {
+            let min_targets = if switches.scan_fresh
+                && !known_hosts.contains(&src)
+                && !succeeded_sources.contains(src.as_str())
+            {
+                th.scan_fresh_min.min(th.scan_min_targets)
+            } else {
+                th.scan_min_targets
+            };
+            if distinct < min_targets {
                 continue;
             }
             let distinct_hosts: HashSet<&str> = targets.iter().map(|t| t.0.as_str()).collect();
@@ -1456,6 +1475,7 @@ mod tests {
         volume: true,
         unexpected: true,
         recall: false,
+        scan_fresh: false,
     };
     const RECALL: V3Switches = V3Switches {
         recall: true,

@@ -23,6 +23,7 @@ pub mod egress_volume;
 pub mod graph;
 pub mod interactive;
 pub mod novelty;
+pub mod oneshot;
 pub mod profile;
 
 use chrono::{DateTime, Utc};
@@ -53,6 +54,10 @@ pub struct BehaviorSwitches {
     pub breadth: bool,
     /// Krok 9: objemové detektory `breadth`.
     pub breadth_volume: bool,
+    /// Krok 11: detektory prvniho videni protejsku.
+    pub bulk_novel: bool,
+    pub bulk_clear: bool,
+    pub peer_burst: bool,
 }
 
 impl BehaviorSwitches {
@@ -70,11 +75,14 @@ impl BehaviorSwitches {
             saas_group: engine.saas_group(),
             breadth: engine.breadth(),
             breadth_volume: engine.breadth_volume(),
+            bulk_novel: engine.bulk_novel(),
+            bulk_clear: engine.bulk_clear(),
+            peer_burst: engine.peer_burst(),
         }
     }
 
     pub fn any(&self) -> bool {
-        self.egress || self.graph || self.profile || self.breadth
+        self.egress || self.graph || self.profile || self.breadth || self.bulk_novel || self.bulk_clear || self.peer_burst
     }
 }
 
@@ -93,6 +101,8 @@ pub const BEHAVIOR_TYPES: &[&str] = &[
     "ingest_volume_anomaly",
     "slow_egress",
     "link_saturation",
+    "novel_bulk_transfer",
+    "novel_peer_burst",
 ];
 
 pub fn is_behavior_type(kind: &str) -> bool {
@@ -166,6 +176,7 @@ pub struct BehaviorThresholds {
     pub graph: graph::GraphThresholds,
     pub novelty: novelty::NoveltyThresholds,
     pub breadth: breadth::BreadthThresholds,
+    pub oneshot: oneshot::OneshotThresholds,
 }
 
 impl BehaviorThresholds {
@@ -269,6 +280,18 @@ pub fn run_window(
             now,
             &habit,
             switches.breadth_volume,
+        ));
+    }
+    if switches.bulk_novel || switches.bulk_clear || switches.peer_burst {
+        out.findings.extend(oneshot::detect(
+            &state.profile,
+            &state.prevalence,
+            &thresholds.oneshot,
+            input.outbound,
+            now,
+            switches.bulk_novel,
+            switches.bulk_clear,
+            switches.peer_burst,
         ));
     }
     if switches.novelty && switches.egress {

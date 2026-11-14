@@ -20,6 +20,8 @@ pub const PROTECTED_TYPES: &[&str] = &[
     "novel_persistent_peer",
     "novel_fanout",
     "novel_burst_peer",
+    "novel_bulk_transfer",
+    "novel_peer_burst",
     "pivot_chain",
     "suricata_alert",
     "egress_ids_alert",
@@ -60,7 +62,11 @@ impl Protection {
 /// Ochrana podle typu (platí i pro uložený stav).
 pub fn type_protection(kind: &str) -> Option<Protection> {
     match kind {
-        "novel_persistent_peer" | "novel_fanout" | "novel_burst_peer" => Some(Protection::Novelty),
+        "novel_persistent_peer"
+        | "novel_fanout"
+        | "novel_burst_peer"
+        | "novel_bulk_transfer"
+        | "novel_peer_burst" => Some(Protection::Novelty),
         "pivot_chain" => Some(Protection::Graph),
         "suricata_alert" | "egress_ids_alert" | "ids_alert" => Some(Protection::Signature),
         "distributed_sources" => Some(Protection::Aggregate),
