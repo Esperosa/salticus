@@ -62,3 +62,66 @@ Ladění na 20261102 a 20261103 (základ `kb`, kandidát `c1` se všemi třemi p
 3. **`peer_burst` zobrazil hn_mail_newsletter_burst** (5,1 → 66,1 %) výměnou za cloud_api_discovery_burst (7,7 → 61,5 %). Rozlišit je jde jen portem (587 proti 443), což by bylo ladění na hard-negative scénář; neprovádím.
 
 Kandidáti na držených seedech: **A = `breadth` + `bulk_clear`** (hlavní kandidát), **B = `breadth` + `bulk_novel` + `peer_burst` + `scan_fresh`** (agresivní, kvůli záznamu trade-offu). Základ = bez nových přepínačů a bez `breadth` (preset `recommended`). Pořadí běhů: základ na všech šesti seedech, potom A, potom B; vždy jedno rameno.
+
+### G2) Další odchylky při držených seedech
+
+- Kandidát B se pustil jen na dvou držených seedech (20263101, 20263102) z časových důvodů; kandidát A a základ na všech šesti. Jeden běh B se nejdřív omylem přeskočil (název ramene `hB` kolidoval s `hb` na souborovém systému bez rozlišení velikosti písmen); B se pustil znovu pod názvem `hfull`, bez změny kódu a prahů.
+- Intervaly Wilson v tabulkách jsou po útocích, ne po sítích (útoky ve stejné síti nejsou nezávislé), takže skutečné intervaly jsou o něco širší.
+
+## H) Výsledky na držených seedech (jednou)
+
+Zdroje: `k11/held-A.md` (6 seedů, 240 sítí), `k11/held-B.md` (2 seedy, 80 sítí), ladění `k11/ladeni-c1.md`. Základ = preset `recommended`, svět k10.
+
+### H1) Opravené rodiny: před a po proti předregistrovaným prahům
+
+| rodina | n (A) | základ | A (`breadth` + `bulk_clear`) | B (vše, 2 seedy) | práh K11-1 (≥ 90 %, dolní mez ≥ 85 %) |
+|---|---:|---|---|---|---|
+| drive_by_bulk_download | 75 | 8,0 | **52,0** (40,9 až 62,9) | 52,0 (n = 25) | **nesplněno** |
+| exfil_alt_protocol_ftp | 76 | 18,4 | **78,9** (68,5 až 86,6) | 76,9 (n = 26) | **nesplněno** |
+| bucket_mass_download | 90 | 5,6 | 6,7 (3,1 až 13,8) | 80,8 (62,1 až 91,5), n = 26 | **nesplněno** (A) |
+| cloud_api_discovery_burst | 88 | 13,6 | 13,6 | 80,0 (64,1 až 90,0), n = 35 | **nesplněno** (A) |
+| clicks_to_rare_destination | 84 | 9,5 | 9,5 | 19,4 (9,2 až 36,3) | **nesplněno** |
+| port_scan_horizontal | 560 | 85,5 | 85,4 | 91,3 (86,5 až 94,5), základ 88,8 na stejných seedech | A: nesplněno; B: nad 90 %, dolní mez 86,5 (n = 196), ale zlepšení +2,6 p. b. nelze odlišit od šumu a ostatní přepínače B ho nezpůsobují přímo |
+
+Žádná z šesti rodin nesplnila K11-1 v kandidátu A. Rodiny, které se pohnuly (drive_by, exfil_ftp), se přiblížily, ale nedosáhly 90 %: část útoků je pod 2 MB nebo slepá (diagnoza.md).
+
+### H2) FP, zavření, bezpečnost
+
+| práh | A (6 seedů) | B (2 seedy) | stav |
+|---|---|---|---|
+| K11-2 zobrazené FP na síť-den, poměr proti základu | 9,29 → 10,04, **1,081** | 8,98 → 10,26, **1,142** | splněno (≤ 1,15); u A patří většina přírůstku samotnému `breadth` (na ladicím seedu 20261102: základ 7,52, `breadth` 7,89, `breadth` + `bulk_clear` 7,89, tedy `bulk_clear` přidal 0,00) |
+| K11-2 neškodné změny hn_* (změna zobrazení ≤ 10 p. b.) | splněno: největší změna +0,7 p. b. | **nesplněno**: hn_cdn_update_download +69,7, hn_mail_newsletter_burst +70,6, hn_nightly_cloud_backup_upload +29,2 | A ano, B ne |
+| K11-3 omylem zavřeno | 0,7 % (148 útoků) | 0,6 % | splněno |
+| K11-4 chráněná zavření | 0 | 0 | splněno |
+| K11-5 paniky a invarianty | 0 / 0 | 0 / 0 | splněno |
+| K11-6 determinismus | testy epizod zelené (výchozí vypnuto se stavem nemění); běh `soak verify` s novými přepínači jsem nepustil | | částečně |
+| K11-7 zákaz paměti | `soak::no_memory` zelený | | splněno |
+| K11-8 přenos (LOFO) | rodiny, pro které `bulk_clear` nebyl určen: mail_forward_smtp_exfil +22,9 p. b. (61,4 → 84,3), exfil_over_c2_trickle +18,1 (66,3 → 84,3), exfil_cloud_storage_upload +7,3; zhoršení do −1,3 p. b. (imap_spray, smb_login_failures, dc_replication_from_workstation) v mezích šumu | u B navíc exfil_cloud_storage_upload +45,2 | částečně: přenos je kladný u úniků po nešifrovaných portech (SMTP, nešifrovaný C2), ne obecně |
+
+Testy: celé `cargo test --lib`: 558 prošlo, 5 selhalo (`broker::*`, vyžadují Redis; nesouvisí). Nové testy `behavior::oneshot` a `scan_fresh_lowers_threshold_only_for_unknown_source_without_success` jsou zelené.
+
+### H3) Co se nepodařilo a proč
+
+1. **K11-1 se nepodařilo u žádné ze šesti rodin v A.** `bulk_clear` pohnul jen rodiny po nešifrovaných portech (drive_by 80, exfil_ftp 21): +44 a +60,5 p. b.
+2. **Šifrované hromadné stažení (bucket_mass_download, 443) a shluk toků na nový cíl (cloud_api_discovery_burst, clicks_to_rare_destination) se bez ceny v neškodných změnách opravit nedá.** `bulk_novel` a `peer_burst` zvedly detekci na 74 až 81 % a 61 až 80 %, ale zobrazily 70 % hn_cdn_update_download, 70 % hn_mail_newsletter_burst a +29 p. b. hn_nightly_cloud_backup_upload. Tvary toků jsou stejné (jeden host, první vztah, velký přenos nebo shluk); rozlišuje je jen port nebo účel, a ladit na port hard-negative scénáře by bylo přizpůsobení testu. Vstup, který by pomohl: záznamy TLS (SNI, certifikát, ASN cíle) a DNS (pověst domény, stáří).
+3. **`scan_fresh` bez prokazatelného přínosu**: port_scan_horizontal v B +2,6 p. b., v A (bez `scan_fresh`) −0,2; zlepšení se nepřipisuje přepínači. Vnější sken s 4 až 7 cíli v těchto datech často končí jako „nález existoval i bez útoku“ (kategorie c nepřipsáno), ne jako chybějící nález. Neprošlo.
+4. **Velké rodiny se neopravovaly** (diagnoza.md): většina zbylého zmeškání je slepá (výpadek senzoru, slepé podsítě) nebo jde o typ nálezu, ne o chybějící signál.
+5. **dns_zone_enum_burst** neopravena (provoz ven→dovnitř mimo vrstvu chování): vstup chybí.
+
+## I) Aktualizovaný registr slepých míst (krok 11)
+
+| místo | kategorie | co chybí |
+|---|---|---|
+| Útoky, jejichž toky nedorazily do telemetrie (výpadek senzoru, slepá podsíť, ztráta toků); port_scan_vertical 12 z 20 zmeškaných, credential_stuffing 4 z 13, exfiltration 3 z 9 | c (otevřené, mimo dosah detekce) | nepoškozená telemetrie; měřeno poprvé v kroku 11 (`diag.visible_flows`) |
+| Šifrované hromadné stažení z prvně viděného cíle (bucket_mass_download, drive-by po 443) a shluk toků na nový šifrovaný cíl (cloud_api_discovery_burst, clicks_to_rare_destination) | b (zmírněno jen za cenu zobrazení neškodných: viz H3 bod 2) | TLS a DNS záznamy (SNI, pověst a stáří domény, ASN) |
+| Nešifrované hromadné stažení a únik na první vztah | b (zmírněno, `bulk_clear`: drive_by 52 %, exfil_ftp 79 %) | zbytek je pod 2 MB nebo slepý |
+| dns_zone_enum_burst (vnější zdroj → DNS sítě) | b | inbound toky ve vrstvě chování (`behavior` dostává jen odchozí a vnitřní) |
+| exploit_attempt, c2_beacon s krátkým oknem | c | aplikační záznamy (HTTP, TLS) a delší pozorování (RQ4-014, min. 12 spojení) |
+| Typ nálezu u exploit_attempt, c2_beacon, ssh_bruteforce (zachyceno, ale jiným typem) | c | hodnocení typu je přísnější než detekce |
+| Vnější sken s 4 až 7 cíli (`scan_fresh`) | c (nepřínosné v tomto světě) | nález bez útoku téhož zdroje a cíle |
+
+## J) Návrh pro `recommended()` (jen s důkazem)
+
+- **Zapnout `bulk_clear`**: na držených seedech +44 a +60,5 p. b. u dvou cílových rodin, přenos +18 až +23 p. b. na dvou nezacílených rodinách, hn_* beze změny (největší +0,7 p. b.), FP na síť-den beze změny proti `breadth` (ladicí seed), omylem zavřeno 0,7 %, 0 chráněných zavření. Důkaz ze 6 držených seedů a 240 sítí. Podmínka: současně zapnutý `breadth` (jeho dopad na FP je 1,044 až 1,048 z kroků 9 a 10) nebo i bez něj (nezávislý: `bulk_clear` stojí jen na profilu a odchozích tocích); samostatné měření `bulk_clear` bez `breadth` na držených seedech neproběhlo.
+- **Nezapínat `bulk_novel` a `peer_burst`**: zobrazují 70 % neškodných hn_cdn_update_download a hn_mail_newsletter_burst. Mají smysl jen jako volitelný režim vyšší citlivosti s vědomým přijetím cizích falešných poplachů.
+- **Nezapínat `scan_fresh`**: bez přínosu.
