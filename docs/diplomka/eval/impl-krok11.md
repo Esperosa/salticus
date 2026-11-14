@@ -52,3 +52,13 @@ Jedno rameno najednou, Idle priorita, 6 vláken, PID 118652 se nedotýká (viz p
 ## G) Odchylky a poznámky
 
 (zapisuje se průběžně)
+
+### G1) Odchylky po prvním ladicím měření (zapsáno před spuštěním držených seedů)
+
+Ladění na 20261102 a 20261103 (základ `kb`, kandidát `c1` se všemi třemi přepínači), potom izolace na 20261102 (`cb`, `cp`, `cn`). Prahy detektorů (2 MB, 6 toků / 300 s, 4 cíle) se **nezměnily**. Změnil se tvar oprav:
+
+1. **Přibyl přepínač `bulk_clear`** (`novel_bulk_transfer` jen pro přenos po nešifrovaných portech 21, 23, 25, 80, 8080). Důvod: `bulk_novel` (všechny porty) zobrazil i hard-negative hn_cdn_update_download (11,5 → 73,4 %) a hn_nightly_cloud_backup_upload (60,5 → 86,4 %), tedy poměr ≈ 2 neškodné ku 1 útoku; po šifrovaných portech je stažení z nového CDN od nového bucketu v tokách nerozlišitelné. Nešifrovaný objemový přenos na první vztah je abstraktní rys (ne rodina), ale zvolil jsem ho po pohledu na hn_* výsledky, takže hn_* nejsou u tohoto rozhodnutí nezávislé.
+2. **`scan_fresh` nepomohl** na ladicích seedech (port_scan_horizontal +2,0 p. b. v kandidátu c1 se vším, v izolaci `cb` 0, a `scan_fresh` v `cb` není zapnut; v `c1` je zapnut a rozdíl +2,0 p. b. patří i ostatním přepínačům). Do držených seedů ho jako samostatnou opravu nenesu.
+3. **`peer_burst` zobrazil hn_mail_newsletter_burst** (5,1 → 66,1 %) výměnou za cloud_api_discovery_burst (7,7 → 61,5 %). Rozlišit je jde jen portem (587 proti 443), což by bylo ladění na hard-negative scénář; neprovádím.
+
+Kandidáti na držených seedech: **A = `breadth` + `bulk_clear`** (hlavní kandidát), **B = `breadth` + `bulk_novel` + `peer_burst` + `scan_fresh`** (agresivní, kvůli záznamu trade-offu). Základ = bez nových přepínačů a bez `breadth` (preset `recommended`). Pořadí běhů: základ na všech šesti seedech, potom A, potom B; vždy jedno rameno.
