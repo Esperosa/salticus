@@ -87,6 +87,7 @@ impl V3Runtime {
                     protect: engine.protect(),
                     endpoint: engine.endpoint(),
                     strict_refute: engine.strict_close(),
+                    competing: engine.hypotheses(),
                     ..Default::default()
                 },
                 secret,

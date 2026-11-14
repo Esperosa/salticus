@@ -149,6 +149,12 @@ impl Likelihoods {
     }
 }
 
+/// Změřené tabulky jako sdílená konstanta (bez opakovaného stavění mapy).
+pub fn measured_static() -> &'static Likelihoods {
+    static LIK: std::sync::OnceLock<Likelihoods> = std::sync::OnceLock::new();
+    LIK.get_or_init(Likelihoods::measured)
+}
+
 /// Jedno pozorování.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Obs {
@@ -157,7 +163,7 @@ pub struct Obs {
 }
 
 /// Ceny rozhodnutí (relativní; přirozená jednotka = práce analytika na jeden případ).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Costs {
     /// Zavřít jako neškodné, a byl to útok.
     pub miss: f64,

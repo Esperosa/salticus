@@ -239,6 +239,13 @@ pub struct Case {
     /// Krok 12: nezávislé skupiny neškodného důkazu (`benign_group`), pro přísné vyvrácení.
     #[serde(default)]
     benign_groups: std::collections::BTreeSet<u8>,
+    /// Krok 12: pozorování pro režim konkurenčních hypotéz (`policy.competing`).
+    #[serde(default)]
+    obs: Vec<crate::competing::Obs>,
+    #[serde(default)]
+    use_competing: bool,
+    #[serde(default)]
+    susp_groups: std::collections::BTreeSet<u8>,
     /// Cykly po otevření, ve kterých se nález znovu objevil (L2 přetrvání).
     #[serde(default)]
     seen_after_open: u32,
@@ -250,6 +257,13 @@ pub struct Case {
 
 impl Case {
     pub fn posterior(&self) -> f64 {
+        if self.use_competing {
+            return crate::competing::posterior_attack(
+                self.input.prior,
+                &self.obs,
+                crate::competing::measured_static(),
+            );
+        }
         1.0 / (1.0 + (-self.log_odds).exp())
     }
 }
@@ -443,6 +457,9 @@ pub struct LadderPolicy {
     pub endpoint: bool,
     /// Krok 12: vyvrácení jen s pozitivním důkazem z ≥ 2 nezávislých skupin.
     pub strict_refute: bool,
+    /// Krok 12: režim konkurenčních hypotéz (změřené věrohodnosti, rozhodnutí podle ceny omylu).
+    pub competing: bool,
+    pub costs: crate::competing::Costs,
 }
 
 impl Default for LadderPolicy {
@@ -464,6 +481,8 @@ impl Default for LadderPolicy {
             profile: false,
             profile_new_evidence: false,
             strict_refute: false,
+            competing: false,
+            costs: crate::competing::Costs::default(),
             protect: false,
             endpoint: false,
         }
@@ -665,6 +684,22 @@ pub fn benign_group(check: CheckId) -> Option<u8> {
         CheckId::History | CheckId::Profile => Some(3),
         CheckId::Endpoint => Some(4),
         CheckId::Reputation => Some(5),
+        _ => None,
+    }
+}
+
+/// Kontrola žebříku → druh kontroly řetězu a tabulky věrohodnosti (`competing`).
+pub fn competing_kind(check: CheckId) -> Option<crate::verification_chain::CheckKind> {
+    use crate::verification_chain::CheckKind as K;
+    match check {
+        CheckId::History => Some(K::CaseHistory),
+        CheckId::Profile => Some(K::HostBaseline),
+        CheckId::Peers => Some(K::PeerCompare),
+        CheckId::Context => Some(K::ConfigContext),
+        CheckId::Reputation => Some(K::Reputation),
+        CheckId::Endpoint => Some(K::EndpointTelemetry),
+        CheckId::Persistence => Some(K::RepeatMeasure),
+        CheckId::Liveness => Some(K::ActiveReadOnly),
         _ => None,
     }
 }
@@ -885,6 +920,9 @@ impl Ladder {
                 status: Status::Open,
                 benign_evidence: false,
                 benign_groups: Default::default(),
+                obs: Vec::new(),
+                use_competing: self.policy.competing,
+                susp_groups: Default::default(),
                 seen_after_open: 0,
                 same_source_seen: false,
                 last_seen_cycle: cycle,
@@ -1114,6 +1152,23 @@ impl Ladder {
                     None => *lr,
                 };
                 case.log_odds += lr.max(1e-6).ln();
+                if let Some(kind) = competing_kind(check) {
+                    case.obs.push(crate::competing::Obs {
+                        kind,
+                        result: if lr < 1.0 {
+                            crate::competing::Result3::Benign
+                        } else if lr > 1.0 {
+                            crate::competing::Result3::Suspicious
+                        } else {
+                            crate::competing::Result3::Nothing
+                        },
+                    });
+                    if lr > 1.0
+                        && let Some(group) = benign_group(check)
+                    {
+                        case.susp_groups.insert(group);
+                    }
+                }
                 if lr < 1.0 {
                     case.benign_evidence = true;
                     if let Some(group) = benign_group(check) {
@@ -1121,7 +1176,14 @@ impl Ladder {
                     }
                 }
             }
-            Outcome::Undetermined(_) | Outcome::Unavailable(_) => {}
+            Outcome::Undetermined(_) | Outcome::Unavailable(_) => {
+                if let Some(kind) = competing_kind(check) {
+                    case.obs.push(crate::competing::Obs {
+                        kind,
+                        result: crate::competing::Result3::Nothing,
+                    });
+                }
+            }
         }
         case.plan.pop_front();
         case.wait_until = None;
@@ -1158,7 +1220,20 @@ impl Ladder {
         let proven = !self.policy.strict_refute
             || (case.benign_groups.len() >= 2
                 && case.benign_groups.iter().any(|g| matches!(g, 1 | 2 | 4)));
-        let status = if posterior >= self.policy.p_confirm {
+        let competing_action = case
+            .use_competing
+            .then(|| crate::competing::best_action(raw, &self.policy.costs).0);
+        let status = if let Some(action) = competing_action {
+            use crate::competing::Action;
+            match action {
+                Action::ConfirmAttack if case.susp_groups.len() >= 2 => Some(Status::Confirmed),
+                Action::CloseBenign if !shielded && proven => Some(Status::Refuted),
+                _ if executed >= self.policy.max_checks || case.plan.is_empty() => {
+                    Some(Status::Escalated)
+                }
+                _ => None,
+            }
+        } else if posterior >= self.policy.p_confirm {
             Some(Status::Confirmed)
         } else if posterior <= refute_at && case.benign_evidence && !shielded && !proven {
             // nizka pravdepodobnost utoku bez dostatecneho pozitivniho dukazu: nezavirat,
@@ -1981,6 +2056,29 @@ mod tests {
         ladder.open(input("inductive_volume_anomaly", "10.0.0.5", &[]), 0);
         let decision = run_until_decided(&mut ladder, &mut env);
         assert_eq!(decision.status, Status::Refuted, "{}", decision.reason);
+    }
+
+    /// Krok 12: rezim konkurencnich hypotez rozhoduje podle ceny omylu (zmerene LR),
+    /// ne podle pevneho prahu; slaby neskodny dukaz pripad nezavre, jde cloveku.
+    #[test]
+    fn competing_mode_escalates_weak_benign_evidence_and_tracks_observations() {
+        let mut ladder = Ladder::new(
+            LadderPolicy {
+                competing: true,
+                strict_refute: true,
+                ..LadderPolicy::default()
+            },
+            7,
+        );
+        let mut env = Env {
+            recurrence: Some(Recurrence::Seen { days: 4 }),
+            peers: Some((5, 6)),
+            ..Env::default()
+        };
+        ladder.open(input("inductive_volume_anomaly", "10.0.0.5", &[]), 0);
+        let decision = run_until_decided(&mut ladder, &mut env);
+        assert_eq!(decision.status, Status::Escalated, "{}", decision.reason);
+        assert!(decision.raw_posterior > 0.0 && decision.raw_posterior < 1.0);
     }
 
     #[test]

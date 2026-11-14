@@ -504,6 +504,7 @@ impl V3Session {
                 None => crate::verify_ladder::Ladder::new(
                     crate::verify_ladder::LadderPolicy {
                         strict_refute: self.engine.strict_close(),
+                        competing: self.engine.hypotheses(),
                         ..Default::default()
                     },
                     u64::from_le_bytes(

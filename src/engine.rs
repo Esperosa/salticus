@@ -153,6 +153,9 @@ pub struct V3Features {
     /// Krok 12: detektory nad DNS metadaty (vycet zony).
     #[serde(default)]
     pub l7_dns: bool,
+    /// Krok 12: konkurencni hypotezy a rozhodnuti podle ceny omylu v zebricku.
+    #[serde(default)]
+    pub hypotheses: bool,
     /// Krok 11: sken vnejsiho zdroje s mene cili, ale bez jedineho uspechu (`scan_attempts`).
     #[serde(default)]
     pub scan_fresh: bool,
@@ -165,7 +168,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 37] = [
+    pub const NAMES: [&'static str; 38] = [
         "memory",
         "rate",
         "volume",
@@ -203,6 +206,7 @@ impl V3Features {
         "strict_close",
         "l7_tls",
         "l7_dns",
+        "hypotheses",
     ];
 
     pub fn all() -> Self {
@@ -244,6 +248,7 @@ impl V3Features {
             strict_close: true,
             l7_tls: true,
             l7_dns: true,
+            hypotheses: true,
         }
     }
 
@@ -293,6 +298,7 @@ impl V3Features {
             strict_close: false,
             l7_tls: false,
             l7_dns: false,
+            hypotheses: false,
             ..Self::all()
         }
     }
@@ -345,6 +351,7 @@ impl V3Features {
             strict_close: false,
             l7_tls: false,
             l7_dns: false,
+            hypotheses: false,
         }
     }
 
@@ -411,6 +418,7 @@ impl V3Features {
             "strict_close" => &mut self.strict_close,
             "l7_tls" => &mut self.l7_tls,
             "l7_dns" => &mut self.l7_dns,
+            "hypotheses" => &mut self.hypotheses,
             _ => return None,
         })
     }
@@ -592,6 +600,9 @@ impl EngineConfig {
     pub fn strict_close(&self) -> bool {
         self.on(|f| f.strict_close)
     }
+    pub fn hypotheses(&self) -> bool {
+        self.on(|f| f.hypotheses && f.ladder && f.memory)
+    }
     pub fn l7_tls(&self) -> bool {
         self.on(|f| f.egress && f.profile && f.l7_tls)
     }
@@ -667,7 +678,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,
