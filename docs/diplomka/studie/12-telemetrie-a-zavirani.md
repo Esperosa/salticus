@@ -1,6 +1,6 @@
 # Studie 12: telemetrie šifrovaného provozu a politika zavírání poplachů
 
-Datum 2026-11-14. Stav: **první verze z mých znalostí o dokumentaci nástrojů, odkazy na primární dokumentace nejsou v tomto kole ověřeny stažením** (v běhu nebyl použit webový přístup). Každé tvrzení označené „ověřit“ se před použitím v textu práce prochází proti zdroji. Odkazy jsou na domovské dokumentace projektů, ne na konkrétní stránky, abych neuváděl adresy z paměti.
+Datum 2026-11-14. Stav: první verze psaná z paměti, **dne 2026-11-14 ověřena stažením primárních stránek (oddíl 7)**. Co se ověřit nepodařilo, je označeno „ověřit“.
 
 ## 1. Proč krok 11 selhal (kvantitativně)
 
@@ -62,3 +62,17 @@ Vstupy (normalizované záznamy `tls`, `dns`, `http` a příznak směru toku), n
 ## 6. Otevřené (pro další kolo)
 
 Stažení a citace primárních zdrojů; ověření prahů RITA; veřejné datasety s TLS a DNS poli (licence, velikost), kalibrace rozdělení; přehrání jednoho reálného datasetu celou cestou.
+
+## 7. Ověření proti primárním zdrojům (staženo 2026-11-14)
+
+| tvrzení | zdroj (URL) | výsledek |
+|---|---|---|
+| Zeek `ssl.log`: `server_name`, `next_protocol`, `version`, `cipher`, `resumed`, `established`, `cert_chain_fuids`, `subject`, `issuer`; `ja3`/`ja3s` jen s nainstalovanými balíčky JA3/JA3S | https://docs.zeek.org/en/master/logs/ssl.html | potvrzeno. **Oprava textu:** pole `validation_status` na této stránce není; stránka nespecifikuje verzi (odkazuje na větev master). Stáří a vydavatel certifikátu se čtou z `x509.log` přes `cert_chain_fuids` |
+| Zeek `x509.log`: `certificate.not_valid_before`, `not_valid_after`, `issuer`, `subject`, `san.dns`, `basic_constraints.ca` | https://docs.zeek.org/en/master/logs/x509.html | potvrzeno. **Oprava:** příznak self-signed se nelogguje; self-signed se musí odvodit (subject = issuer), je to moje odvození, ne pole Zeeku |
+| Zeek `dns.log`: `query`, `qtype_name`, `rcode_name`, `answers`, `TTLs`, `rejected`, `rtt`, `AA/TC/RD/RA` | https://docs.zeek.org/en/master/logs/dns.html | potvrzeno (verze nestanovena) |
+| Suricata EVE: typy `alert`, `anomaly`, `fileinfo`, `http`, `flow`, `dns`, `tls` a další; `tls`: `sni`, `version`, `notbefore`, `notafter`, `issuerdn`, `subject`, `fingerprint`, `ja3`, `ja3s`, `ja4`, `client_alpns`, `server_alpns` (JA3/JA4 je třeba zapnout v konfiguraci); `dns`: `rrname`, `rrtype`, `rcode`, `answers` (verze 3 formátu výchozí, od Suricaty 8.0); `http`: `hostname`, `url`, `http_user_agent`, `length`; `fileinfo`: `size`, `sha256`, `magic`; `anomaly`: `type`, `event`, `layer` | https://docs.suricata.io/en/latest/output/eve/eve-json-format.html | potvrzeno; stránka odpovídá řadě Suricata 8.x. **Důsledek pro parser:** DNS v EVE má dvě podoby (starší jedna otázka na událost a novější `queries`/`answers` pole), parser musí umět obě; JA3/JA4 nemusí být v logu přítomné |
+| JA3: MD5 z pěti polí ClientHello (verze, šifry, rozšíření, křivky, formáty bodů), GREASE se ignoruje; licence BSD-3-Clause; projekt Salesforce nadále neudržován, repozitář archivován 2025-05-01 | https://github.com/salesforce/ja3 | potvrzeno. **Důsledek:** JA3 je zastaralý a odolný vůči randomizaci rozšíření jen omezeně (z tohoto zdroje neplyne, ověřit); použít spolu s JA4 |
+| JA4+: JA4 (TLS klient), JA4S, JA4H (HTTP), JA4X (X.509), JA4L/LS (latence), JA4SSH, JA4T/TS (TCP) | https://github.com/FoxIO-LLC/ja4 (technical_details/README) | potvrzeno rozsah; **licence JA4+ jsou jiné než BSD pro JA4 samotné a v tomto kole se nečetla repo-licence (ověřit před použitím jiných než JA4 v kódu)**. Znaky JA4 jsou ochranné známky FoxIO |
+| RITA: beaconing, dlouhá spojení, DNS tunelování, threat intel nad Zeek logy (TSV, JSON) | https://github.com/activecm/rita | potvrzeno. **Oprava:** domovská stránka **žádné prahy ani váhy skóre neuvádí**; moje dřívější „ověřit prahy RITA“ zůstává otevřené a v textu práce se prahy RITA necitují |
+
+Neověřeno (zůstává „ověřit“): konkrétní doporučení pro zavírání poplachů v SOC (oddíl 3 je moje syntéza obecných principů, ne citace; kandidáti zdrojů: NIST SP 800-61, MITRE ATT&CK Data Sources, dokumentace Security Onion); Corelight, Arkime, Wazuh a Sigma jsem v tomto kole nestahoval.
