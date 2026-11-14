@@ -146,6 +146,9 @@ pub struct WorldOptions {
     /// Krok 8: svět koncové telemetrie (`--endpoint`, `--endpoint-coverage`, `--endpoint-agent`).
     #[serde(default)]
     pub endpoint: crate::soak::endpoint_sim::EndpointWorld,
+    /// Krok 12: svet metadat TLS a DNS (`--l7`).
+    #[serde(default)]
+    pub l7: bool,
 }
 
 impl Default for WorldOptions {
@@ -158,6 +161,7 @@ impl Default for WorldOptions {
             families: Default::default(),
             coverage: Default::default(),
             endpoint: Default::default(),
+            l7: false,
         }
     }
 }
@@ -1059,7 +1063,7 @@ fn run_episode_inner(
 
         // --- 1. telemetrie ---
         let mut cycle_rng = Rng::new(seed_for_cycle(model.seed, cycle));
-        let output = stage(agg, "generate", || {
+        let mut output = stage(agg, "generate", || {
             let ctx = CycleContext {
                 model: &model,
                 ips: &ips,
@@ -1078,6 +1082,16 @@ fn run_episode_inner(
             };
             generate_cycle(&ctx, &mut truths, &mut cycle_rng)
         });
+        if cfg.world.l7 {
+            let own: std::collections::HashSet<&str> = ips.iter().map(String::as_str).collect();
+            output.l7 = crate::soak::l7sim::synthesize(
+                derive(model.seed, 0x17_5EED),
+                &output.observations,
+                &output.flow_truth,
+                &truths,
+                &|ip| own.contains(ip),
+            );
+        }
         agg.cycles += 1;
         agg.virtual_hours += CYCLE_SECS as f64 / 3600.0;
         agg.observations += output.observations.len() as u64;

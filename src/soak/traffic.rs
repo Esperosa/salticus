@@ -507,6 +507,8 @@ pub struct CycleOutput {
     pub regular_flows: u64,
     /// Krok 12: metadata TLS, DNS a HTTP simulovanych toku (svet `--l7`).
     pub l7: Vec<crate::l7::L7Event>,
+    /// Krok 12: pětice toku -> index pravdy (jen mereni, pro `l7sim`).
+    pub flow_truth: std::collections::HashMap<crate::soak::l7sim::FlowKey, usize>,
 }
 
 pub fn ts(secs: i64) -> DateTime<Utc> {
@@ -1622,6 +1624,9 @@ fn push_one(
         }
     }
     if !blocked {
+        if let (Some(index), Some(key)) = (truth, crate::soak::l7sim::key_of(&observation)) {
+            out.flow_truth.insert(key, index);
+        }
         out.observations.push(observation);
     }
 }

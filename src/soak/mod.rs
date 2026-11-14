@@ -8,6 +8,7 @@ pub mod endpoint_sim;
 pub mod episode;
 pub mod hist;
 pub mod kernel;
+pub mod l7sim;
 pub mod ladder_env;
 pub mod legs;
 pub mod netmodel;
