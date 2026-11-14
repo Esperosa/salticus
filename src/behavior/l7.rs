@@ -28,12 +28,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     behavior::{BehaviorFinding, evict_oldest, finding},
-    l7::{DnsMeta, L7Event, TlsMeta, zone_of},
+    l7::{DnsMeta, L7Event, TlsMeta, name_entropy, zone_of},
     model::{Confidence, Severity},
     passive::ConnectionObservation,
 };
 
-pub const L7_TYPES: &[&str] = &["tls_rare_transfer", "tls_novel_burst", "dns_zone_enumeration"];
+pub const L7_TYPES: &[&str] = &[
+    "tls_rare_transfer",
+    "tls_novel_burst",
+    "dns_zone_enumeration",
+    "dns_tunnel_names",
+    "icmp_payload_anomaly",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -47,6 +53,11 @@ pub struct L7Thresholds {
     pub young_cert_s: i64,
     pub enum_names: usize,
     pub enum_nx: f64,
+    /// Tunel pres DNS: nejmene ruznych jmen, delka a entropie nejlevejsi znacky a podil TXT/NULL.
+    pub tunnel_names: usize,
+    pub tunnel_label: f64,
+    pub tunnel_entropy: f64,
+    pub tunnel_txt: f64,
     pub max_hosts: usize,
     pub max_snis: usize,
     pub per_host_cap: usize,
@@ -63,6 +74,10 @@ impl Default for L7Thresholds {
             young_cert_s: 30 * 86_400,
             enum_names: 15,
             enum_nx: 0.3,
+            tunnel_names: 8,
+            tunnel_label: 24.0,
+            tunnel_entropy: 3.0,
+            tunnel_txt: 0.6,
             max_hosts: 50_000,
             max_snis: 200_000,
             per_host_cap: 512,
@@ -329,6 +344,54 @@ pub fn detect(
                 by_src.entry(d.src_ip.as_str()).or_default().push(d);
             }
         }
+        for (src, list) in &by_src {
+            // tunel pres DNS: dva nezavisle rysy, tvar jmena (delka a entropie) a typ zaznamu
+            if !internal(src) {
+                continue;
+            }
+            let mut per_zone: BTreeMap<&str, Vec<&DnsMeta>> = BTreeMap::new();
+            for d in list {
+                per_zone.entry(zone_of(&d.qname)).or_default().push(d);
+            }
+            for (zone, items) in per_zone {
+                let names: BTreeSet<&str> = items.iter().map(|d| d.qname.as_str()).collect();
+                if names.len() < t.tunnel_names {
+                    continue;
+                }
+                let label = |d: &&DnsMeta| d.qname.split('.').next().unwrap_or("").to_string();
+                let avg_len = items.iter().map(|d| label(d).len() as f64).sum::<f64>() / items.len() as f64;
+                let avg_ent = items.iter().map(|d| name_entropy(&label(d))).sum::<f64>() / items.len() as f64;
+                let txt = items
+                    .iter()
+                    .filter(|d| matches!(d.qtype.as_str(), "TXT" | "NULL" | "PRIVATE"))
+                    .count() as f64
+                    / items.len() as f64;
+                if avg_len >= t.tunnel_label && avg_ent >= t.tunnel_entropy && txt >= t.tunnel_txt {
+                    let server = items[0].dst_ip.as_str();
+                    out.push(BehaviorFinding {
+                        finding: finding(
+                            "dns_tunnel_names",
+                            src,
+                            &format!("dns/{zone}"),
+                            Severity::Medium,
+                            Confidence::Medium,
+                            format!("Host {src}: {} dlouhych nahodnych jmen pod {zone} (TXT {:.0} %)", names.len(), txt * 100.0),
+                            format!(
+                                "Prumerna delka znacky {avg_len:.0}, entropie {avg_ent:.1} bitu/znak, podil TXT/NULL {:.0} %: \
+                                 tvar jmen i typ zaznamu odpovidaji DNS tunelu. Pravidlo heuristika-behavior:l7-dns-tunnel@v1.",
+                                txt * 100.0
+                            ),
+                            vec![format!("{src} -> {server}: {} jmen pod {zone}", names.len())],
+                            "Overit proces a ucel dotazu; omezit TXT a NULL dotazy z klientu.",
+                        ),
+                        sources: vec![server.to_string()],
+                        targets: vec![(server.to_string(), 53)],
+                        count: names.len() as u32,
+                        actor: src.to_string(),
+                    });
+                }
+            }
+        }
         for (src, list) in by_src {
             let mut zones: BTreeMap<&str, (BTreeSet<&str>, u32, u32, bool, &str)> = BTreeMap::new();
             for d in &list {
@@ -467,6 +530,32 @@ mod tests {
         assert_eq!(found[0].finding.finding_type, "tls_rare_transfer");
         // poplachovy par se neuci: dalsi okno znovu hlasi
         assert_eq!(run(&mut state, &evil, &big3, now + 1800).len(), 1);
+    }
+
+    #[test]
+    fn dns_tunnel_needs_label_shape_and_txt_type() {
+        let mk = |qtype: &str, n: usize| -> Vec<L7Event> {
+            (0..n)
+                .map(|i| {
+                    L7Event::Dns(DnsMeta {
+                        ts: 1_800_000_000 + i as i64,
+                        src_ip: "10.0.0.5".into(),
+                        dst_ip: "10.0.0.2".into(),
+                        qname: format!("{:x}q8x2kz9pw1msv7b3n5c4d6f0{}.tun.example", 0x5eed_u64 * (i as u64 + 7), i),
+                        qtype: qtype.into(),
+                        rcode: Some("NOERROR".into()),
+                        answers: 1,
+                    })
+                })
+                .collect()
+        };
+        let mut state = L7State::default();
+        let txt = run(&mut state, &mk("TXT", 20), &[], 1_800_000_100);
+        assert!(txt.iter().any(|f| f.finding.finding_type == "dns_tunnel_names"));
+        // dlouha hashovana jmena typu A (CDN) nejsou tunel
+        assert!(run(&mut state, &mk("A", 20), &[], 1_800_000_100).is_empty());
+        // malo jmen
+        assert!(run(&mut state, &mk("TXT", 4), &[], 1_800_000_100).is_empty());
     }
 
     #[test]

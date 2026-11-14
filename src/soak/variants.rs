@@ -1855,6 +1855,8 @@ pub fn expected_types(index: u8) -> &'static [&'static str] {
             "beacon_periodic",
             "egress_ids_alert",
             "novel_persistent_peer",
+            "dns_tunnel_names",
+            "icmp_payload_anomaly",
         ],
         Pattern::Burst | Pattern::BulkIn => &[
             "inductive_volume_anomaly",
@@ -1869,6 +1871,8 @@ pub fn expected_types(index: u8) -> &'static [&'static str] {
             "tls_rare_transfer",
             "tls_novel_burst",
             "dns_zone_enumeration",
+            "dns_tunnel_names",
+            "icmp_payload_anomaly",
         ],
         Pattern::Sweep | Pattern::PortSweep => &[
             "unexpected_traffic",
@@ -1925,6 +1929,8 @@ pub fn expected_types(index: u8) -> &'static [&'static str] {
             "link_saturation",
             "novel_bulk_transfer",
             "tls_rare_transfer",
+            "icmp_payload_anomaly",
+            "dns_tunnel_names",
         ],
         // provozni vzory: vsechno, co engine k vypadku a degradaci umi rict
         Pattern::Outage | Pattern::Flap | Pattern::Degrade | Pattern::Cascade | Pattern::Drift => {

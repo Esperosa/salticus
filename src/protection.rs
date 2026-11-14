@@ -25,6 +25,8 @@ pub const PROTECTED_TYPES: &[&str] = &[
     "tls_rare_transfer",
     "tls_novel_burst",
     "dns_zone_enumeration",
+    "dns_tunnel_names",
+    "icmp_payload_anomaly",
     "pivot_chain",
     "suricata_alert",
     "egress_ids_alert",
@@ -72,7 +74,9 @@ pub fn type_protection(kind: &str) -> Option<Protection> {
         | "novel_peer_burst"
         | "tls_rare_transfer"
         | "tls_novel_burst"
-        | "dns_zone_enumeration" => Some(Protection::Novelty),
+        | "dns_zone_enumeration"
+        | "dns_tunnel_names"
+        | "icmp_payload_anomaly" => Some(Protection::Novelty),
         "pivot_chain" => Some(Protection::Graph),
         "suricata_alert" | "egress_ids_alert" | "ids_alert" => Some(Protection::Signature),
         "distributed_sources" => Some(Protection::Aggregate),

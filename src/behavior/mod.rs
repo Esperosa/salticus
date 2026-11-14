@@ -21,6 +21,7 @@ pub mod beacon;
 pub mod breadth;
 pub mod egress_volume;
 pub mod graph;
+pub mod icmp;
 pub mod interactive;
 pub mod l7;
 pub mod novelty;
@@ -62,6 +63,8 @@ pub struct BehaviorSwitches {
     /// Krok 12: detektory nad metadaty TLS a DNS.
     pub l7_tls: bool,
     pub l7_dns: bool,
+    /// Krok 12: ICMP s velkou uzitecnou casti.
+    pub icmp_payload: bool,
 }
 
 impl BehaviorSwitches {
@@ -84,11 +87,12 @@ impl BehaviorSwitches {
             peer_burst: engine.peer_burst(),
             l7_tls: engine.l7_tls(),
             l7_dns: engine.l7_dns(),
+            icmp_payload: engine.icmp_payload(),
         }
     }
 
     pub fn any(&self) -> bool {
-        self.egress || self.graph || self.profile || self.breadth || self.bulk_novel || self.bulk_clear || self.peer_burst || self.l7_tls || self.l7_dns
+        self.egress || self.graph || self.profile || self.breadth || self.bulk_novel || self.bulk_clear || self.peer_burst || self.l7_tls || self.l7_dns || self.icmp_payload
     }
 }
 
@@ -112,6 +116,8 @@ pub const BEHAVIOR_TYPES: &[&str] = &[
     "tls_rare_transfer",
     "tls_novel_burst",
     "dns_zone_enumeration",
+    "dns_tunnel_names",
+    "icmp_payload_anomaly",
 ];
 
 pub fn is_behavior_type(kind: &str) -> bool {
@@ -323,6 +329,9 @@ pub fn run_window(
             switches.l7_tls,
             switches.l7_dns,
         ));
+    }
+    if switches.icmp_payload {
+        out.findings.extend(icmp::detect(input.outbound, 8, 200));
     }
     if switches.bulk_novel || switches.bulk_clear || switches.peer_burst {
         out.findings.extend(oneshot::detect(

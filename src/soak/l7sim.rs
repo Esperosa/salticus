@@ -291,7 +291,16 @@ fn dns_for(
         (_, true) => {
             let h = derive(key, 3);
             let rc = if rng.chance(0.05) { "NXDOMAIN" } else { "NOERROR" };
-            (format!("host{}.tail.example", zipf(h, 3000)), "A", rc)
+            let t = rng.f64();
+            if t < 0.04 {
+                // CDN a reklama: dlouha hashovana znacka, ale typ A
+                (format!("{:016x}{:016x}.cdn.example", derive(key, 7), derive(key, 8)), "A", rc)
+            } else if t < 0.06 {
+                // pošta: SPF, DKIM (typ TXT) na beznych jmenech
+                (format!("mail{}.tail.example", zipf(h, 200)), "TXT", rc)
+            } else {
+                (format!("host{}.tail.example", zipf(h, 3000)), "A", rc)
+            }
         }
         (_, false) => {
             // vnejsi resolver dotazuje vnitrni autoritativni DNS

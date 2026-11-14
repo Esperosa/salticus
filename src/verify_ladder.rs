@@ -625,6 +625,8 @@ fn checks_for(input: &CaseInput, policy: &LadderPolicy) -> Vec<CheckId> {
             | "tls_rare_transfer"
             | "tls_novel_burst"
             | "dns_zone_enumeration"
+            | "dns_tunnel_names"
+            | "icmp_payload_anomaly"
     ) {
         checks.push(CheckId::Peers);
     }
