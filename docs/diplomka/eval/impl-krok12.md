@@ -100,3 +100,23 @@ Tabulka zbytků po rodinách (doplňuje se z `tools/k11_diag.py` na držených s
 | (vyplní se po měření na držených seedech) | | | | | | |
 
 Hlášení blízkosti: pro každou rodinu uvedu rozdíl do 100 % v procentních bodech a dolní mez Wilson; souhrnně počet rodin nad 90 %, nad 95 % a na 100 % mezi pozorovatelnými útoky.
+
+## 7) Výsledky fáze 1: politika zavírání (`strict_close`), seed 20263101, 40 sítí, druhé měření stejného seedu
+
+Zdroje: `k11/k12-strict-vs-base.md`, `tools/k12_boundary.py`. Základ `hb` (preset), kandidát `sB` = `breadth` + `bulk_clear` + `strict_close` (zavření kontextem jen s identifikovanými zdroji, z nichž všechny patří záznamu, bez výjimky pro objem; vyvrácení žebříkem jen s pozitivním důkazem ze ≥ 2 nezávislých skupin, z toho aspoň jedna silná). Medziv rameno `sA` (jen kontext) ukázalo, že samotný kontext je jen menšina příčin: omylem zavřených útoků 26 → 22, hlavní příčinou je vyvrácení žebříkem.
+
+| ukazatel | základ `hb` | kontext `sA` | kontext + žebřík `sB` |
+|---|---|---|---|
+| útoky s omylem zavřeným nálezem | 26 z 3 598 (0,72 %, horní mez 1,06 %) | 22 (0,61 %, 0,92 %) | **1 z 3 598 (0,03 %, horní mez 0,16 %)** |
+| vyvrácení žebříkem: počet, z toho omylem | 809, 34 (4,2 %) | 806, 34 | **4, 0** (horní mez u 4 vzorků 49 %, nelze tvrdit nic) |
+| zavření kontextem: počet, omylem (kontrafaktuál) | 23, 2 | 10, 1 | 10, 1 |
+| zobrazené FP na síť-den | 10,47 | 11,67 | 11,73 (poměr 1,120 proti `hb`; ≤ 1,15 splněno) |
+| zobrazených položek celkem | 61 289 | | 64 132 (+4,6 %) |
+| detekce bezpečnostních útoků (rodiny, ne hn_*) | 85,6 | | 86,7 |
+| potvrzení žebříkem, z nich neškodné | 14,5 % | 13,7 % | 10,2 % |
+
+**Cena: analytické zatížení.** Vyvrácení žebříkem, které dřív zavřelo ~800 případů na 40 sítí (z nich 4,2 % omylem), se teď předává člověku: zobrazených položek je o 4,6 % víc a podíl případů žebříku předaných člověku je 85,7 % (základ 83,2 %). Tedy **žebřík sám zavírá téměř nic** (4 z 39 043). Cíl „0 omylem zavřených“ je splněn na tomto vzorku (1 pozorováno, ne 0), **zbylý jeden útok** je zavření kontextem `authorized_scanner` (kontrafaktuál 1 z 10; horní mez 40 % u tak malého vzorku). Příčinu zbylého případu jsem dál nerozebíral.
+
+**Hranice automatizace v tomto stavu** (z `k12_boundary.py`, `sB`): autonomně rozhodnuto 14,3 % případů (potvrzení a vyvrácení), 85,7 % předáno člověku. Autonomní potvrzení jsou z 10,2 % neškodná (horní mez 11,0 %); ECE posteriorů 7,9 %, Brier 0,182. **Záruku horní meze omylu u autonomního zavření nelze dát**, protože autonomních zavření je jen 14 na 40 sítí (horní mez Wilson 1 z 10 je 40 %). Pro záruku ≤ 0,5 % by bylo potřeba aspoň ≈ 600 autonomních zavření bez omylu na jednu síť nebo sadu sítí.
+
+Úprava poctivosti: o 0 omylem zavřených nelze mluvit; pozorován 1 z 3 598. Měření se opakovalo jen na jednom seedu (druhý seed `sA` jsem ukončil kvůli času), takže jde o ladicí, ne držený seed.
