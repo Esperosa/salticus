@@ -196,6 +196,11 @@ pub struct OutputStats {
     pub ladder_latency_max: u64,
     /// Výsledky kontrol rozhodnutých případů podle pravdy: "kontrola:značka|attack|benign".
     pub ladder_outcome_truth: BTreeMap<String, u64>,
+    /// Krok 12: posteriory rozhodnutych pripadu `[pouzita posteriora, utok (kontrafaktual) 0/1,
+    /// stav 0 potvrzeno / 1 vyvraceno / 2 eskalovano, cykly k rozhodnuti]`, nejvyse 6000 na sit
+    /// (pro ECE po pripadech a konformalni pokryti).
+    #[serde(default)]
+    pub ladder_log: Vec<[f32; 4]>,
     /// Kalibrační koše (20) posteriory rozhodnutých behaviorálních případů proti
     /// kontrafaktuální pravdě: surová a použitá (po kalibraci) posteriora;
     /// [n, pozitivní, součet p, součet p²] na koš.
@@ -304,6 +309,7 @@ impl OutputStats {
         self.ladder_audit_wrong += o.ladder_audit_wrong;
         self.ladder_latency_max = self.ladder_latency_max.max(o.ladder_latency_max);
         merge_map(&mut self.ladder_outcome_truth, &o.ladder_outcome_truth);
+        self.ladder_log.extend(o.ladder_log.iter().copied());
         merge_bins(&mut self.calib_raw, &o.calib_raw);
         merge_bins(&mut self.calib_used, &o.calib_used);
         self.device_classified += o.device_classified;

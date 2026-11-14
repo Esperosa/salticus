@@ -8,6 +8,7 @@ pub mod case_history;
 pub mod case_memory;
 pub mod analyst_feedback;
 pub mod closure_audit;
+pub mod conformal;
 pub mod config;
 pub mod context;
 pub mod context_gate;

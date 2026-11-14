@@ -2615,6 +2615,18 @@ fn run_episode_inner(
                     out.ladder_escalated_budget += decision.budget_escalation as u64;
                 }
             }
+            if out.ladder_log.len() < 6000 {
+                out.ladder_log.push([
+                    decision.posterior as f32,
+                    caused as u8 as f32,
+                    match decision.status {
+                        Status::Confirmed => 0.0,
+                        Status::Refuted => 1.0,
+                        _ => 2.0,
+                    },
+                    (decision.decided - decision.opened) as f32,
+                ]);
+            }
             // kalibracni kose: surova a pouzita posteriora proti pravde (kontrafaktual)
             out.record_calibration(decision.raw_posterior, decision.posterior, caused);
             // krok 2C: verdikt cloveka (eskalovano/potvrzeno: posoudi s p = 0,5;
