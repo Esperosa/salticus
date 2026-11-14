@@ -128,3 +128,25 @@ Rozbor zbylého jednoho případu (`sB`, síť 14): rodina `duplicate_ip_conflic
 - Svět `--l7 on` je simulace s autorovými rozděleními (studie 12 a `soak/l7sim.rs`), **nekalibrovaná na veřejných datech**. Výsledky níže tedy říkají, co detektory dělají nad takto vyrobenými metadaty, ne že tak fungují na provozu. Kalibrace (část C) je nehotová.
 - První verze `tls_rare_transfer` a `tls_novel_burst` měla jako druhý rys i „cíl zná nejvýš 2 hostitelé“. Na ladicím seedu to zobrazilo 46 až 54 % neškodných scénářů hn_cdn_update_download a hn_mail_newsletter_burst (vzrůst o 41 až 44 p. b.) a o 17 p. b. hn_nightly_cloud_backup_upload; v malé síti zná jméno málo hostů vždy. Rarita cíle byla odstraněna jako samostatný rys (zůstává jen jako okolnost v textu nálezu). Změna vznikla po pohledu na hn_* výsledky; z těchto tří scénářů jsou cdn a mail **ladicí**, ale **backup je držený** a tímto pohledem je částečně použit: výsledek na držených seedech u backup proto čtu s rezervou.
 - Výsledek první verze (`l0` proti `l1`, 40 sítí): detekce rodin 85,9 → 87,7 %, bucket_mass_download +46,7 p. b., cloud_api_discovery_burst +38,5, dns_zone_enum_burst +53,8, exfil_cloud_storage_upload +50,0; FP na síť-den 8,38 → 9,55 (poměr 1,140).
+
+## 9) Výsledky na ladicím seedu 20261102 (40 sítí, svět k10 s `--l7 on`), přírůstky po přepínačích
+
+Všechna ramena mají `breadth`, `bulk_clear`, `strict_close`. FP je zobrazené FP na síť-den, „zavřeno omylem“ jsou útoky s omylem zavřeným nálezem (kontrafaktuál), hn_* je největší změna podílu zobrazených neškodných scénářů proti předchozímu rameni.
+
+| rameno | přírůstek | detekce rodin (bez hn_*) | FP/síť-den | zavřeno omylem | hn_* nejvíc |
+|---|---|---|---|---|---|
+| `l0` | základ této řady (L7 svět zapnut, žádný L7 detektor) | 85,9 % | 8,38 | 1 | - |
+| `l1` | + `l7_tls`, `l7_dns` (první verze s raritou cíle) | 87,7 % | 9,55 (1,140) | 1 | +44,4 p. b. (cdn), +40,7 (mail), +16,7 (backup) |
+| `l2` | totéž bez rarity cíle jako rysu | 86,8 % | 8,41 (1,003) | 0 | 0,0 |
+| `fin` | + `hypotheses` | 86,7 % | 8,43 (1,003) | 0 | 0,0 |
+| `rd` | + `redisplay` | 86,8 % | 8,45 (1,002) | 0 | 0,0 |
+| `ic` | `fin` + `icmp_payload` a DNS tunel (`dns_tunnel_names`) | 87,6 % | 8,43 (1,000) | 0 | (beze změny) |
+
+Přírůstky po rodinách (ladicí seed, n = 10 až 20, intervaly široké): bucket_mass_download 13,3 → 33,3 % (`l2`), cloud_api_discovery_burst 7,7 → 15,4 %, dns_zone_enum_burst 7,7 → 61,5 %, exfil_icmp_payload 35,0 → 95,0 % (`ic`), c2_dns_txt_beacon 52,4 → 76,2 %, exfil_dns_slow 82,6 → 91,3 %.
+
+**Co nepomohlo (poctivě):**
+- **`hypotheses`** (režim konkurenčních hypotéz v žebříku): detekce a FP beze změny, ale **autonomně se rozhoduje jen 1,5 % případů** (základ `l2` 12,5 %), 98,5 % jde člověku, a ECE se **zhoršila** z 10,0 % na 13,5 %. Důvod: při poměru cen omylu 200 : 1 a měřených, slabých věrohodnostech žádná běžná kontrola nezmění akci (EVOI ≤ 0), takže se program po zásluze zastaví a předává. Nepoužívat v `recommended()`.
+- **`redisplay`** (citlivější znovuzobrazení): žádný měřitelný přínos (credential_stuffing +1 případ); zbytky „nezobrazeno“ jsou z drtivé většiny `suppressed` (nález se připojil ke klíči, který už v paměti byl), ne chybějící signál.
+- Zbylé „nezobrazeno, suppressed“ (např. exploit_attempt 6, port_scan_vertical 3, port_scan_horizontal 2, credential_stuffing 3) jsou případy, kdy útok splynul s dřívějším nálezem stejného klíče. Nabídla by se politika „nález s novým důkazem se zobrazí znovu“; jednoduchá varianta přes objem (`redisplay`) nepomohla, a složitější by znamenala další zobrazené položky bez záruky.
+
+Tabulka zbytků po rodinách (nástroj `tools/k12_residual.py`) pro držené seedy je v `k12/held.md` po dokončení měření.
