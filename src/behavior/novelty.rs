@@ -137,7 +137,9 @@ fn out_service(dst: &str, proto: &str, port: u16, group: bool) -> String {
 }
 
 pub fn is_novelty_type(kind: &str) -> bool {
-    NOVELTY_TYPES.contains(&kind) || crate::behavior::oneshot::ONESHOT_TYPES.contains(&kind)
+    NOVELTY_TYPES.contains(&kind)
+        || crate::behavior::oneshot::ONESHOT_TYPES.contains(&kind)
+        || crate::behavior::l7::L7_TYPES.contains(&kind)
 }
 
 fn succeeded(flow: &ConnectionObservation) -> bool {

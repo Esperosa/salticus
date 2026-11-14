@@ -1285,6 +1285,8 @@ fn run_episode_inner(
                 outbound: &split.outbound,
                 internal: &split.internal,
                 outbound_alerts: &outbound_alerts,
+                inbound: &split.inbound,
+                l7: &output.l7,
                 now: ts(t0),
             };
             let out = crate::behavior::run_window(
@@ -1901,6 +1903,8 @@ fn run_episode_inner(
                             outbound: &split.outbound,
                             internal: &split.internal,
                             outbound_alerts: &[],
+                            inbound: &[],
+                            l7: &[],
                             now: at,
                         },
                         &frozen,

@@ -594,6 +594,9 @@ fn checks_for(input: &CaseInput, policy: &LadderPolicy) -> Vec<CheckId> {
             | "link_saturation"
             | "novel_bulk_transfer"
             | "novel_peer_burst"
+            | "tls_rare_transfer"
+            | "tls_novel_burst"
+            | "dns_zone_enumeration"
     ) {
         checks.push(CheckId::Peers);
     }

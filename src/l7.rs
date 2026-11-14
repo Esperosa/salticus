@@ -364,6 +364,77 @@ pub fn name_entropy(name: &str) -> f64 {
         .sum()
 }
 
+/// Nejvic udalosti nactenych z jednoho zdroje (ochrana pameti).
+const MAX_EVENTS: usize = 500_000;
+
+/// Radky logu Zeek (TSV s `#fields`, nebo JSON po radcich) jako ploche mapy. Chybejici
+/// nebo necitelny soubor dava prazdny seznam (L7 je volitelny vstup).
+fn zeek_rows(path: &std::path::Path) -> Vec<HashMap<String, String>> {
+    if !path.exists() {
+        return Vec::new();
+    }
+    if let Ok(rows) = crate::passive::zeek::parse_zeek_log(path) {
+        return rows;
+    }
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter(|l| l.trim_start().starts_with('{'))
+        .filter_map(flatten_json_line)
+        .take(MAX_EVENTS)
+        .collect()
+}
+
+/// Nacte `ssl.log`, `x509.log`, `dns.log` a `http.log` z adresare Zeeku v case `[start, end]`.
+pub fn load_zeek_dir(dir: &std::path::Path, start: i64, end: i64) -> Vec<L7Event> {
+    let mut out = Vec::new();
+    let in_window = |ts: i64| ts >= start && ts <= end;
+    let mut tls: Vec<TlsMeta> = zeek_rows(&dir.join("ssl.log"))
+        .iter()
+        .filter_map(tls_from_zeek)
+        .filter(|t| in_window(t.ts))
+        .take(MAX_EVENTS)
+        .collect();
+    let x509 = zeek_rows(&dir.join("x509.log"));
+    attach_x509(&mut tls, &x509);
+    out.extend(tls.into_iter().map(L7Event::Tls));
+    out.extend(
+        zeek_rows(&dir.join("dns.log"))
+            .iter()
+            .filter_map(dns_from_zeek)
+            .filter(|d| in_window(d.ts))
+            .take(MAX_EVENTS)
+            .map(L7Event::Dns),
+    );
+    out.extend(
+        zeek_rows(&dir.join("http.log"))
+            .iter()
+            .filter_map(http_from_zeek)
+            .filter(|h| in_window(h.ts))
+            .take(MAX_EVENTS)
+            .map(L7Event::Http),
+    );
+    out.sort_by_key(L7Event::ts);
+    out
+}
+
+/// Nacte udalosti `tls`, `dns`, `http` ze souboru Suricata EVE v case `[start, end]`.
+pub fn load_eve_file(path: &std::path::Path, start: i64, end: i64) -> Vec<L7Event> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let mut out: Vec<L7Event> = text
+        .lines()
+        .filter(|l| l.contains("\"event_type\""))
+        .filter_map(from_eve_line)
+        .filter(|e| e.ts() >= start && e.ts() <= end)
+        .take(MAX_EVENTS)
+        .collect();
+    out.sort_by_key(L7Event::ts);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

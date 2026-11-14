@@ -22,6 +22,9 @@ pub const PROTECTED_TYPES: &[&str] = &[
     "novel_burst_peer",
     "novel_bulk_transfer",
     "novel_peer_burst",
+    "tls_rare_transfer",
+    "tls_novel_burst",
+    "dns_zone_enumeration",
     "pivot_chain",
     "suricata_alert",
     "egress_ids_alert",
@@ -66,7 +69,10 @@ pub fn type_protection(kind: &str) -> Option<Protection> {
         | "novel_fanout"
         | "novel_burst_peer"
         | "novel_bulk_transfer"
-        | "novel_peer_burst" => Some(Protection::Novelty),
+        | "novel_peer_burst"
+        | "tls_rare_transfer"
+        | "tls_novel_burst"
+        | "dns_zone_enumeration" => Some(Protection::Novelty),
         "pivot_chain" => Some(Protection::Graph),
         "suricata_alert" | "egress_ids_alert" | "ids_alert" => Some(Protection::Signature),
         "distributed_sources" => Some(Protection::Aggregate),

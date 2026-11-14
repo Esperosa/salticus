@@ -314,6 +314,8 @@ pub(crate) fn run_behavior(scenario: &str, dataset: &LabeledDataset) -> Behavior
             outbound: &split.outbound,
             internal: &split.internal,
             outbound_alerts: &[],
+            inbound: &[],
+            l7: &[],
             now,
         };
         let out = run_window(&mut state, switches, &thresholds, &input);

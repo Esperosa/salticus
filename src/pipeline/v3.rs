@@ -359,6 +359,8 @@ impl V3Session {
                     outbound: &flows.outbound,
                     internal: &flows.internal,
                     outbound_alerts: &flows.outbound_alerts,
+                    inbound: &flows.inbound,
+                    l7: &flows.l7,
                     now,
                 },
             );
@@ -849,6 +851,8 @@ impl V3Session {
                         outbound: &flows.outbound,
                         internal: &flows.internal,
                         outbound_alerts: &[],
+                        inbound: &[],
+                        l7: &[],
                         now,
                     },
                     &frozen,

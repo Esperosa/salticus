@@ -22,6 +22,7 @@ pub mod breadth;
 pub mod egress_volume;
 pub mod graph;
 pub mod interactive;
+pub mod l7;
 pub mod novelty;
 pub mod oneshot;
 pub mod profile;
@@ -58,6 +59,9 @@ pub struct BehaviorSwitches {
     pub bulk_novel: bool,
     pub bulk_clear: bool,
     pub peer_burst: bool,
+    /// Krok 12: detektory nad metadaty TLS a DNS.
+    pub l7_tls: bool,
+    pub l7_dns: bool,
 }
 
 impl BehaviorSwitches {
@@ -78,11 +82,13 @@ impl BehaviorSwitches {
             bulk_novel: engine.bulk_novel(),
             bulk_clear: engine.bulk_clear(),
             peer_burst: engine.peer_burst(),
+            l7_tls: engine.l7_tls(),
+            l7_dns: engine.l7_dns(),
         }
     }
 
     pub fn any(&self) -> bool {
-        self.egress || self.graph || self.profile || self.breadth || self.bulk_novel || self.bulk_clear || self.peer_burst
+        self.egress || self.graph || self.profile || self.breadth || self.bulk_novel || self.bulk_clear || self.peer_burst || self.l7_tls || self.l7_dns
     }
 }
 
@@ -103,6 +109,9 @@ pub const BEHAVIOR_TYPES: &[&str] = &[
     "link_saturation",
     "novel_bulk_transfer",
     "novel_peer_burst",
+    "tls_rare_transfer",
+    "tls_novel_burst",
+    "dns_zone_enumeration",
 ];
 
 pub fn is_behavior_type(kind: &str) -> bool {
@@ -123,6 +132,8 @@ pub struct BehaviorState {
     pub novelty: novelty::NoveltyState,
     /// Krok 9: obecné detektory rysů.
     pub breadth: breadth::BreadthState,
+    /// Krok 12: historie TLS cilu a otisku klientu.
+    pub l7: l7::L7State,
     /// Začátek prvního okna (stáří senzoru, zahřívání).
     pub first_window: Option<i64>,
 }
@@ -133,6 +144,10 @@ pub struct BehaviorInput<'a> {
     pub internal: &'a [ConnectionObservation],
     /// IDS alerty se zdrojem uvnitř a cílem venku.
     pub outbound_alerts: &'a [NormalizedEvent],
+    /// Krok 12: toky ven->dovnitr (vnejsi zdroj, vnitrni cil).
+    pub inbound: &'a [ConnectionObservation],
+    /// Krok 12: metadata TLS, DNS a HTTP okna (prazdne, pokud je zdroj nema).
+    pub l7: &'a [crate::l7::L7Event],
     /// Začátek okna.
     pub now: DateTime<Utc>,
 }
@@ -177,6 +192,7 @@ pub struct BehaviorThresholds {
     pub novelty: novelty::NoveltyThresholds,
     pub breadth: breadth::BreadthThresholds,
     pub oneshot: oneshot::OneshotThresholds,
+    pub l7: l7::L7Thresholds,
 }
 
 impl BehaviorThresholds {
@@ -280,6 +296,30 @@ pub fn run_window(
             now,
             &habit,
             switches.breadth_volume,
+        ));
+    }
+    if (switches.l7_tls || switches.l7_dns) && !input.l7.is_empty() {
+        let mut scope: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for f in input.outbound.iter().chain(input.internal.iter()) {
+            if let Some(s) = f.src_ip.as_deref() {
+                scope.insert(s);
+            }
+        }
+        for f in input.internal.iter().chain(input.inbound.iter()) {
+            scope.insert(f.dst_ip.as_str());
+        }
+        let profile = &state.profile;
+        out.findings.extend(l7::detect(
+            &mut state.l7,
+            &thresholds.l7,
+            input.l7,
+            input.outbound,
+            input.inbound,
+            &|h| profile.host_first(h),
+            &|ip| scope.contains(ip),
+            now,
+            switches.l7_tls,
+            switches.l7_dns,
         ));
     }
     if switches.bulk_novel || switches.bulk_clear || switches.peer_burst {

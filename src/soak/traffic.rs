@@ -505,6 +505,8 @@ pub struct CycleOutput {
     /// Dvojice (zdroj, cil) neskodnych pravidelnych vzoru v cyklu (jen mereni FP).
     pub regular_pairs: Vec<(String, String, crate::soak::benign_regular::RegularKind)>,
     pub regular_flows: u64,
+    /// Krok 12: metadata TLS, DNS a HTTP simulovanych toku (svet `--l7`).
+    pub l7: Vec<crate::l7::L7Event>,
 }
 
 pub fn ts(secs: i64) -> DateTime<Utc> {

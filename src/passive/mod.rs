@@ -15,7 +15,7 @@ pub(crate) mod detector;
 pub(crate) mod egress;
 mod suricata;
 pub(crate) mod thresholds;
-mod zeek;
+pub(crate) mod zeek;
 
 // Re-exporty pro src/eval (dataset replay baseline) - beze zmeny viditelnosti celych modulu.
 // Faze 2: produkcni cesta (`load_and_normalize`) i `eval::dataset_replay::run_ablation` uz
@@ -86,6 +86,9 @@ pub(crate) struct BehaviorFlows {
     pub(crate) outbound_alerts: Vec<NormalizedEvent>,
     /// Krok 6: toky s cílem v rozsahu (třída provozní problém, `ops_evidence`).
     pub(crate) to_scope: Vec<ConnectionObservation>,
+    /// Krok 12: toky ven->dovnitr a metadata TLS, DNS, HTTP okna.
+    pub(crate) inbound: Vec<ConnectionObservation>,
+    pub(crate) l7: Vec<crate::l7::L7Event>,
     pub(crate) outbound_seen: u64,
     pub(crate) outbound_dropped: u64,
     pub(crate) sample_level: u32,
@@ -135,9 +138,16 @@ pub(crate) fn load_and_normalize_with_behavior(
         flows.to_scope = connections.clone();
         flows.outbound = split.outbound;
         flows.internal = split.internal;
+        flows.inbound = split.inbound;
+        flows.l7 = crate::l7::load_zeek_dir(path, start.timestamp(), end.timestamp());
         flows.outbound_seen = split.outbound_seen;
         flows.outbound_dropped = split.outbound_dropped;
         flows.sample_level = split.sample_level;
+    }
+    if let Some(path) = &sources.suricata_eve {
+        flows
+            .l7
+            .extend(crate::l7::load_eve_file(path, start.timestamp(), end.timestamp()));
     }
     let known_services = hosts
         .iter()

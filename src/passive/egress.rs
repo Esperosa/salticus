@@ -170,6 +170,8 @@ pub struct SplitFlows {
     pub outbound: Vec<ConnectionObservation>,
     /// Obě strany v rozsahu (podmnožina `to_scope`, pro graf spojení).
     pub internal: Vec<ConnectionObservation>,
+    /// Krok 12: vnejsi zdroj, vnitrni cil (podmnozina `to_scope`).
+    pub inbound: Vec<ConnectionObservation>,
     pub outbound_seen: u64,
     pub outbound_dropped: u64,
     pub sample_level: u32,
@@ -188,7 +190,10 @@ pub fn split_flows(
                 out.internal.push(flow.clone());
                 out.to_scope.push(flow);
             }
-            FlowDirection::Inbound => out.to_scope.push(flow),
+            FlowDirection::Inbound => {
+                out.inbound.push(flow.clone());
+                out.to_scope.push(flow);
+            }
             FlowDirection::Outbound => outbound.push(flow),
             FlowDirection::External => {}
         }
