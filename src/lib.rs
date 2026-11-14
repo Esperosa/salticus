@@ -35,6 +35,7 @@ pub mod identity;
 pub mod identity_lab;
 pub mod ingest;
 pub mod intel;
+pub mod l7;
 pub mod lab;
 pub mod lanes;
 pub mod logging;
