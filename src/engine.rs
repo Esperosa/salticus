@@ -143,6 +143,10 @@ pub struct V3Features {
     /// Krok 11: jako `bulk_novel`, ale jen pro prenos po nesifrovanych portech.
     #[serde(default)]
     pub bulk_clear: bool,
+    /// Krok 12: zavreni kontextem jen s identifikovanymi zdroji, z nichz VSECHNY patri zaznamu
+    /// (zadny souhrn `any`), bez vyjimky pro objem. Vychozi vypnuto (impl-krok12.md).
+    #[serde(default)]
+    pub strict_close: bool,
     /// Krok 11: sken vnejsiho zdroje s mene cili, ale bez jedineho uspechu (`scan_attempts`).
     #[serde(default)]
     pub scan_fresh: bool,
@@ -155,7 +159,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 34] = [
+    pub const NAMES: [&'static str; 35] = [
         "memory",
         "rate",
         "volume",
@@ -190,6 +194,7 @@ impl V3Features {
         "peer_burst",
         "scan_fresh",
         "bulk_clear",
+        "strict_close",
     ];
 
     pub fn all() -> Self {
@@ -228,6 +233,7 @@ impl V3Features {
             peer_burst: true,
             scan_fresh: true,
             bulk_clear: true,
+            strict_close: true,
         }
     }
 
@@ -274,6 +280,7 @@ impl V3Features {
             peer_burst: false,
             scan_fresh: false,
             bulk_clear: false,
+            strict_close: false,
             ..Self::all()
         }
     }
@@ -323,6 +330,7 @@ impl V3Features {
             peer_burst: false,
             scan_fresh: false,
             bulk_clear: false,
+            strict_close: false,
         }
     }
 
@@ -386,6 +394,7 @@ impl V3Features {
             "peer_burst" => &mut self.peer_burst,
             "scan_fresh" => &mut self.scan_fresh,
             "bulk_clear" => &mut self.bulk_clear,
+            "strict_close" => &mut self.strict_close,
             _ => return None,
         })
     }
@@ -563,6 +572,10 @@ impl EngineConfig {
     pub fn bulk_novel(&self) -> bool {
         self.on(|f| f.egress && f.profile && f.bulk_novel)
     }
+    /// Krok 12: prisne zavirani kontextem (potrebuje ochranu a pamet nalezu).
+    pub fn strict_close(&self) -> bool {
+        self.on(|f| f.strict_close)
+    }
     pub fn bulk_clear(&self) -> bool {
         self.on(|f| f.egress && f.profile && f.bulk_clear)
     }
@@ -632,7 +645,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,

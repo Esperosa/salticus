@@ -256,6 +256,10 @@ pub struct GatePolicy {
     /// kontextu (P6), jinak je nejednoznačný (P5).
     #[serde(default)]
     pub protect: bool,
+    /// Krok 12: zavreni jen s identifikovanymi zdroji, z nichz vsechny patri zaznamu;
+    /// zadna vyjimka pro objem v okne zalohy ani dilci shoda zdroje.
+    #[serde(default)]
+    pub strict_close: bool,
 }
 
 impl GatePolicy {
@@ -265,6 +269,7 @@ impl GatePolicy {
             sensor_strict: engine.sensor_strict(),
             require_identified_source: engine.context_guard(),
             protect: engine.protect(),
+            strict_close: engine.strict_close(),
             ..Self::default()
         }
     }
@@ -278,6 +283,19 @@ impl GatePolicy {
     /// P6: vyžaduje zavření dva nezávislé druhy kontextu?
     fn needs_corroboration(&self, input: &GateInput<'_>) -> bool {
         self.protect && (input.severity == Severity::High || input.sources.is_empty())
+    }
+
+    /// Krok 12: pozitivni dukaz o zdroji. Nalez musi mit identifikovane zdroje a VSECHNY
+    /// musi patrit zaznamu (zdroj zaznamu nebo jeho host); jinak kontext nalez nevysvetli.
+    fn source_proven(&self, entry: &ContextEntry, input: &GateInput<'_>) -> bool {
+        if !self.strict_close {
+            return true;
+        }
+        !input.sources.is_empty()
+            && input
+                .sources
+                .iter()
+                .all(|s| entry.sources.contains(s) || entry.hosts.contains(s))
     }
 
     /// Smí záznam vysvětlit nález vzhledem k pravidlům kroku 6?
@@ -328,6 +346,7 @@ impl Default for GatePolicy {
             sensor_strict: false,
             require_identified_source: false,
             protect: false,
+            strict_close: false,
         }
     }
 }
@@ -374,6 +393,9 @@ pub struct GateStats {
     pub refused_protected: u64,
     #[serde(default)]
     pub refused_corroboration: u64,
+    /// Krok 12: odmitnuto, protoze zdroje nalezu nejsou cele v zaznamu.
+    #[serde(default)]
+    pub refused_strict: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -502,6 +524,13 @@ impl ContextGate {
                 refused_source = true;
                 continue;
             }
+            if entry.kind != ContextKind::SensorOutage && !self.policy.source_proven(entry, input) {
+                // krok 12: zdroj neni cely v zaznamu; nalez zustava viditelny
+                refused_source = true;
+                ambiguous = true;
+                self.stats.refused_strict += 1;
+                continue;
+            }
             let host_match = if entry.hosts.is_empty() {
                 entry.kind == ContextKind::SensorOutage || (!entry.sources.is_empty() && !severe)
             } else {
@@ -541,7 +570,7 @@ impl ContextGate {
                 continue;
             }
             return GateDecision {
-                explanation: self.close(entry, None),
+                explanation: self.close(entry, None, input),
                 ambiguous: false,
             };
         }
@@ -558,7 +587,7 @@ impl ContextGate {
             if kinds.len() >= 2 {
                 let all: Vec<&str> = kinds.iter().map(|k| k.label()).collect();
                 return GateDecision {
-                    explanation: self.close(entry, Some(all.join("+"))),
+                    explanation: self.close(entry, Some(all.join("+")), input),
                     ambiguous: false,
                 };
             }
@@ -572,13 +601,29 @@ impl ContextGate {
     }
 
     /// Zavření jedním záznamem (strop za cyklus); `joint` = seznam druhů u P6.
-    fn close(&mut self, entry: &ContextEntry, joint: Option<String>) -> Option<Explanation> {
+    fn close(
+        &mut self,
+        entry: &ContextEntry,
+        joint: Option<String>,
+        input: &GateInput<'_>,
+    ) -> Option<Explanation> {
         if self.closures_this_cycle >= self.policy.max_closures_per_cycle {
             self.stats.refused_cap += 1;
             return None;
         }
         self.closures_this_cycle += 1;
         self.stats.explained += 1;
+        // krok 12: audit kazdeho zavreni (kdo schvalil, jaky zaznam, jaky nalez a zdroje)
+        tracing::info!(
+            target: "salticus::audit",
+            action = "context.close",
+            kind = entry.kind.label(),
+            approved_by = %entry.approved_by,
+            expires = %entry.expires,
+            finding_type = input.finding_type,
+            sources = %input.sources.join(","),
+            strict = self.policy.strict_close,
+        );
         let base = format!(
             "{} ({} az {}, schvalil {})",
             entry.kind.label(),
@@ -627,6 +672,8 @@ impl ContextGate {
             (entry.active(input.at)
                 && entry.covers(input.finding_type)
                 && self.policy.admits(entry, input)
+                && (entry.kind == ContextKind::SensorOutage
+                    || self.policy.source_proven(entry, input))
                 && host_match
                 && source_ok
                 && !self.disabled.contains(&entry.kind))
@@ -896,6 +943,61 @@ mod tests {
         let other = input("unexpected_traffic", &host, &sources, 1, Severity::Medium);
         assert!(gate.supporting_context(&calendar, &other).is_some());
         assert!(gate.explain(&calendar, &other).is_some());
+    }
+
+    /// Krok 12: souběh skeneru a útoku z jiného zdroje. Dilci shoda zdroje (skener je jeden
+    /// z dominantnich zdroju) nalez nezavre; bez `strict_close` ho stary souhrn `any` zavrel.
+    #[test]
+    fn strict_close_keeps_mixed_source_finding_visible() {
+        let scanner = ContextEntry {
+            hosts: Vec::new(),
+            sources: vec!["10.0.0.200".to_string()],
+            ..entry(ContextKind::AuthorizedScanner, "-", 0, 4)
+        };
+        let calendar = StaticCalendar::new(vec![scanner]);
+        let host = vec!["10.0.0.9".to_string()];
+        let mixed = vec!["10.0.0.200".to_string(), "203.0.113.5".to_string()];
+        let only = vec!["10.0.0.200".to_string()];
+        let none: Vec<String> = Vec::new();
+        let lenient = ContextGate::new(GatePolicy::default());
+        let mut lenient = lenient;
+        let case = input("scan_attempts", &host, &mixed, 1, Severity::Medium);
+        assert!(lenient.explain(&calendar, &case).is_some(), "puvodni chovani");
+        let mut gate = ContextGate::new(GatePolicy {
+            strict_close: true,
+            ..GatePolicy::default()
+        });
+        let decision = gate.explain_decision(&calendar, &case);
+        assert!(decision.explanation.is_none());
+        assert!(decision.ambiguous, "nalez musi zustat viditelny a oznaceny");
+        assert!(gate.supporting_context(&calendar, &case).is_none());
+        // cisty zdroj zaznamu se zavre dal
+        let clean = input("scan_attempts", &host, &only, 1, Severity::Medium);
+        assert!(gate.explain(&calendar, &clean).is_some());
+        // bez identifikovaneho zdroje se nezavre nic
+        let blind = input("scan_attempts", &host, &none, 1, Severity::Medium);
+        assert!(gate.explain(&calendar, &blind).is_none());
+        assert_eq!(gate.stats.refused_strict, 2);
+    }
+
+    /// Krok 12: okno zalohy nezavre objemovy nalez bez zdroje (zadna vyjimka pro objem).
+    #[test]
+    fn strict_close_removes_volume_exception_without_source() {
+        let calendar = StaticCalendar::new(vec![entry(ContextKind::Backup, "10.0.0.5", 0, 10)]);
+        let host = vec!["10.0.0.5".to_string()];
+        let none: Vec<String> = Vec::new();
+        let case = input("inductive_volume_anomaly", &host, &none, 1, Severity::Medium);
+        let mut loose = ContextGate::new(GatePolicy {
+            require_identified_source: true,
+            ..GatePolicy::default()
+        });
+        assert!(loose.explain(&calendar, &case).is_some());
+        let mut strict = ContextGate::new(GatePolicy {
+            require_identified_source: true,
+            strict_close: true,
+            ..GatePolicy::default()
+        });
+        assert!(strict.explain(&calendar, &case).is_none());
     }
 
     #[test]
