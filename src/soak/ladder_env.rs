@@ -131,6 +131,8 @@ pub struct SoakEvidence<'a> {
     )>,
     /// Koncová telemetrie cyklu (krok 8); `None` = vypnuto.
     pub endpoint: Option<&'a crate::endpoint::correlate::EndpointView>,
+    /// Krok 12: pohled na TLS a DNS metadata okna; `None` = vypnuto.
+    pub l7: Option<&'a crate::behavior::l7::View>,
 }
 
 impl LadderEvidence for SoakEvidence<'_> {
@@ -258,6 +260,13 @@ impl LadderEvidence for SoakEvidence<'_> {
                 .copied()
         });
         case_verdict(profiles, policy, case, group, self.at.timestamp())
+    }
+
+    fn l7(&self, case: &CaseInput) -> crate::behavior::l7::L7Signal {
+        match self.l7 {
+            Some(view) => view.signal(&case.host_ip),
+            None => crate::behavior::l7::L7Signal::NoCoverage("metadata vypnuta".into()),
+        }
     }
 
     fn endpoint(&self, case: &CaseInput) -> crate::endpoint::correlate::EndpointSignal {

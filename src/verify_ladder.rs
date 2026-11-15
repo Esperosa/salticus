@@ -93,6 +93,8 @@ pub enum CheckId {
     /// L1: koncová telemetrie hostu (krok 8): podezřelý proces zvyšuje jistotu, známý
     /// podepsaný proces s pravidelným vzorem je slabý neškodný důkaz (nikdy sám nezavře).
     Endpoint,
+    /// Krok 12: TLS a DNS metadata hosta (novy cil, otisk klienta, certifikat).
+    L7,
 }
 
 impl CheckId {
@@ -103,7 +105,8 @@ impl CheckId {
             | CheckId::Reputation
             | CheckId::Intel
             | CheckId::DeviceProfile
-            | CheckId::Endpoint => Level::L1,
+            | CheckId::Endpoint
+            | CheckId::L7 => Level::L1,
             CheckId::Peers | CheckId::Persistence => Level::L2,
             CheckId::Liveness => Level::L3,
             CheckId::Pivot => Level::L4,
@@ -123,6 +126,7 @@ impl CheckId {
             CheckId::Pivot => "pivot",
             CheckId::Profile => "profile",
             CheckId::Endpoint => "endpoint",
+            CheckId::L7 => "l7",
         }
     }
 }
@@ -393,6 +397,9 @@ pub struct LrTable {
     /// Krok 8: podezřelý proces na hostu případu, pravidelný známý podepsaný proces.
     pub endpoint_suspicious: f64,
     pub endpoint_benign: f64,
+    /// Krok 12: TLS a DNS metadata: novy cil s druhym rysem, znamy cil a otisk.
+    pub l7_suspicious: f64,
+    pub l7_benign: f64,
 }
 
 impl Default for LrTable {
@@ -418,6 +425,8 @@ impl Default for LrTable {
             profile_new: 1.5,
             endpoint_suspicious: 12.0,
             endpoint_benign: 0.3,
+            l7_suspicious: 3.0,
+            l7_benign: 0.6,
         }
     }
 }
@@ -459,6 +468,8 @@ pub struct LadderPolicy {
     pub strict_refute: bool,
     /// Krok 12: režim konkurenčních hypotéz (změřené věrohodnosti, rozhodnutí podle ceny omylu).
     pub competing: bool,
+    /// Krok 12: kontrola TLS a DNS metadat v planu.
+    pub l7: bool,
     pub costs: crate::competing::Costs,
 }
 
@@ -482,6 +493,7 @@ impl Default for LadderPolicy {
             profile_new_evidence: false,
             strict_refute: false,
             competing: false,
+            l7: false,
             costs: crate::competing::Costs::default(),
             protect: false,
             endpoint: false,
@@ -520,6 +532,10 @@ pub trait LadderEvidence {
     /// Koncová telemetrie hosta případu (krok 8); výchozí = bez pokrytí.
     fn endpoint(&self, _case: &CaseInput) -> crate::endpoint::correlate::EndpointSignal {
         crate::endpoint::correlate::EndpointSignal::NoCoverage("koncova telemetrie neni".into())
+    }
+    /// Krok 12: signal z TLS a DNS metadat; vychozi = bez pokryti.
+    fn l7(&self, _case: &CaseInput) -> crate::behavior::l7::L7Signal {
+        crate::behavior::l7::L7Signal::NoCoverage("metadata TLS a DNS nejsou".into())
     }
 }
 
@@ -583,6 +599,9 @@ fn checks_for(input: &CaseInput, policy: &LadderPolicy) -> Vec<CheckId> {
     checks.push(CheckId::Context);
     if policy.endpoint {
         checks.push(CheckId::Endpoint);
+    }
+    if policy.l7 {
+        checks.push(CheckId::L7);
     }
     if !input.sources.is_empty() {
         checks.push(CheckId::Reputation);
@@ -663,9 +682,23 @@ fn plan_for(input: &CaseInput, secret: u64, policy: &LadderPolicy) -> VecDeque<C
     let salt = mix(secret ^ hash_text(&input.finding_id));
     checks.sort_by_key(|check| {
         let wait_last = (*check == CheckId::Persistence) as u8;
+        if policy.competing {
+            // krok 12: nejdriv kontrola s nejvyssi informaci na cenu (zmerene tabulky)
+            let score = competing_kind(*check)
+                .map(|k| {
+                    crate::competing::information_per_cost(
+                        DEFAULT_PRIOR,
+                        k,
+                        crate::competing::measured_static(),
+                    )
+                })
+                .unwrap_or(0.0);
+            return (wait_last, 0u8, std::cmp::Reverse((score * 1e9) as u64), mix(salt ^ hash_text(check.label())));
+        }
         (
             wait_last,
-            check.level(),
+            check.level() as u8,
+            std::cmp::Reverse(0u64),
             mix(salt ^ hash_text(check.label())),
         )
     });
@@ -700,6 +733,7 @@ pub fn competing_kind(check: CheckId) -> Option<crate::verification_chain::Check
         CheckId::Context => Some(K::ConfigContext),
         CheckId::Reputation => Some(K::Reputation),
         CheckId::Endpoint => Some(K::EndpointTelemetry),
+        CheckId::L7 => Some(K::TlsFingerprint),
         CheckId::Persistence => Some(K::RepeatMeasure),
         CheckId::Liveness => Some(K::ActiveReadOnly),
         _ => None,
@@ -1398,6 +1432,24 @@ fn evaluate(
                 EndpointSignal::NoCoverage(why) => Outcome::Unavailable(why),
             }
         }
+        CheckId::L7 => {
+            use crate::behavior::l7::L7Signal;
+            match env.l7(input) {
+                L7Signal::Suspicious(detail) => Outcome::Evidence {
+                    lr: lr.l7_suspicious,
+                    detail: format!("TLS a DNS: {detail}"),
+                },
+                L7Signal::Benign(_) if policy.protect && input.is_protected() => {
+                    Outcome::Undetermined("chraneny nalez: metadata nejsou dukaz neskodnosti".into())
+                }
+                L7Signal::Benign(detail) => Outcome::Evidence {
+                    lr: lr.l7_benign,
+                    detail: format!("TLS a DNS: {detail}"),
+                },
+                L7Signal::NoSignal(why) => Outcome::Undetermined(why),
+                L7Signal::NoCoverage(why) => Outcome::Unavailable(why),
+            }
+        }
         CheckId::Reputation => {
             let mut good = None;
             for source in &input.sources {
@@ -2081,6 +2133,30 @@ mod tests {
         let decision = run_until_decided(&mut ladder, &mut env);
         assert_eq!(decision.status, Status::Escalated, "{}", decision.reason);
         assert!(decision.raw_posterior > 0.0 && decision.raw_posterior < 1.0);
+    }
+
+    /// Krok 12: kontrola L7 je v planu jen s `l7`, bez pokryti je nedostupna (nic neznamena),
+    /// a plan v rezimu `competing` zacina kontrolou s nejvyssi informaci na cenu.
+    #[test]
+    fn l7_check_is_planned_only_when_enabled_and_competing_orders_by_information() {
+        let off = checks_for(&input("tls_rare_transfer", "10.0.0.5", &[]), &LadderPolicy::default());
+        assert!(!off.contains(&CheckId::L7));
+        let policy = LadderPolicy {
+            l7: true,
+            competing: true,
+            ..LadderPolicy::default()
+        };
+        let on = checks_for(&input("tls_rare_transfer", "10.0.0.5", &[]), &policy);
+        assert!(on.contains(&CheckId::L7));
+        let plan = plan_for(&input("tls_rare_transfer", "10.0.0.5", &[]), 7, &policy);
+        let first = plan.front().copied().unwrap();
+        assert_ne!(first, CheckId::Persistence, "cekani je vzdy posledni");
+        // bez dat je kontrola nedostupna a nema vahu
+        let mut ladder = Ladder::new(policy, 7);
+        let mut env = Env::default();
+        ladder.open(input("tls_rare_transfer", "10.0.0.5", &[]), 0);
+        let d = run_until_decided(&mut ladder, &mut env);
+        assert!(d.steps.iter().any(|(c, tag)| *c == CheckId::L7 && *tag == "unavailable"));
     }
 
     #[test]

@@ -88,6 +88,7 @@ impl V3Runtime {
                     endpoint: engine.endpoint(),
                     strict_refute: engine.strict_close(),
                     competing: engine.hypotheses(),
+                    l7: engine.l7_ladder(),
                     ..Default::default()
                 },
                 secret,

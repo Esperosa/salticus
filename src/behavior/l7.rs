@@ -585,3 +585,75 @@ mod tests {
         assert_eq!(run(&mut state, &mk(1, false, "AXFR"), &[], 1_800_000_100).len(), 1);
     }
 }
+
+/// Signal TLS a DNS metadat pro kontrolu zebriku (krok 12).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum L7Signal {
+    Suspicious(String),
+    Benign(String),
+    NoSignal(String),
+    NoCoverage(String),
+}
+
+/// Pohled okna na hosty: pocet TLS udalosti, z nich novych cilu s druhym rysem a znamych.
+#[derive(Debug, Clone, Default)]
+pub struct View {
+    total_events: usize,
+    hosts: HashMap<String, (u32, u32, u32)>,
+}
+
+/// Sestavi pohled PRED ucenim okna (stav ukazuje, co host znal do minuleho okna).
+pub fn view(
+    state: &L7State,
+    t: &L7Thresholds,
+    events: &[L7Event],
+    internal: &dyn Fn(&str) -> bool,
+    now: i64,
+) -> View {
+    let mut out = View {
+        total_events: events.len(),
+        ..View::default()
+    };
+    for ev in events {
+        let L7Event::Tls(tls) = ev else { continue };
+        if !internal(&tls.src_ip) || internal(&tls.dst_ip) {
+            continue;
+        }
+        let target = tls.sni.clone().unwrap_or_else(|| tls.dst_ip.clone());
+        let host = state.hosts.get(&tls.src_ip);
+        let e = out.hosts.entry(tls.src_ip.clone()).or_default();
+        e.0 += 1;
+        if host.is_some_and(|h| h.snis.contains(&target)) {
+            e.2 += 1;
+            continue;
+        }
+        let new_print = print_of(tls).is_some_and(|p| {
+            host.is_some_and(|h| !h.prints.is_empty() && !h.prints.contains(p))
+        });
+        let young = tls.not_before.is_some_and(|nb| tls.ts - nb < t.young_cert_s);
+        let selfsigned = matches!((&tls.issuer, &tls.subject), (Some(i), Some(s)) if i == s);
+        let _ = now;
+        if new_print || young || selfsigned || tls.sni.is_none() {
+            e.1 += 1;
+        }
+    }
+    out
+}
+
+impl View {
+    pub fn signal(&self, host: &str) -> L7Signal {
+        if self.total_events == 0 {
+            return L7Signal::NoCoverage("okno nema metadata TLS ani DNS".into());
+        }
+        match self.hosts.get(host) {
+            None => L7Signal::NoSignal("host v okne nema odchozi TLS".into()),
+            Some((_, novel, _)) if *novel > 0 => L7Signal::Suspicious(format!(
+                "{novel} nove TLS spojeni s druhym rysem (novy otisk, cerstvy nebo self-signed certifikat, bez SNI)"
+            )),
+            Some((total, 0, known)) if *total >= 3 && known == total => {
+                L7Signal::Benign(format!("vsech {total} TLS spojeni na znamy cil hosta"))
+            }
+            Some(_) => L7Signal::NoSignal("TLS spojeni bez rozlisujiciho rysu".into()),
+        }
+    }
+}

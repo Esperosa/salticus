@@ -1285,6 +1285,7 @@ fn run_episode_inner(
         let mut behavior_signal: BehaviorSignal = HashMap::new();
         let mut behavior_findings: Vec<Finding> = Vec::new();
         let mut behavior_split: Option<crate::passive::egress::SplitFlows> = None;
+        let mut l7_view: Option<crate::behavior::l7::View> = None;
         if let Some(runtime) = v3.as_mut().filter(|_| behavior_on) {
             let started = Instant::now();
             let split = crate::passive::egress::split_flows(
@@ -1298,6 +1299,16 @@ fn run_episode_inner(
                 .output
                 .egress_sample_level_max
                 .max(split.sample_level as u64);
+            if cfg.engine.l7_ladder() {
+                let own: HashSet<&str> = ips.iter().map(String::as_str).collect();
+                l7_view = Some(crate::behavior::l7::view(
+                    &runtime.behavior.l7,
+                    &runtime.behavior_thresholds.l7,
+                    &output.l7,
+                    &|ip| own.contains(ip),
+                    ts(t0).timestamp(),
+                ));
+            }
             let input = crate::behavior::BehaviorInput {
                 outbound: &split.outbound,
                 internal: &split.internal,
@@ -1813,6 +1824,7 @@ fn run_episode_inner(
                             .profile()
                             .then_some((&runtime.behavior.profile, &runtime.profile_policy)),
                         endpoint: endpoint_view.as_ref(),
+                        l7: l7_view.as_ref(),
                     };
                     let decisions = runtime.ladder.step(cycle as u64, &mut env);
                     agg.output.ladder_liveness_runs += env.liveness_runs;

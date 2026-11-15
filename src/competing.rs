@@ -254,6 +254,25 @@ pub fn evoi(
     now - after - price * costs.human
 }
 
+/// Vzajemna informace mezi tridou (utok, neskodne) a vysledkem kontroly, deleno cenou
+/// (bity na jednotku ceny). Slouzi k poradi planu: prvni kontrola, ktera nejvic rozlisuje.
+pub fn information_per_cost(prior: f64, kind: CheckKind, lik: &Likelihoods) -> f64 {
+    let Some(t) = lik.tables.get(&kind) else {
+        return 0.0;
+    };
+    let mut mi = 0.0;
+    for r in [Result3::Suspicious, Result3::Benign, Result3::Nothing] {
+        let (a, b) = (t.p(true, r), t.p(false, r));
+        let marginal = prior * a + (1.0 - prior) * b;
+        for (pc, p) in [(prior, a), (1.0 - prior, b)] {
+            if p > 0.0 && marginal > 0.0 {
+                mi += pc * p * (p / marginal).log2();
+            }
+        }
+    }
+    mi / (kind.cost().0 + 0.02)
+}
+
 /// Další kontrola s nejvyšším kladným EVOI, nebo `None` (zastavit a rozhodnout).
 pub fn next_by_evoi(
     prior: f64,
