@@ -260,3 +260,30 @@ Největší přírůstky: drive_by_bulk_download 7,8 → 64,7 %, exfil_alt_proto
 **Incidenty (ladicí seed 20261102, odstup 6 h):** 1 017 incidentů, 17,1 nálezu na incident, **čistota seskupení 37,9 %** (cíl ≥ 90 % **nesplněn**), smíšených (útok i porucha) 54. Seskupení podle sdíleného hosta nebo indikátoru s odstupem 6 h slévá nesouvisející nálezy (servery a resolvery sdílejí hosty), a nepřipsané nálezy se počítají jako vlastní štítek, takže šum čistotu snižuje. Varianty odstupu 1 h a 30 min se měří v dalším běhu (`incident_gaps`).
 
 **Leave-one-family-out a leave-one-tactic-out nových detektorů:** nové detektory (`behavior/l7.rs`, `icmp.rs`, `strict_close`) **nemají parametry naladěné po rodinách**; prahy jsou jednotné (viz studie 12) a ladily se jen na ladicích seedech. LOFO se proto redukuje na to, co je v tabulkách „přenos na ostatní rodiny“ v `k12/held.md` a `k12/held2.md`: detekce rodin, pro které detektor nebyl určen, na držených seedech. Formální LOFO s přeladěním po rodinách a leave-one-tactic-out **nebyly provedeny**, protože není co ladit po rodinách; to je odchylka od předregistrace, ne splnění.
+
+## 14) Závěr tohoto tahu: stav úkolů a návrh pro `recommended()`
+
+**Další měření.** XXXL (seed 20261103, 4 sítě, 215 útoků, ladicí): omylem zavřené 0 u základu i kandidáta (horní mez 1,76 %), detekce 71,1 → 74,0 %, FP/síť-den 225,6 → 247,6 (×1,098). Incidenty (ladicí 20261102): čistota seskupení **odstup 6 h 37,9 %, 1 h 56,2 %, 30 min 59,2 %** (8,3 až 17,0 nálezu na incident); cíl ≥ 90 % **nesplněn** u žádného odstupu. Testy: 593 prošlo, 5 selhalo (jen `broker::*`, Redis), `no_memory` zelený.
+
+**Tabulka stavu (nahrazuje oddíl 11):**
+
+| úkol | stav |
+|---|---|
+| příčina omylem zavřených (síť 22/4102) | hotovo, opraveno, test; 4 → 0 na kontrole; 0 z 13 084 na nové dávce držených seedů |
+| „suppressed“ | příčina nalezena (145 mezera detektoru, 53 slití s otevřeným klíčem); oprava pohlcení vyvráceného klíče hotova; `redisplay_age` zamítnut (FP ×2,69) |
+| napojení `retro`, `reassess`, `case_file`, `forensic`, kontrola L7, pořadí podle informace | hotovo v pipeline (`case_files`), API a žebříku; `case_files` neměřeno v soaku; `l7_ladder` beze změny; `hypotheses` škodí autonomii |
+| zbývající 4 držené seedy | hotovo (160 sítí) |
+| LOFO a leave-one-tactic-out | neprovedeno (detektory nemají parametry po rodinách; odchylka zapsána) |
+| konformální pokrytí na soak datech | hotovo (0,953 a 0,799 vs 0,95 a 0,80, kolísá mezi sítěmi) |
+| incidenty (nálezy na incident, čistota) | změřeno, **čistota 38 až 59 %, cíl nesplněn**; oddělení útok/porucha jen počtem smíšených incidentů (54), bez přesnosti |
+| útok + porucha + šum 10×, XXXL | hotovo na ladicích seedech |
+| část C | jedno reálné přehrání pcap → Zeek → L7 parser (testy nad skutečnými logy), první kvantitativní porovnání na CTU-Normal-20 (`k9/realismus.md`); **kalibrace simulátoru není provedena** (jeden host, 3 h), DoH, tunel a škodlivé pcapy nezpracovány |
+| 100 % u pozorovatelných útoků | **nesplněno**: z 93 rodin (n ≥ 20) je na 100 % 5, nad 95 % 36, nad 90 % 60; zbytky a příčiny v `k12/held2.md` oddíl C a oddíl 10 |
+| omylem zavřené 0 | 0 z 13 084 (druhá dávka), ale 4 z 5 506 v první dávce před opravou; zavírá se málo, záruka autonomního zavírání se nedá dát |
+
+**Návrh `recommended()` (jen s důkazem z držených seedů):**
+- zapnout `strict_close` (omylem zavřené 64 → 0 na 13 084, 34 → 4 na 5 506 před opravou; FP ×1,067; cena: téměř žádné autonomní vyvrácení žebříkem, tedy víc práce pro člověka);
+- zapnout `bulk_clear` (drive_by +57 p. b., exfil_alt_protocol_ftp +57 p. b. na držených datech);
+- `l7_tls`, `l7_dns`, `icmp_payload` zapnout **jen když je k dispozici ssl, x509, dns log (Zeek) nebo EVE** a po jejich ověření na reálném provozu; přínos je změřen pouze v simulaci s nekalibrovanými předpoklady (`k9/realismus.md`);
+- `case_files` zapnout (jen popisuje, nic neuzavírá);
+- **nezapínat** `hypotheses`, `redisplay`, `redisplay_age`, `l7_ladder` (bez přínosu nebo škodí).
