@@ -308,6 +308,14 @@ pub struct Policy {
     pub fail_burst: usize,
     pub lr_suspicious: f64,
     pub lr_benign: f64,
+    /// Krok 14 (A): rozšířené indikátory (cloudové nástroje, DNS průzkum, kancelářský proces
+    /// spouští skript, stažení a spuštění). Výchozí vypnuto, krok 8 beze změny.
+    pub extended: bool,
+    /// Krok 14 (A): seznam povolených (hash, výrobce, protistrana, vlastník, expirace).
+    pub allow: super::graph::Allowlist,
+    pub lr_allow: f64,
+    /// Aktuální čas pro expiraci seznamu povolených (doplňuje volající).
+    pub now_for_allow: i64,
 }
 
 impl Default for Policy {
@@ -391,6 +399,10 @@ impl Default for Policy {
             fail_burst: 10,
             lr_suspicious: 12.0,
             lr_benign: 0.3,
+            extended: false,
+            allow: Default::default(),
+            lr_allow: 0.05,
+            now_for_allow: 0,
         }
     }
 }
@@ -448,6 +460,8 @@ pub struct HostAssessment {
     pub indicators: Vec<Indicator>,
     /// Protistrana -> důvod: pravidelné spojení známého podepsaného procesu.
     pub benign_peers: BTreeMap<(String, u16), String>,
+    /// Krok 14: protistrana -> vlastník a expirace, když ji spojil proces ze seznamu povolených.
+    pub allowed_peers: BTreeMap<(String, u16), String>,
     pub events: usize,
     pub last_event: i64,
 }
@@ -497,6 +511,90 @@ fn suspicious_cmdline(cmd: &str) -> bool {
             && (c.contains("| sh") || c.contains("| bash"))
 }
 
+const OFFICE: &[&str] = &[
+    "winword.exe",
+    "excel.exe",
+    "powerpnt.exe",
+    "outlook.exe",
+    "msaccess.exe",
+];
+const OFFICE_BAD_CHILD: &[&str] = &[
+    "cmd.exe",
+    "powershell.exe",
+    "pwsh.exe",
+    "wscript.exe",
+    "cscript.exe",
+    "mshta.exe",
+    "regsvr32.exe",
+    "rundll32.exe",
+];
+
+/// Krok 14: rozšířené indikátory jednoho procesu (vždy za `Policy::extended`).
+/// Pravidla jsou obecná (Sigma a Elastic detekce, viz studie 14), ne ladění na simulaci.
+fn extended_process(policy: &Policy, p: &Process) -> Vec<(&'static str, u32, String)> {
+    let mut v = Vec::new();
+    let child = base(&p.image);
+    let cmd = p.cmdline.to_ascii_lowercase();
+    if let Some(parent) = p.parent_image.as_deref().map(base)
+        && OFFICE.contains(&parent.as_str())
+        && OFFICE_BAD_CHILD.contains(&child.as_str())
+    {
+        v.push(("office_spawns_shell", 3, format!("{child} z {parent}")));
+    }
+    let sync_tool = child == "rclone.exe"
+        || child == "rclone"
+        || child == "megacmd.exe"
+        || child == "azcopy.exe"
+        || child == "gsutil"
+        || cmd.contains("rclone ")
+        || (cmd.contains("aws s3") && (cmd.contains(" sync ") || cmd.contains("--recursive")));
+    if sync_tool {
+        let unsigned = p.signed != Some(true);
+        let weight = if policy.writable(&p.image) || unsigned {
+            3
+        } else {
+            2
+        };
+        v.push(("cloud_sync_tool", weight, child.clone()));
+    }
+    if (child == "nslookup.exe" || child == "dig" || child == "host")
+        && (cmd.contains("-type=axfr") || cmd.contains("ls -d") || cmd.contains(" axfr "))
+    {
+        v.push(("dns_recon_tool", 3, child.clone()));
+    }
+    if cmd.contains("resolve-dnsname")
+        && cmd.contains("txt")
+        && (cmd.contains("while") || cmd.contains("for(") || cmd.contains("foreach"))
+    {
+        v.push(("dns_txt_loop", 3, child.clone()));
+    }
+    if (cmd.contains("invoke-restmethod") || cmd.contains("invoke-webrequest"))
+        && (cmd.contains("-method put") || cmd.contains("-method post"))
+        && (cmd.contains("-infile") || cmd.contains("-body"))
+    {
+        v.push(("script_upload", 2, child.clone()));
+    }
+    v
+}
+
+/// `aws iam list-users` -> `aws iam list-users` (průzkumná podpříkaz cloudového CLI), jinak `None`.
+fn cloud_discovery(p: &Process) -> Option<String> {
+    let cmd = p.cmdline.to_ascii_lowercase();
+    let child = base(&p.image);
+    let cli = matches!(
+        child.as_str(),
+        "aws.exe" | "az.exe" | "gcloud.cmd" | "aws" | "az" | "gcloud"
+    );
+    if !cli {
+        return None;
+    }
+    let discovery = cmd.contains(" list")
+        || cmd.contains(" describe")
+        || cmd.contains("get-caller-identity")
+        || cmd.contains(" ls");
+    discovery.then(|| cmd.split_whitespace().take(4).collect::<Vec<_>>().join(" "))
+}
+
 /// Verdikt hosta z událostí v okně `[now - lookback, now]`.
 pub fn assess(
     host: &str,
@@ -530,6 +628,12 @@ pub fn assess(
     let mut fails: BTreeMap<String, usize> = BTreeMap::new();
     let mut remote_logons: Vec<(i64, String, Option<String>)> = Vec::new();
     let mut remote_exec: Vec<i64> = Vec::new();
+    let mut cloud_cmds: HashSet<String> = HashSet::new();
+    let mut dropped: HashSet<String> = HashSet::new();
+    let mut proc_images: HashSet<String> = HashSet::new();
+    let mut proc_info: HashMap<String, (Option<String>, Option<bool>, Option<String>)> =
+        HashMap::new();
+    let mut allow_conns: Vec<(String, String, u16)> = Vec::new();
     for event in events {
         let event = event.borrow();
         if event.ts < from || event.ts > now + 1 {
@@ -554,6 +658,18 @@ pub fn assess(
                 }
                 if suspicious_cmdline(&p.cmdline) {
                     add(&mut out, "encoded_or_download_cmd", 3, base(&p.image), None);
+                }
+                if policy.extended {
+                    for (code, w, detail) in extended_process(policy, p) {
+                        add(&mut out, code, w, detail, None);
+                    }
+                    if let Some(d) = cloud_discovery(p) {
+                        cloud_cmds.insert(d);
+                    }
+                    proc_images.insert(p.image.to_ascii_lowercase());
+                    proc_info
+                        .entry(p.image.clone())
+                        .or_insert_with(|| (p.hash.clone(), p.signed, p.vendor.clone()));
                 }
                 if policy.writable(&p.image)
                     && !policy.known_signed(&p.image, p.vendor.as_deref(), p.signed)
@@ -676,6 +792,9 @@ pub fn assess(
                 ..
             }) => {
                 let img = image.clone().unwrap_or_default();
+                if policy.extended && !img.is_empty() {
+                    allow_conns.push((img.clone(), dst_ip.clone(), *dst_port));
+                }
                 let known =
                     !img.is_empty() && policy.known_signed(&img, vendor.as_deref(), *signed);
                 let entry = conns
@@ -683,7 +802,31 @@ pub fn assess(
                     .or_insert_with(|| (Vec::new(), policy.writable(&img), None));
                 entry.0.push(event.ts);
             }
-            EventKind::FileCreate { .. } => {}
+            EventKind::FileCreate { path, .. } => {
+                let low = path.to_ascii_lowercase();
+                if policy.extended
+                    && policy.writable(path)
+                    && [".exe", ".dll", ".scr", ".msi", ".js", ".ps1", ".hta"]
+                        .iter()
+                        .any(|e| low.ends_with(e))
+                {
+                    dropped.insert(low);
+                }
+            }
+        }
+    }
+    if policy.extended {
+        if cloud_cmds.len() >= 3 {
+            add(
+                &mut out,
+                "cloud_cli_discovery",
+                3,
+                format!("{} ruznych pruzkumnych prikazu", cloud_cmds.len()),
+                None,
+            );
+        }
+        for d in dropped.intersection(&proc_images) {
+            add(&mut out, "drop_and_run", 2, d.clone(), None);
         }
     }
     for (src, n) in fails {
@@ -747,9 +890,38 @@ pub fn assess(
             );
         }
     }
+    // krok 14: proces ze seznamu povolených (hash + podpis + výrobce + protistrana + vlastník
+    // + expirace) spojil protistranu; pozitivní důkaz neškodnosti, platí jen pro čistý host
+    if policy.extended && !policy.allow.entries.is_empty() {
+        for (img, dst, port) in allow_conns {
+            if let Some((hash, signed, vendor)) = proc_info.get(&img) {
+                let ctx = super::graph::ProcessContext {
+                    host: host.to_string(),
+                    image: img.clone(),
+                    parent_image: None,
+                    cmdline: String::new(),
+                    user: None,
+                    signed: *signed,
+                    vendor: vendor.clone(),
+                    hash: hash.clone(),
+                    connected_at: now,
+                };
+                if let Some(e) = policy
+                    .allow
+                    .permits(&ctx, &dst, policy.now_for_allow.max(now))
+                {
+                    out.allowed_peers.insert(
+                        (dst, port),
+                        format!("{} (vlastnik {}, do {})", base(&img), e.owner, e.expires_at),
+                    );
+                }
+            }
+        }
+    }
     // podezřelý host nemá neškodný vzor (spoofing: útočník nesmí „ukrýt“ aktivitu)
     if out.score > 0 {
         out.benign_peers.clear();
+        out.allowed_peers.clear();
     }
     out
 }
@@ -761,6 +933,8 @@ pub fn assess(
 pub enum EndpointSignal {
     Suspicious(String),
     Benign(String),
+    /// Krok 14: proces ze seznamu povolených (hash, podpis, protistrana, vlastník, expirace).
+    Allowed(String),
     /// Host je pokrytý, ale nic relevantního (nezjištěno).
     NoSignal(String),
     /// Host bez živého agenta (nedostupné, ne neškodné).
@@ -872,6 +1046,35 @@ impl EndpointView {
             return EndpointSignal::NoCoverage(format!(
                 "host {host_ip} nema zivou koncovou telemetrii"
             ));
+        }
+        // krok 14: proces ze seznamu povolených vysvětluje každý zdroj (bez požadavku na pravidelnost)
+        if self.policy.extended && !sources.is_empty() {
+            if let Some(port) = port {
+                let target = self
+                    .assessments
+                    .get(host_ip)
+                    .filter(|_| self.covered.contains(host_ip));
+                let mut reasons = Vec::new();
+                for s in sources {
+                    let own = self
+                        .assessments
+                        .get(s)
+                        .filter(|_| self.covered.contains(s))
+                        .and_then(|a| a.allowed_peers.get(&(host_ip.to_string(), port)));
+                    let via_target = target.and_then(|a| a.allowed_peers.get(&(s.clone(), port)));
+                    match own.or(via_target) {
+                        Some(reason) => reasons.push(format!("{s}: {reason}")),
+                        None => {
+                            reasons.clear();
+                            break;
+                        }
+                    }
+                }
+                if !reasons.is_empty() {
+                    reasons.truncate(3);
+                    return EndpointSignal::Allowed(reasons.join("; "));
+                }
+            }
         }
         // neškodné: každý zdroj má vysvětlení (vlastní agent nebo agent cíle)
         if !sources.is_empty() {
@@ -1149,6 +1352,7 @@ mod tests {
                 user: None,
                 signed: None,
                 vendor: None,
+                hash: None,
             }),
         );
         let a = assess("h", [e].iter(), T0 + 10, &p);

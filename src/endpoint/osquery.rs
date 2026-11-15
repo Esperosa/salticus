@@ -60,6 +60,9 @@ pub fn parse(map: &Map<String, Value>) -> ParseResult {
             user: field(cols, &["username", "uid"]),
             signed: field(cols, &["signed"]).map(|s| truthy(&s)),
             vendor: field(cols, &["authority", "signer"]),
+            hash: field(cols, &["sha256"])
+                .filter(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+                .map(|h| h.to_ascii_lowercase()),
         })
     } else if name.contains("startup") || name.contains("scheduled") || name.contains("service") {
         EventKind::Persistence {

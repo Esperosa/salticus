@@ -152,6 +152,13 @@ pub async fn serve_with_config(addr: SocketAddr, config: AppConfig) -> Result<()
                 crate::endpoint::correlate::Limits::default().max_batch_bytes,
             )),
         )
+        .route(
+            "/ops/ingest",
+            post(post_ops_ingest).layer(axum::extract::DefaultBodyLimit::max(
+                crate::ops_telemetry::persist::MAX_BATCH_BYTES,
+            )),
+        )
+        .route("/endpoint/graph", get(get_endpoint_graph))
         .route("/platform/cluster", get(get_platform_cluster))
         .route("/platform/jobs", get(get_platform_jobs))
         .route("/platform/users", get(get_platform_users))
@@ -1524,6 +1531,119 @@ async fn post_endpoint_ingest(
     .await
     {
         Ok(summary) => Json(summary).into_response(),
+        Err(response) => response,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct OpsIngestQuery {
+    format: String,
+}
+
+/// Krok 14 (C2): příjem provozní telemetrie (`?format=syslog|snmp|prometheus|nagios|dhcp|arp`).
+/// Nedůvěryhodný vstup: dávka ≤ 4 MiB, signály s limity stáří a klíče; každá dávka je heartbeat zdroje.
+async fn post_ops_ingest(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<OpsIngestQuery>,
+    body: String,
+) -> Response {
+    let auth = match authorize_for(&headers, &state, &["findings.write"]) {
+        Ok(auth) => auth,
+        Err(error) => return pair_to_response(error),
+    };
+    if let Err(error) = ensure_csrf_guard_header(&auth, &headers) {
+        return pair_to_response(error);
+    }
+    let format: crate::ops_telemetry::adapters::Format = match query.format.parse() {
+        Ok(format) => format,
+        Err(message) => return error_response(StatusCode::BAD_REQUEST, message),
+    };
+    let root = state.workspace_root.clone();
+    match run_blocking(move || {
+        let mut store =
+            crate::engine_state::EngineStateStore::open(&root.join("engine-state.sqlite"))?;
+        crate::ops_telemetry::persist::ingest_text(store.conn_mut(), format, &body, Utc::now())
+    })
+    .await
+    {
+        Ok(summary) => Json(summary).into_response(),
+        Err(response) => response,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct EndpointGraphQuery {
+    /// Hosté oddělení čárkou (klíče inventáře, IP).
+    hosts: String,
+    /// Okno v sekundách zpět od teď (výchozí 3600, nejvýš 86400).
+    #[serde(default)]
+    window_s: Option<i64>,
+    /// `json` (výchozí) nebo `dot`.
+    #[serde(default)]
+    format: Option<String>,
+}
+
+/// Krok 14 (A): graf aktiv a incidentů z uložených koncových událostí (jen čtení; bez změny UI).
+/// Uživatelé jsou pseudonymizovaní, příkazové řádky se do grafu nedostávají.
+async fn get_endpoint_graph(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<EndpointGraphQuery>,
+) -> Response {
+    if let Err(error) = authorize_for(&headers, &state, &["runs.read"]) {
+        return pair_to_response(error);
+    }
+    let hosts: Vec<String> = query
+        .hosts
+        .split(',')
+        .map(|h| h.trim().to_string())
+        .filter(|h| !h.is_empty())
+        .take(32)
+        .collect();
+    if hosts.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "hosts je povinny".to_string());
+    }
+    let window = query.window_s.unwrap_or(3600).clamp(60, 86_400);
+    let dot = query.format.as_deref() == Some("dot");
+    let root = state.workspace_root.clone();
+    match run_blocking(move || {
+        use crate::endpoint::correlate::{EndpointStore, HostDirectory, Limits, Policy};
+        let store_db =
+            crate::engine_state::EngineStateStore::open(&root.join("engine-state.sqlite"))?;
+        let now = Utc::now();
+        let limits = Limits::default();
+        let policy = Policy::default();
+        let events = crate::endpoint::persist::load_recent(store_db.conn(), now, &policy, &limits)?;
+        let mut dir = HostDirectory::default();
+        for h in &hosts {
+            dir.add(h, None, std::slice::from_ref(h), None);
+        }
+        let mut store = EndpointStore::new(limits);
+        for e in events {
+            let r = dir.resolve(&e.host);
+            store.ingest(e, &r, now.timestamp());
+        }
+        let g = crate::endpoint::graph::Graph::build(
+            &store,
+            &hosts,
+            now.timestamp() - window,
+            now.timestamp(),
+            &crate::endpoint::graph::Privacy::default(),
+        );
+        Ok(g)
+    })
+    .await
+    {
+        Ok(g) if dot => (
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "text/vnd.graphviz; charset=utf-8",
+            )],
+            g.to_dot(),
+        )
+            .into_response(),
+        Ok(g) => Json(g).into_response(),
         Err(response) => response,
     }
 }

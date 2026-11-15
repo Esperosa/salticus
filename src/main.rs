@@ -60,6 +60,8 @@ enum Command {
     /// Krok 8: koncova telemetrie (prijem vystupu Sysmon, Wazuh, osquery).
     #[command(subcommand)]
     Endpoint(EndpointCommand),
+    #[command(subcommand)]
+    Ops(OpsCommand),
     /// Dlouhodoby soak/zatezovy beh simulovanych siti (viz docs/diplomka/eval/soak-harness.md).
     #[command(subcommand)]
     Soak(SoakCommand),
@@ -77,9 +79,54 @@ enum SoakCommand {
 }
 
 #[derive(Subcommand, Debug)]
+enum OpsCommand {
+    /// Krok 14 (C2): nacte soubor provozni telemetrie (syslog, snmp, prometheus, nagios, dhcp, arp) do workspace.
+    Ingest(OpsIngestArgs),
+}
+
+#[derive(Args, Debug)]
+struct OpsIngestArgs {
+    #[arg(long)]
+    workspace: PathBuf,
+    /// syslog | snmp | prometheus | nagios | dhcp | arp
+    #[arg(long)]
+    format: String,
+    #[arg(long)]
+    file: PathBuf,
+}
+
+#[derive(Subcommand, Debug)]
 enum EndpointCommand {
     /// Nacte soubor JSONL (jeden JSON objekt na radek) a ulozi nove udalosti do workspace.
     Ingest(EndpointIngestArgs),
+    /// Krok 14: prehraje soubory EVTX produkcni cestou (evtx -> adapter -> verdikt -> graf) a vypise JSON.
+    ReplayEvtx(EndpointReplayArgs),
+    /// Krok 14: prehraje JSON radky (OTRF, winlogbeat) po hodinovych oknech a vypise JSON.
+    ReplayJsonl(EndpointReplayJsonlArgs),
+}
+
+#[derive(Args, Debug)]
+struct EndpointReplayJsonlArgs {
+    #[arg(long)]
+    file: PathBuf,
+    /// sysmon | wazuh | osquery
+    #[arg(long, default_value = "sysmon")]
+    format: String,
+    #[arg(long, default_value_t = false)]
+    extended: bool,
+    /// Delka okna v sekundach.
+    #[arg(long, default_value_t = 3600)]
+    window_s: i64,
+}
+
+#[derive(Args, Debug)]
+struct EndpointReplayArgs {
+    /// Soubor .evtx nebo adresar se soubory .evtx.
+    #[arg(long)]
+    path: PathBuf,
+    /// Rozsirene indikatory (krok 14, `endpoint_ext`).
+    #[arg(long, default_value_t = false)]
+    extended: bool,
 }
 
 #[derive(Args, Debug)]
@@ -141,6 +188,18 @@ struct SoakRunArgs {
     /// Krok 8: koncova telemetrie `on` (zapne i prepinac `endpoint` ve v3) nebo `off`.
     #[arg(long, default_value = "off")]
     endpoint: String,
+    /// Krok 14 (C2): provozni telemetrie `on` (zapne i prepinac `ops_telemetry` ve v3) nebo `off`.
+    #[arg(long, default_value = "off")]
+    ops_telemetry: String,
+    /// Krok 14 (C2): dalsi vypadek zdroju provozni telemetrie v procentech.
+    #[arg(long, default_value_t = 0)]
+    ops_drop: u32,
+    /// Krok 14 (C2): nasobek sumu provozni telemetrie (nad 1 pridava zavadejici signaly).
+    #[arg(long, default_value_t = 1.0)]
+    ops_noise: f64,
+    /// Krok 14 (C2): podil poruch typu mimo katalog v procentech.
+    #[arg(long, default_value_t = 0)]
+    ops_unknown: u32,
     /// Krok 12: svet metadat TLS a DNS (`on` | `cal` (kalibrované pozadí, krok 13) | `off`).
     #[arg(long, default_value = "off")]
     l7: String,
@@ -153,6 +212,9 @@ struct SoakRunArgs {
     /// Krok 8: nasobek sumu spravcovskych nastroju (citlivostni osa, vychozi 1).
     #[arg(long, default_value_t = 1.0)]
     endpoint_noise: f64,
+    /// Krok 14: podil neskodnych nastroju v seznamu povolenych (procenta).
+    #[arg(long, default_value_t = 70)]
+    endpoint_allow: u32,
     /// Krok 8: agenti na hostech utoku: `honest`, `silent` (nic neposila) nebo `ok` (vse v poradku).
     #[arg(long, default_value = "honest")]
     endpoint_agent: String,
@@ -987,6 +1049,79 @@ fn main() -> anyhow::Result<()> {
             let message = broker::claim_one(&config, &args.node_id, 500, min_idle_ms)?;
             println!("{}", serde_json::to_string_pretty(&message)?);
         }
+        Command::Endpoint(EndpointCommand::ReplayEvtx(args)) => {
+            let mut files: Vec<PathBuf> = Vec::new();
+            if args.path.is_dir() {
+                for entry in std::fs::read_dir(&args.path)? {
+                    let p = entry?.path();
+                    if p.extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("evtx"))
+                    {
+                        files.push(p);
+                    }
+                }
+                files.sort();
+            } else {
+                files.push(args.path.clone());
+            }
+            let out: Vec<serde_json::Value> =
+                salticus_program::endpoint::evtx::replay(&files, args.extended)
+                    .into_iter()
+                    .map(|r| match r {
+                        Ok(f) => serde_json::to_value(f).unwrap_or_default(),
+                        Err(e) => serde_json::json!({"error": e}),
+                    })
+                    .collect();
+            println!("{}", serde_json::to_string_pretty(&out)?);
+        }
+        Command::Ops(OpsCommand::Ingest(args)) => {
+            let format: salticus_program::ops_telemetry::adapters::Format =
+                args.format.parse().map_err(anyhow::Error::msg)?;
+            let meta = std::fs::metadata(&args.file)?;
+            anyhow::ensure!(
+                meta.len()
+                    <= (salticus_program::ops_telemetry::persist::MAX_BATCH_BYTES as u64) * 16,
+                "soubor je prilis velky ({} B)",
+                meta.len()
+            );
+            let text = std::fs::read_to_string(&args.file)?;
+            std::fs::create_dir_all(&args.workspace)?;
+            let mut store = salticus_program::engine_state::EngineStateStore::open(
+                &args.workspace.join("engine-state.sqlite"),
+            )?;
+            let mut total = salticus_program::ops_telemetry::persist::IngestSummary::default();
+            for chunk in text
+                .as_bytes()
+                .chunks(salticus_program::ops_telemetry::persist::MAX_BATCH_BYTES)
+            {
+                let part = String::from_utf8_lossy(chunk);
+                let s = salticus_program::ops_telemetry::persist::ingest_text(
+                    store.conn_mut(),
+                    format,
+                    &part,
+                    chrono::Utc::now(),
+                )?;
+                total.lines += s.lines;
+                total.signals += s.signals;
+                total.stored += s.stored;
+                total.duplicates += s.duplicates;
+                total.rejected += s.rejected;
+                total.truncated |= s.truncated;
+            }
+            println!("{}", serde_json::to_string_pretty(&total)?);
+        }
+        Command::Endpoint(EndpointCommand::ReplayJsonl(args)) => {
+            let format: salticus_program::endpoint::Format =
+                args.format.parse().map_err(anyhow::Error::msg)?;
+            let r = salticus_program::endpoint::evtx::replay_jsonl(
+                &args.file,
+                format,
+                args.extended,
+                args.window_s.max(60),
+            )
+            .map_err(anyhow::Error::msg)?;
+            println!("{}", serde_json::to_string_pretty(&r)?);
+        }
         Command::Endpoint(EndpointCommand::Ingest(args)) => {
             let format: salticus_program::endpoint::Format =
                 args.format.parse().map_err(anyhow::Error::msg)?;
@@ -1060,10 +1195,22 @@ fn main() -> anyhow::Result<()> {
                     cfg.world.endpoint.on = true;
                     cfg.world.endpoint.coverage_pct = args.endpoint_coverage.min(100);
                     cfg.world.endpoint.noise = args.endpoint_noise.clamp(0.0, 1000.0);
+                    cfg.world.endpoint.allow_pct = args.endpoint_allow.min(100);
                     cfg.world.endpoint.agent =
                         args.endpoint_agent.parse().map_err(anyhow::Error::msg)?;
                 }
                 other => anyhow::bail!("--endpoint: on | off, ne {other}"),
+            }
+            match args.ops_telemetry.as_str() {
+                "off" => {}
+                "on" => {
+                    cfg.engine.v3.ops_telemetry = true;
+                    cfg.world.ops.on = true;
+                    cfg.world.ops.drop_pct = args.ops_drop.min(100);
+                    cfg.world.ops.noise = args.ops_noise.clamp(0.0, 100.0);
+                    cfg.world.ops.unknown_pct = args.ops_unknown.min(100);
+                }
+                other => anyhow::bail!("--ops-telemetry: on | off, ne {other}"),
             }
             cfg.world.mix = args.mix == "on";
             cfg.world.l7_cal = args.l7 == "cal";

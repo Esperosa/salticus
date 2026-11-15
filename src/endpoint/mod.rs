@@ -12,6 +12,8 @@
 //! telemetrie je vidět (pokrytí), vstup je omezený, podezřelé zvyšuje jistotu.
 
 pub mod correlate;
+pub mod evtx;
+pub mod graph;
 pub mod model;
 pub mod osquery;
 pub mod persist;

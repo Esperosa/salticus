@@ -83,3 +83,38 @@ Přepínač se navrhne do `recommended()` jen tehdy, když na držených seedech
 | 5 měření ladicí | nezačato |
 | 5 měření držené | nezačato |
 | 6 souhrn a doporučení `recommended()` | nezačato |
+
+## Implementace (průběžně zapisováno)
+
+### C2: provozní telemetrie
+
+| blok | soubory | co |
+|---|---|---|
+| model a sklad | `src/ops_telemetry/mod.rs` | `OpsSignal` (čas, klíč, hodnota, rozsah IP/CIDR/`*`), `OpsStore` (strop 50 000 signálů, stáří 24 h, budoucnost 1 h, klíč `[a-z0-9_]{1,48}`, konečná hodnota, rozsah ≤ 16), evidence pokrytí zdrojů (`heartbeat`, `silent_sources`: zdroj bez signálu a heartbeatu 3 h je tichý) |
+| adaptéry | `src/ops_telemetry/adapters.rs` | syslog (RFC 5424 i BSD), SNMP text (`snmpwalk`), Prometheus text, Nagios, DHCP (dhcpd, Kea), chrony, ARP; tabulka vzorů jako podřetězce; řádek ≤ 8 KiB; fuzz 30 000 vstupů x 6 formátů bez paniky |
+| katalog | `data/incident-catalog.json` v1.1.0, `tools/k14_catalog_signals.py` | pole `ops_signals` (klíč, váha 1 až 3) u všech 75 typů, 101 klíčů |
+| diagnóza | `ops_telemetry::diagnose` | skóre typu = přítomný důkaz / (přítomný + 0,5 x chybějící důkaz váhy >= 2 u ŽIVÉHO zdroje), váha klíče x idf přes katalog; typ se přijme se skóre >= 0,45 a odstupem od druhého >= 0,10, jinak třída bez typu (`nejednoznacne`), slabá shoda = `neurceno`; **jen typy nálezů z množiny COMPATIBLE** (dostupnost, objem, nový partner) se přeřazují, útokové typy (signatury, skeny, hádání hesel, tunely) zůstávají `utok` a nesou jen poznámku `explains_partly` |
+| bez telemetrie | `diagnose` | tokový vzor poruchy (E1 až E3) a žádný signál a aspoň jeden tichý zdroj -> `neurceno` s textem „nelze určit, chybí telemetrie: ...“; bez tokového vzoru zůstává `utok` |
+| simulátor | `src/soak/ops_sim.rs` | `--ops-telemetry on`, `--ops-drop`, `--ops-noise`, `--ops-unknown`; signály podle `ops_signals` typu s pravděpodobností váhy (0,9 / 0,6 / 0,35 za cyklus), pokrytí zdrojů v síti (SNMP 90 %, syslog 85, DHCP 80, DNS 70, ARP, NTP, probe 60 %), podsíťové signály s rozsahem /24, hostové jen na hostu, šum, zavádějící signály u útoků (`noise` > 1), typ mimo katalog (`sys_unclassified_error`) |
+| engine | `V3Features::ops_telemetry` | mimo `recommended()`; v soaku zařazení nálezu jde do `attacks[].catalog` a počet doručených signálů do `ops_signals` |
+| vyhodnocení | `tools/k14_ops.py` | C1 až C5, C10 po typech a celkem s Wilsonem |
+
+Pravidla ověřená testy: úplná sada signálů každého typu ho pozná nebo vyjde `nejednoznacne` (sdílené signály OPS-027 a CHG-006, OPS-045 a OPS-020, OPS-033 a OPS-034), nikdy jistě jiná třída; útokové typy se nepřeřazují; chybějící telemetrie se hlásí; rozsah IP a CIDR se dodržuje.
+
+### A: endpoint
+
+| blok | soubory | co |
+|---|---|---|
+| hash binárky | `endpoint/model.rs`, `sysmon.rs`, `osquery.rs` | `Process::hash` (SHA-256 ze Sysmon `Hashes` a osquery `sha256`) |
+| kontext procesu u nálezu | `endpoint/graph.rs` | `bind_process` (spojení -> proces přes obraz a čas, okno 300 s), redakce příkazové řádky (`redact_cmdline`: klíč=hodnota, příznaky s hodnotou, base64 >= 40 znaků, `-EncodedCommand`), pseudonymizace uživatele solenou funkcí (`Privacy`) |
+| seznam povolených | `endpoint/graph.rs` `Allowlist` | hash + podpis + výrobce + protistrana (CIDR, `*` se nepřijímá) + vlastník + expirace (bez expirace se nepřijímá); `EndpointSignal::Allowed`, `LrTable::endpoint_allow` 0,05, u chráněných nálezů jen `Undetermined` |
+| graf aktiv | `endpoint/graph.rs` `Graph` | uzly host, uživatel, proces, protistrana, soubor; hrany Spawned, Connected, LoggedOn, Wrote, MovedTo, Ran; kauzální řetěz, první výskyt, export DOT, meze 5 000 uzlů a 20 000 hran |
+| pokrytí agentů | `endpoint/graph.rs` `agent_mismatch` | host s provozem v síti: `blind` (agent nikdy nehlásil) a `silent` (umlkl), příznak že ostatní agenti žijí |
+| rozšířené indikátory | `endpoint/correlate.rs` (`Policy::extended`) | kancelářský proces spouští skript, cloudový synchronizační nástroj, DNS průzkum (`axfr`, `ls -d`), smyčka TXT dotazů, nahrání skriptem, průzkum cloudovým CLI (>= 3 různé příkazy), stažení a spuštění |
+| přepínač | `V3Features::endpoint_ext` | mimo `recommended()`, vyžaduje `endpoint` a `protect` |
+| simulace | `soak/endpoint_sim.rs` | události pro varianty, kde síť nestačí (rclone, PowerShell, nslookup, aws CLI, stažení a spuštění), pro `clicks_to_rare_destination` záměrně shodné s běžným kliknutím z pošty (koncový nástroj to neodliší) a podepsané nástroje hn_* s hashem (20 % instancí s vlastním nepodepsaným nástrojem); `--endpoint-allow` (70 %) |
+
+### Deník odchylek a oprav na ladicích seedech
+
+1. Smoke 20261102 (4 sítě, ops): C1 71 %, C2 34 %, C4 22 %, C5 24 %. Příčina: signály poruch měly rozsah /24 pro všechny klíče, takže se přenášely mezi souběžnými poruchami a na útoky v téže podsíti. Oprava v simulátoru (realismus): /24 jen u podsíťových klíčů, ostatní na postiženém hostu; do rozsahu se počítá i `attacker_device` (hn_authorized_internal_scan neměl žádné signály).
+2. Množina `COMPATIBLE` rozšířena o typy, které nález skutečně produkuje u poruch a změn (egress_volume_anomaly, ingest_volume_anomaly, novel_peer_burst, novel_burst_peer, peer_burst, tls_novel_burst, retry_storm, vpn_reconnect_storm).

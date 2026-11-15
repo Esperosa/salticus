@@ -1,5 +1,5 @@
 {
- "catalog_version": "1.0.0",
+ "catalog_version": "1.1.0",
  "created": "2026-11-15",
  "description": "Katalog běžných síťových a provozních incidentů (porucha / neškodná změna / nejednoznačné) pro vysvětlení nálezů a doporučené kontroly. Kategorie 'nejednoznacne' = na síťové úrovni nelze s jistotou rozlišit od útoku.",
  "note": "Texty o projevech jsou autorský souhrn z odborných znalostí; basis=assumption znamená, že tvrzení nebylo ověřeno primárním zdrojem v této relaci. Ověřené zdroje mají verified=true. Pole verified=true znamena, ze se stranka zdroje 2026-11-15 skutecne nacetla a odpovida tvrzenemu zdroji (RFC, norma, portal vyrobce); jednotliva tvrzeni o projevech zustavaji basis=assumption, dokud se neoveri v konkretni casti zdroje.",
@@ -282,7 +282,37 @@
    ],
    "sim_variant": "switch_outage_subnet",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "if_oper_down",
+     3
+    ],
+    [
+     "snmp_timeout",
+     3
+    ],
+    [
+     "sys_link_down",
+     2
+    ],
+    [
+     "power_fail",
+     2
+    ],
+    [
+     "arp_absent",
+     2
+    ],
+    [
+     "dhcp_discover_absent",
+     1
+    ],
+    [
+     "dns_queries_absent",
+     1
+    ]
+   ]
   },
   {
    "id": "OPS-002",
@@ -311,7 +341,21 @@
    ],
    "sim_variant": "core_router_flapping",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "if_flap",
+     3
+    ],
+    [
+     "route_adj_change",
+     3
+    ],
+    [
+     "sys_link_down",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-003",
@@ -339,7 +383,17 @@
    ],
    "sim_variant": "dhcp_pool_exhaustion",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "dhcp_pool_high",
+     3
+    ],
+    [
+     "dhcp_no_free",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-004",
@@ -366,7 +420,17 @@
    ],
    "sim_variant": "dhcp_server_down",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "dhcp_service_down",
+     3
+    ],
+    [
+     "dhcp_no_offer",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-005",
@@ -395,7 +459,21 @@
    ],
    "sim_variant": "dns_partial_failure",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "dns_servfail",
+     3
+    ],
+    [
+     "probe_dns_fail",
+     2
+    ],
+    [
+     "dns_latency",
+     1
+    ]
+   ]
   },
   {
    "id": "OPS-006",
@@ -422,7 +500,17 @@
    ],
    "sim_variant": "dns_slow_resolution",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "dns_latency",
+     3
+    ],
+    [
+     "cpu_high",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-007",
@@ -450,7 +538,13 @@
    ],
    "sim_variant": "ntp_unreachable",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "ntp_unreach",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-008",
@@ -477,7 +571,17 @@
    ],
    "sim_variant": "ntp_clock_drift_host",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "ntp_offset",
+     3
+    ],
+    [
+     "sys_krb_skew",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-009",
@@ -506,7 +610,17 @@
    ],
    "sim_variant": "cert_expired_internal_service",
    "basis": "partly-verified",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "probe_tls_expired",
+     3
+    ],
+    [
+     "sys_cert_expired",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-010",
@@ -533,7 +647,17 @@
    ],
    "sim_variant": "cert_chain_misconfig_external",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "probe_tls_chain",
+     3
+    ],
+    [
+     "sys_cert_chain",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-011",
@@ -561,7 +685,21 @@
    ],
    "sim_variant": "uplink_saturation",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "if_util_high",
+     3
+    ],
+    [
+     "if_out_discards",
+     3
+    ],
+    [
+     "qos_drop",
+     1
+    ]
+   ]
   },
   {
    "id": "OPS-012",
@@ -588,7 +726,17 @@
    ],
    "sim_variant": "backup_window_overrun",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "backup_running_long",
+     3
+    ],
+    [
+     "if_util_high",
+     1
+    ]
+   ]
   },
   {
    "id": "OPS-013",
@@ -616,7 +764,25 @@
    ],
    "sim_variant": "broadcast_storm_loop",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "bcast_pps",
+     3
+    ],
+    [
+     "stp_tc",
+     2
+    ],
+    [
+     "mac_flap",
+     3
+    ],
+    [
+     "cpu_high",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-014",
@@ -644,7 +810,17 @@
    ],
    "sim_variant": "mdns_ssdp_storm",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "mcast_pps",
+     3
+    ],
+    [
+     "bcast_pps",
+     1
+    ]
+   ]
   },
   {
    "id": "OPS-015",
@@ -672,7 +848,17 @@
    ],
    "sim_variant": "duplicate_ip_conflict",
    "basis": "partly-verified",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_dup_addr",
+     3
+    ],
+    [
+     "arp_conflict",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-016",
@@ -699,7 +885,21 @@
    ],
    "sim_variant": "app_server_crash_cascade",
    "basis": "partly-verified",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_proc_crash",
+     3
+    ],
+    [
+     "probe_http_fail",
+     2
+    ],
+    [
+     "sys_health_fail",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-017",
@@ -726,7 +926,25 @@
    ],
    "sim_variant": "db_overload_degradation",
    "basis": "partly-verified",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "io_wait_high",
+     3
+    ],
+    [
+     "sys_slow_query",
+     3
+    ],
+    [
+     "cpu_high",
+     2
+    ],
+    [
+     "conn_count_high",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-018",
@@ -753,7 +971,21 @@
    ],
    "sim_variant": "load_balancer_partial_outage",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "lb_backend_down",
+     3
+    ],
+    [
+     "sys_health_fail",
+     2
+    ],
+    [
+     "probe_http_fail",
+     1
+    ]
+   ]
   },
   {
    "id": "OPS-019",
@@ -780,7 +1012,17 @@
    ],
    "sim_variant": "flapping_service",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_service_restart",
+     3
+    ],
+    [
+     "sys_proc_crash",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-020",
@@ -808,7 +1050,17 @@
    ],
    "sim_variant": "slow_link_loss_degradation",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "if_in_errors",
+     3
+    ],
+    [
+     "if_crc",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-021",
@@ -835,7 +1087,21 @@
    ],
    "sim_variant": "disk_full_backup_failure",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "disk_high",
+     3
+    ],
+    [
+     "sys_disk_full",
+     3
+    ],
+    [
+     "sys_backup_fail",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-022",
@@ -862,7 +1128,17 @@
    ],
    "sim_variant": "memory_exhaustion_stall",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "mem_high",
+     3
+    ],
+    [
+     "sys_oom",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-023",
@@ -890,7 +1166,17 @@
    ],
    "sim_variant": "vpn_concentrator_down",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "vpn_tunnel_down",
+     3
+    ],
+    [
+     "sys_ike_fail",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-024",
@@ -917,7 +1203,13 @@
    ],
    "sim_variant": "access_point_controller_failure",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_ap_lost_ctrl",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-025",
@@ -944,7 +1236,13 @@
    ],
    "sim_variant": "mail_relay_queue_retry",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_mail_deferred",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-026",
@@ -971,7 +1269,17 @@
    ],
    "sim_variant": "iot_firmware_chatter_loop",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "uptime_reset",
+     1
+    ],
+    [
+     "sys_firmware_poll",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-027",
@@ -998,7 +1306,17 @@
    ],
    "sim_variant": "monitoring_agent_misconfig_poll",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "snmp_poll_load",
+     3
+    ],
+    [
+     "snmp_timeout",
+     1
+    ]
+   ]
   },
   {
    "id": "CHG-001",
@@ -1025,7 +1343,21 @@
    ],
    "sim_variant": "seasonal_peak_web",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "conn_count_high",
+     1
+    ],
+    [
+     "if_util_high",
+     1
+    ],
+    [
+     "probe_http_ok",
+     2
+    ]
+   ]
   },
   {
    "id": "CHG-002",
@@ -1052,7 +1384,17 @@
    ],
    "sim_variant": "planned_maintenance_window",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_change_ticket",
+     3
+    ],
+    [
+     "uptime_reset",
+     2
+    ]
+   ]
   },
   {
    "id": "CHG-003",
@@ -1079,7 +1421,21 @@
    ],
    "sim_variant": "planned_patch_reboot_wave",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_update_installed",
+     3
+    ],
+    [
+     "uptime_reset",
+     2
+    ],
+    [
+     "sys_pending_reboot",
+     1
+    ]
+   ]
   },
   {
    "id": "CHG-004",
@@ -1105,7 +1461,13 @@
    ],
    "sim_variant": "hn_nightly_cloud_backup_upload",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_backup_job",
+     3
+    ]
+   ]
   },
   {
    "id": "CHG-005",
@@ -1131,7 +1493,13 @@
    ],
    "sim_variant": "hn_cdn_update_download",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_update_job",
+     3
+    ]
+   ]
   },
   {
    "id": "CHG-006",
@@ -1157,7 +1525,17 @@
    ],
    "sim_variant": "hn_monitoring_snmp_sweep",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "snmp_poll_load",
+     3
+    ],
+    [
+     "sys_scanner_job",
+     1
+    ]
+   ]
   },
   {
    "id": "CHG-007",
@@ -1183,7 +1561,13 @@
    ],
    "sim_variant": "hn_password_sync_periodic",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_dir_sync",
+     3
+    ]
+   ]
   },
   {
    "id": "CHG-008",
@@ -1209,7 +1593,13 @@
    ],
    "sim_variant": "hn_admin_bulk_ssh",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_sshd_key_accept",
+     3
+    ]
+   ]
   },
   {
    "id": "CHG-009",
@@ -1235,7 +1625,17 @@
    ],
    "sim_variant": "hn_db_replication_bulk",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_repl_stream",
+     3
+    ],
+    [
+     "repl_lag",
+     1
+    ]
+   ]
   },
   {
    "id": "CHG-010",
@@ -1261,7 +1661,13 @@
    ],
    "sim_variant": "hn_mail_newsletter_burst",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_mail_queue_bulk",
+     3
+    ]
+   ]
   },
   {
    "id": "CHG-011",
@@ -1287,7 +1693,13 @@
    ],
    "sim_variant": "hn_authorized_internal_scan",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_scanner_job",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-028",
@@ -1315,7 +1727,13 @@
    ],
    "sim_variant": "bad_client_resolver",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "dns_queries_wrong_server",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-029",
@@ -1343,7 +1761,13 @@
    ],
    "sim_variant": "stale_dns_record",
    "basis": "partly-verified",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "dns_stale_record",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-030",
@@ -1370,7 +1794,13 @@
    ],
    "sim_variant": "split_horizon_dns_error",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "dns_split_horizon",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-031",
@@ -1397,7 +1827,13 @@
    ],
    "sim_variant": "dns_nxdomain_storm",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "dns_nxdomain",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-032",
@@ -1424,7 +1860,13 @@
    ],
    "sim_variant": "dns_ttl_misconfig",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "dns_ttl_anom",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-033",
@@ -1451,7 +1893,13 @@
    ],
    "sim_variant": "native_vlan_mismatch",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_native_vlan_mismatch",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-034",
@@ -1478,7 +1926,17 @@
    ],
    "sim_variant": "vlan_hop_or_misconfig",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_native_vlan_mismatch",
+     2
+    ],
+    [
+     "vlan_double_tag",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-035",
@@ -1505,7 +1963,13 @@
    ],
    "sim_variant": "mtu_mss_mismatch",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_icmp_frag_blocked",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-036",
@@ -1532,7 +1996,17 @@
    ],
    "sim_variant": "rogue_dhcp_server",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_dhcp_snoop_viol",
+     3
+    ],
+    [
+     "dhcp_rogue_offer",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-037",
@@ -1559,7 +2033,13 @@
    ],
    "sim_variant": "bad_dhcp_lease",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "dhcp_bad_lease",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-038",
@@ -1586,7 +2066,17 @@
    ],
    "sim_variant": "dhcp_relay_failure",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "dhcp_relay_missing",
+     3
+    ],
+    [
+     "dhcp_discover_absent",
+     1
+    ]
+   ]
   },
   {
    "id": "CHG-012",
@@ -1612,7 +2102,17 @@
    ],
    "sim_variant": "ca_change",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "cert_new_issuer",
+     3
+    ],
+    [
+     "sys_change_ticket",
+     1
+    ]
+   ]
   },
   {
    "id": "OPS-040",
@@ -1640,7 +2140,13 @@
    ],
    "sim_variant": "routing_blackhole",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_route_null0",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-041",
@@ -1667,7 +2173,13 @@
    ],
    "sim_variant": "asymmetric_routing",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_oos_drop",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-042",
@@ -1693,7 +2205,13 @@
    ],
    "sim_variant": "bad_default_route",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "route_default_changed",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-043",
@@ -1722,7 +2240,17 @@
    ],
    "sim_variant": "nat_pat_exhaustion",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "conntrack_high",
+     3
+    ],
+    [
+     "sys_conntrack_full",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-044",
@@ -1749,7 +2277,21 @@
    ],
    "sim_variant": "duplex_mismatch",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "if_late_collision",
+     3
+    ],
+    [
+     "if_duplex_mismatch",
+     3
+    ],
+    [
+     "if_in_errors",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-045",
@@ -1776,7 +2318,17 @@
    ],
    "sim_variant": "port_crc_errors",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "if_crc",
+     3
+    ],
+    [
+     "if_in_errors",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-046",
@@ -1802,7 +2354,13 @@
    ],
    "sim_variant": "qos_drops",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "qos_drop",
+     3
+    ]
+   ]
   },
   {
    "id": "CHG-013",
@@ -1829,7 +2387,17 @@
    ],
    "sim_variant": "new_device_onboarding",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "arp_new_mac",
+     3
+    ],
+    [
+     "sys_change_ticket",
+     1
+    ]
+   ]
   },
   {
    "id": "OPS-048",
@@ -1856,7 +2424,17 @@
    ],
    "sim_variant": "rogue_device_in_network",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_port_sec_viol",
+     3
+    ],
+    [
+     "arp_new_mac",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-049",
@@ -1882,7 +2460,17 @@
    ],
    "sim_variant": "device_restart_loop",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "uptime_reset",
+     3
+    ],
+    [
+     "sys_boot",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-050",
@@ -1909,7 +2497,13 @@
    ],
    "sim_variant": "firmware_update_retry",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_update_failed",
+     3
+    ]
+   ]
   },
   {
    "id": "CHG-014",
@@ -1935,7 +2529,13 @@
    ],
    "sim_variant": "update_pending_reboot",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_pending_reboot",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-052",
@@ -1962,7 +2562,13 @@
    ],
    "sim_variant": "replication_lag",
    "basis": "partly-verified",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "repl_lag",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-053",
@@ -1988,7 +2594,13 @@
    ],
    "sim_variant": "license_expiry",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_license_expired",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-054",
@@ -2014,7 +2626,17 @@
    ],
    "sim_variant": "health_check_failing",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_health_fail",
+     3
+    ],
+    [
+     "probe_http_fail",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-055",
@@ -2041,7 +2663,17 @@
    ],
    "sim_variant": "vpn_tunnel_flapping",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "vpn_tunnel_flap",
+     3
+    ],
+    [
+     "sys_ike_fail",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-056",
@@ -2067,7 +2699,13 @@
    ],
    "sim_variant": "waf_false_block",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_waf_block",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-057",
@@ -2096,7 +2734,17 @@
    ],
    "sim_variant": "cloud_region_outage",
    "basis": "partly-verified",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "probe_cloud_status",
+     3
+    ],
+    [
+     "probe_http_fail",
+     2
+    ]
+   ]
   },
   {
    "id": "CHG-015",
@@ -2122,7 +2770,13 @@
    ],
    "sim_variant": "service_reclassification",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_change_ticket",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-059",
@@ -2149,7 +2803,21 @@
    ],
    "sim_variant": "ddos_vs_flash_crowd",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "if_util_high",
+     2
+    ],
+    [
+     "conn_count_high",
+     2
+    ],
+    [
+     "probe_http_ok",
+     1
+    ]
+   ]
   },
   {
    "id": "OPS-060",
@@ -2176,7 +2844,13 @@
    ],
    "sim_variant": "update_server_broken",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_http_5xx",
+     3
+    ]
+   ]
   },
   {
    "id": "OPS-061",
@@ -2202,7 +2876,17 @@
    ],
    "sim_variant": "icmp_blocked_by_firewall",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_icmp_deny",
+     3
+    ],
+    [
+     "probe_icmp_fail",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-062",
@@ -2229,7 +2913,17 @@
    ],
    "sim_variant": "stp_topology_change_loop",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "stp_tc",
+     3
+    ],
+    [
+     "mac_flap",
+     2
+    ]
+   ]
   },
   {
    "id": "OPS-063",
@@ -2256,7 +2950,17 @@
    ],
    "sim_variant": "kerberos_dc_failure",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_krb_dc_error",
+     3
+    ],
+    [
+     "sys_krb_skew",
+     1
+    ]
+   ]
   },
   {
    "id": "OPS-064",
@@ -2283,7 +2987,17 @@
    ],
    "sim_variant": "connection_limit_reached",
    "basis": "assumption",
-   "sim_status": "generator"
+   "sim_status": "generator",
+   "ops_signals": [
+    [
+     "sys_fd_limit",
+     3
+    ],
+    [
+     "conn_count_high",
+     2
+    ]
+   ]
   }
  ]
 }

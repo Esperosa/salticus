@@ -34,6 +34,7 @@ tower-http = { version = "0.6", features = ["fs", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1.18", features = ["v4", "serde"] }
+evtx = { version = "0.15", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.23"

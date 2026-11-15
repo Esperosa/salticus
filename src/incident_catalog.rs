@@ -39,6 +39,9 @@ pub struct Entry {
     /// Štítek varianty generátoru v simulátoru (`soak::variants`), pokud existuje.
     pub sim_variant: Option<String>,
     pub basis: String,
+    /// Krok 14 (C2): provozní signály typu (klíč, váha 1 až 3), viz `ops_telemetry`.
+    #[serde(default)]
+    pub ops_signals: Vec<(String, u8)>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

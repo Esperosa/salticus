@@ -48,6 +48,9 @@ pub struct Process {
     pub signed: Option<bool>,
     /// Výrobce (`Company`) nebo podepisující.
     pub vendor: Option<String>,
+    /// SHA-256 binárky (malými písmeny), pokud ho zdroj uvádí (Sysmon `Hashes`, osquery `sha256`).
+    #[serde(default)]
+    pub hash: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

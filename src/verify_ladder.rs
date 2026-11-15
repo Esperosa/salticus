@@ -397,6 +397,8 @@ pub struct LrTable {
     /// Krok 8: podezřelý proces na hostu případu, pravidelný známý podepsaný proces.
     pub endpoint_suspicious: f64,
     pub endpoint_benign: f64,
+    /// Krok 14: proces ze seznamu povolených (hash, podpis, výrobce, protistrana, vlastník, expirace).
+    pub endpoint_allow: f64,
     /// Krok 12: TLS a DNS metadata: novy cil s druhym rysem, znamy cil a otisk.
     pub l7_suspicious: f64,
     pub l7_benign: f64,
@@ -425,6 +427,7 @@ impl Default for LrTable {
             profile_new: 1.5,
             endpoint_suspicious: 12.0,
             endpoint_benign: 0.3,
+            endpoint_allow: 0.05,
             l7_suspicious: 3.0,
             l7_benign: 0.6,
         }
@@ -1418,6 +1421,15 @@ fn evaluate(
                     detail: format!("koncova telemetrie: {detail}"),
                 },
                 // krok 8 (A2, 1): u chraneneho pripadu neni koncovy signal neskodny dukaz
+                EndpointSignal::Allowed(_) if policy.protect && input.is_protected() => {
+                    Outcome::Undetermined(
+                        "chraneny nalez: seznam povolenych neni dukaz neskodnosti".into(),
+                    )
+                }
+                EndpointSignal::Allowed(detail) => Outcome::Evidence {
+                    lr: lr.endpoint_allow,
+                    detail: format!("seznam povolenych: {detail}"),
+                },
                 EndpointSignal::Benign(_) if policy.protect && input.is_protected() => {
                     Outcome::Undetermined(
                         "chraneny nalez: koncova telemetrie neni dukaz neskodnosti".into(),

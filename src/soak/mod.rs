@@ -14,6 +14,7 @@ pub mod legs;
 pub mod netmodel;
 #[cfg(test)]
 mod no_memory;
+pub mod ops_sim;
 pub mod report;
 pub mod rng;
 pub mod runner;

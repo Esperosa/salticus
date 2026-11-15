@@ -873,6 +873,15 @@ impl V3Session {
         if let (Some(flows), Some(window)) = (self.behavior_flows.as_ref(), ops_window.as_ref()) {
             let policy = ops_policy.clone();
             let catalog = crate::incident_catalog::Catalog::shared();
+            // krok 14 (C2): provozni telemetrie z uloziste (signaly a heartbeaty zdroju)
+            let ops_store = if self.engine.ops_telemetry() {
+                Some(crate::ops_telemetry::persist::load_store(
+                    self.store.conn(),
+                    now,
+                )?)
+            } else {
+                None
+            };
             let mut marks: crate::ops_evidence::OpsMarks =
                 self.store.load("ops_marks")?.unwrap_or_default();
             let at = now.timestamp();
@@ -915,6 +924,30 @@ impl V3Session {
                 if record.displayed && self.engine.ops_annotate() {
                     record.ops_note = reason.map(str::to_string);
                     record.catalog = Some(catalog.note(&finding.finding_type, reason));
+                }
+                if record.displayed
+                    && let Some(ops) = ops_store.as_ref()
+                {
+                    let mut ips: Vec<String> = Vec::new();
+                    ips.push(host_ip.to_string());
+                    crate::ops_telemetry::ips_in(&finding.title, &mut ips);
+                    crate::ops_telemetry::ips_in(&finding.rationale, &mut ips);
+                    for e in finding.evidence.iter().take(8) {
+                        crate::ops_telemetry::ips_in(e, &mut ips);
+                    }
+                    ips.sort();
+                    ips.dedup();
+                    let d = crate::ops_telemetry::diagnose(
+                        crate::ops_telemetry::Index::shared(),
+                        ops,
+                        &finding.finding_type,
+                        &ips,
+                        reason.is_some(),
+                        now.timestamp(),
+                        &crate::ops_telemetry::DiagPolicy::default(),
+                    );
+                    record.catalog = Some(d.note(catalog));
+                    record.ops_diagnosis = Some(d);
                 }
             }
             marks.sweep(at);

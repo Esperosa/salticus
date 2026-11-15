@@ -30,9 +30,10 @@ fn layout(map: &Map<String, Value>) -> Layout {
         return Layout {
             id,
             host: system.and_then(|s| field(s, &["Computer"])),
-            time: system
-                .and_then(|s| child(s, "TimeCreated"))
-                .and_then(|t| field(t, &["SystemTime"])),
+            time: system.and_then(|s| child(s, "TimeCreated")).and_then(|t| {
+                field(t, &["SystemTime"])
+                    .or_else(|| child(t, "#attributes").and_then(|a| field(a, &["SystemTime"])))
+            }),
             data: child(event, "EventData").cloned().unwrap_or_default(),
         };
     }
@@ -76,6 +77,17 @@ pub fn parse(map: &Map<String, Value>) -> ParseResult {
     Ok(from_event(id, &lay.data, host, ts, EndpointSource::Sysmon))
 }
 
+/// SHA-256 z pole Sysmon `Hashes` (`SHA1=..,MD5=..,SHA256=..,IMPHASH=..`).
+fn sha256_of(hashes: &str) -> Option<String> {
+    hashes.split(',').find_map(|p| {
+        let (k, v) = p.split_once('=')?;
+        (k.trim().eq_ignore_ascii_case("sha256")
+            && v.len() == 64
+            && v.bytes().all(|b| b.is_ascii_hexdigit()))
+        .then(|| v.to_ascii_lowercase())
+    })
+}
+
 /// Překlad události podle ID a polí (sdílí Wazuh pro vnořené Windows události).
 pub fn from_event(
     id: u32,
@@ -92,6 +104,7 @@ pub fn from_event(
             user: field(data, &["User", "SubjectUserName"]),
             signed: field(data, &["Signed"]).map(|s| truthy(&s)),
             vendor: field(data, &["Company"]),
+            hash: field(data, &["Hashes"]).and_then(|h| sha256_of(&h)),
         }),
         3 => {
             // jen odchozí spojení (pokud je pole uvedeno)
@@ -156,6 +169,58 @@ pub fn from_event(
                 .and_then(|s| super::valid_ip(&s)),
             success: id == 4624,
         }),
+        // krok 14: události Windows Security z reálných vzorků (EVTX-ATTACK-SAMPLES)
+        4662 => {
+            // DS-Replication-Get-Changes(-All) od účtu, který není řadič domény (DCSync)
+            let props = field(data, &["Properties"])?.to_ascii_lowercase();
+            let user = field(data, &["SubjectUserName"]).unwrap_or_default();
+            let replication = [
+                "1131f6aa-9c07-11d1-f79f-00c04fc2dcd2",
+                "1131f6ad-9c07-11d1-f79f-00c04fc2dcd2",
+                "89e95b76-444d-4c62-991a-0facbeda640c",
+            ]
+            .iter()
+            .any(|g| props.contains(g));
+            if !replication || user.ends_with('$') {
+                return None;
+            }
+            EventKind::Alert {
+                rule_id: "win-4662-dcsync".into(),
+                level: 12,
+                groups: vec!["credential_access".into()],
+                description: clip(&format!("replikacni prava DS pouzil ucet {user}")),
+            }
+        }
+        5145 => {
+            // přístup k administrativnímu sdílení s nástrojem vzdáleného spuštění
+            let share = field(data, &["ShareName"])?.to_ascii_lowercase();
+            let target = field(data, &["RelativeTargetName"])
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let admin =
+                share.ends_with("admin$") || share.ends_with("c$") || share.ends_with("ipc$");
+            let tool = ["psexe", "remcom", "svcctl", "atsvc", "winreg", "srvsvc"]
+                .iter()
+                .any(|t| target.contains(t));
+            if !(admin && tool) {
+                return None;
+            }
+            EventKind::Alert {
+                rule_id: "win-5145-admin-share".into(),
+                level: 8,
+                groups: vec!["lateral_movement".into()],
+                description: clip(&format!(
+                    "{share}\\{target} z {}",
+                    field(data, &["IpAddress"]).unwrap_or_default()
+                )),
+            }
+        }
+        4698 => EventKind::Persistence {
+            mechanism: "scheduled_task".into(),
+            target: clip(&field(data, &["TaskName"])?),
+            image: None,
+            signed: None,
+        },
         7045 => EventKind::ServiceInstall {
             name: field(data, &["ServiceName"])?,
             image: field(data, &["ImagePath", "ImageFile"])?,

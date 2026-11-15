@@ -994,6 +994,9 @@ pub struct LifecycleRecord {
     /// Krok 13 (B): zařazení podle katalogu provozních incidentů (třída, typ, příčina, kontrola).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog: Option<crate::incident_catalog::CatalogNote>,
+    /// Krok 14 (C2): diagnóza podle provozní telemetrie (důkazy, alternativy, chybějící zdroje).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ops_diagnosis: Option<crate::ops_telemetry::OpsDiagnosis>,
 }
 
 impl LifecycleRecord {
@@ -1025,6 +1028,7 @@ impl LifecycleRecord {
             protection: None,
             ops_note: None,
             catalog: None,
+            ops_diagnosis: None,
         }
     }
 }

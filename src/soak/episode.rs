@@ -146,6 +146,9 @@ pub struct WorldOptions {
     /// Krok 8: svět koncové telemetrie (`--endpoint`, `--endpoint-coverage`, `--endpoint-agent`).
     #[serde(default)]
     pub endpoint: crate::soak::endpoint_sim::EndpointWorld,
+    /// Krok 14 (C2): svět provozní telemetrie (`--ops-telemetry`, `--ops-drop`, `--ops-noise`, `--ops-unknown`).
+    #[serde(default)]
+    pub ops: crate::soak::ops_sim::OpsWorld,
     /// Krok 12: svet metadat TLS a DNS (`--l7`).
     #[serde(default)]
     pub l7: bool,
@@ -167,6 +170,7 @@ impl Default for WorldOptions {
             families: Default::default(),
             coverage: Default::default(),
             endpoint: Default::default(),
+            ops: Default::default(),
             l7: false,
             l7_cal: false,
             mix: false,
@@ -333,6 +337,7 @@ struct Ledger {
     ops_annotated: bool,
     /// Krok 13 (B): zarazeni zobrazenych nalezu podle katalogu, `trida|catalog_id` -> pocet.
     cat: BTreeMap<String, u32>,
+    cat_x: BTreeMap<String, u32>,
 }
 
 /// Zobrazeni nalezu v cyklu (legacy: vse, v3: podle pameti a kontextu).
@@ -429,6 +434,13 @@ struct LadderCycle {
     opened: HashSet<usize>,
     decisions: Vec<crate::verify_ladder::Decision>,
     late: Vec<(Finding, Shown)>,
+}
+
+/// Provozni telemetrie epizody (krok 14, C2): simulace, sklad, index katalogu.
+struct OpsRt {
+    sim: crate::soak::ops_sim::OpsSim,
+    store: crate::ops_telemetry::OpsStore,
+    policy: crate::ops_telemetry::DiagPolicy,
 }
 
 /// Koncova telemetrie epizody (krok 8): simulace agentu, sklad a politika.
@@ -831,6 +843,7 @@ fn run_episode_inner(
             cf_first: None,
             ops_annotated: false,
             cat: BTreeMap::new(),
+            cat_x: BTreeMap::new(),
         })
         .collect();
     // krok 7: polozky ve fronte podezreni a provozni anotace po poruchach
@@ -943,8 +956,26 @@ fn run_episode_inner(
                 &ips0,
             ),
             store: crate::endpoint::correlate::EndpointStore::new(Default::default()),
-            policy: crate::endpoint::correlate::Policy::default(),
+            policy: {
+                let mut p = crate::endpoint::correlate::Policy::default();
+                if cfg.engine.endpoint_ext() {
+                    p.extended = true;
+                    p.allow = crate::soak::endpoint_sim::sim_allowlist(
+                        crate::soak::traffic::EPOCH0,
+                        model.seed,
+                        cfg.world.endpoint.allow_pct as u64,
+                    );
+                    p.now_for_allow = 0;
+                }
+                p
+            },
         }
+    });
+    // krok 14 (C2): provozni telemetrie (SNMP, syslog, DHCP, DNS, ARP, NTP, probes)
+    let mut ops_rt = (cfg.engine.ops_telemetry() && cfg.world.ops.on).then(|| OpsRt {
+        sim: crate::soak::ops_sim::OpsSim::new(cfg.world.ops, &model),
+        store: crate::ops_telemetry::OpsStore::new(Default::default()),
+        policy: crate::ops_telemetry::DiagPolicy::default(),
     });
     for cycle in 0..cycles {
         let cycle_started = Instant::now();
@@ -1473,6 +1504,19 @@ fn run_episode_inner(
                 (before - run_report.findings.len()) as u64,
             );
         }
+        // krok 14 (C2): provozni telemetrie cyklu do skladu (heartbeat zdroju + signaly)
+        if let Some(rt) = ops_rt.as_mut() {
+            let now = t0 + crate::soak::traffic::CYCLE_SECS;
+            for source in rt.sim.live_sources() {
+                rt.store.heartbeat(source, now);
+            }
+            for signal in rt.sim.cycle(cycle, t0, &truths, &masked, &ips) {
+                rt.store.ingest(signal, now);
+            }
+            if cycle % 8 == 0 {
+                rt.store.prune(now);
+            }
+        }
         // krok 8: koncova telemetrie cyklu a nalezy `endpoint_alert` (chraneny typ)
         let mut endpoint_view: Option<crate::endpoint::correlate::EndpointView> = None;
         if let Some(rt) = endpoint_rt.as_mut() {
@@ -1491,7 +1535,15 @@ fn run_episode_inner(
             }
             for event in rt.sim.cycle(cycle, t0, &truths, &masked, &model, &ips) {
                 let resolution = dir.resolve(&event.host);
-                rt.store.ingest(event, &resolution, now);
+                let bytes = serde_json::to_vec(&event).map_or(0, |v| v.len() as u64);
+                if matches!(
+                    rt.store.ingest(event, &resolution, now),
+                    crate::endpoint::correlate::Outcome::Accepted
+                ) {
+                    // krok 14 (A9): objem uložených událostí (po deduplikaci a limitech)
+                    agg.output.k7_add("endpoint_events_total", 1);
+                    agg.output.k7_add("endpoint_bytes_total", bytes);
+                }
             }
             if cycle % 4 == 0 {
                 rt.store.prune(now);
@@ -2229,6 +2281,17 @@ fn run_episode_inner(
                     *entry |= suspect;
                 }
             }
+            // krok 14: nalez, ktery sedi presne na jednu udalost (bez soubehu), jde do `catalog_excl`
+            let exclusive = relevant_truths
+                .iter()
+                .filter(|&&i| {
+                    let t = &truths[i];
+                    cycle + ATTRIBUTION_LATENCY >= t.start_cycle
+                        && cycle <= t.end_cycle + ATTRIBUTION_LATENCY
+                        && finding_mentions(finding, &truth_keys[i])
+                })
+                .count()
+                == 1;
             if is_behavioral {
                 for &index in &relevant_truths {
                     let truth = &truths[index];
@@ -2295,7 +2358,66 @@ fn run_episode_inner(
                             ledger.typed |= typed;
                             ledger.ops_shown |= show.displayed && show.ops;
                             ledger.ops_annotated |= show.displayed && show.ops_note;
-                            if show.displayed && cfg.engine.ops_annotate() {
+                            if show.displayed && cfg.engine.ops_telemetry() && ops_rt.is_some() {
+                                if let Some(rt) = ops_rt.as_ref() {
+                                    let mut fips: Vec<String> = Vec::new();
+                                    if let Some(h) = &finding.host_key {
+                                        fips.push(h.clone());
+                                    }
+                                    if let Some(sk) = &finding.service_key {
+                                        crate::ops_telemetry::ips_in(sk, &mut fips);
+                                    }
+                                    crate::ops_telemetry::ips_in(&finding.title, &mut fips);
+                                    crate::ops_telemetry::ips_in(&finding.rationale, &mut fips);
+                                    for e in finding.evidence.iter().take(8) {
+                                        crate::ops_telemetry::ips_in(e, &mut fips);
+                                    }
+                                    fips.sort();
+                                    fips.dedup();
+                                    let d = crate::ops_telemetry::diagnose(
+                                        crate::ops_telemetry::Index::shared(),
+                                        &rt.store,
+                                        &finding.finding_type,
+                                        &fips,
+                                        show.ops_reason.is_some(),
+                                        t0 + crate::soak::traffic::CYCLE_SECS,
+                                        &rt.policy,
+                                    );
+                                    let key = format!(
+                                        "{}|{}",
+                                        d.class,
+                                        d.catalog_id.as_deref().unwrap_or("-")
+                                    );
+                                    if exclusive {
+                                        *ledger.cat_x.entry(key.clone()).or_default() += 1;
+                                        // ruční diagnostika: K14_DIAG_DUMP=soubor (jedna řádka na nález)
+                                        if let Ok(path) = std::env::var("K14_DIAG_DUMP")
+                                            && let Ok(mut f) = std::fs::OpenOptions::new()
+                                                .create(true)
+                                                .append(true)
+                                                .open(path)
+                                        {
+                                            use std::io::Write;
+                                            let _ = writeln!(
+                                                f,
+                                                "{}",
+                                                serde_json::json!({
+                                                    "net": cfg.network_id, "seed": cfg.run_seed,
+                                                    "fam": family.label(), "type": finding.finding_type,
+                                                    "class": d.class, "id": d.catalog_id,
+                                                    "score": d.score, "margin": d.margin,
+                                                    "evidence": d.evidence, "alt": d.alternatives,
+                                                    "missing": d.missing, "reason": d.reason,
+                                                    "flow_ops": show.ops_reason.is_some(),
+                                                    "ips": fips.len(), "cycle": cycle,
+                                                    "start": truth.start_cycle, "end": truth.end_cycle,
+                                                })
+                                            );
+                                        }
+                                    }
+                                    *ledger.cat.entry(key).or_default() += 1;
+                                }
+                            } else if show.displayed && cfg.engine.ops_annotate() {
                                 let s = crate::incident_catalog::suggest(
                                     &finding.finding_type,
                                     show.ops_reason.as_deref(),
@@ -3396,6 +3518,8 @@ fn run_episode_inner(
                         auto_closed_first: ledger.auto_closed_first,
                         ops_shown: ledger.ops_shown,
                         catalog: ledger.cat.clone(),
+                        catalog_excl: ledger.cat_x.clone(),
+                        ops_signals: ops_rt.as_ref().map_or(0, |r| r.sim.delivered(truth.id)),
                         diag: Some(crate::soak::coverage::AttackDiag {
                             flows: truth.cov.diag.flows,
                             src_n: truth.cov.diag.src_ips.len() as u32,
@@ -4084,6 +4208,7 @@ mod engine_v3_tests {
                 coverage_pct: pct,
                 agent,
                 noise: 1.0,
+                allow_pct: 70,
             },
             ..Default::default()
         };

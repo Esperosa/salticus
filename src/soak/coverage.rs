@@ -926,6 +926,12 @@ pub struct AttackRecord {
     /// Krok 13 (B2, B3, B6): zarazeni zobrazenych nalezu podle katalogu (`trida|catalog_id` -> pocet).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub catalog: BTreeMap<String, u32>,
+    /// Krok 14 (C2): totéž jen pro nálezy, které se shodují přesně s jednou událostí světa (bez souběhu).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub catalog_excl: BTreeMap<String, u32>,
+    /// Krok 14 (C2): kolik provozních signálů tato událost nesla (0 = telemetrie nedorazila).
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub ops_signals: u32,
     /// Krok 7: tiche potlaceni, latence, omylem zavrene nalezy (jen v3 s pameti).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub k7: Option<AttackK7>,
@@ -1224,4 +1230,8 @@ mod tests {
         }
         assert_eq!(emitted.len(), Lookalike::COVERAGE.len(), "{emitted:?}");
     }
+}
+
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
 }

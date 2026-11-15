@@ -50,6 +50,7 @@ pub mod nmap;
 pub mod novelty_consent;
 pub mod ops;
 pub mod ops_evidence;
+pub mod ops_telemetry;
 pub mod passive;
 pub mod paths;
 pub mod pentest;
