@@ -162,6 +162,9 @@ pub struct V3Features {
     /// Krok 12: ICMP s neobvykle velkou uzitecnou casti (`icmp_payload_anomaly`).
     #[serde(default)]
     pub icmp_payload: bool,
+    /// Krok 12: spisy pripadu, incidenty, prehodnoceni s auditem (report `correlation`).
+    #[serde(default)]
+    pub case_files: bool,
     /// Krok 11: sken vnejsiho zdroje s mene cili, ale bez jedineho uspechu (`scan_attempts`).
     #[serde(default)]
     pub scan_fresh: bool,
@@ -174,7 +177,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 40] = [
+    pub const NAMES: [&'static str; 41] = [
         "memory",
         "rate",
         "volume",
@@ -215,6 +218,7 @@ impl V3Features {
         "hypotheses",
         "redisplay",
         "icmp_payload",
+        "case_files",
     ];
 
     pub fn all() -> Self {
@@ -259,6 +263,7 @@ impl V3Features {
             hypotheses: true,
             redisplay: true,
             icmp_payload: true,
+            case_files: true,
         }
     }
 
@@ -311,6 +316,7 @@ impl V3Features {
             hypotheses: false,
             redisplay: false,
             icmp_payload: false,
+            case_files: false,
             ..Self::all()
         }
     }
@@ -366,6 +372,7 @@ impl V3Features {
             hypotheses: false,
             redisplay: false,
             icmp_payload: false,
+            case_files: false,
         }
     }
 
@@ -435,6 +442,7 @@ impl V3Features {
             "hypotheses" => &mut self.hypotheses,
             "redisplay" => &mut self.redisplay,
             "icmp_payload" => &mut self.icmp_payload,
+            "case_files" => &mut self.case_files,
             _ => return None,
         })
     }
@@ -616,6 +624,9 @@ impl EngineConfig {
     pub fn strict_close(&self) -> bool {
         self.on(|f| f.strict_close)
     }
+    pub fn case_files(&self) -> bool {
+        self.on(|f| f.case_files && f.ladder && f.memory)
+    }
     pub fn icmp_payload(&self) -> bool {
         self.on(|f| f.egress && f.icmp_payload)
     }
@@ -703,7 +714,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+case_files]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,

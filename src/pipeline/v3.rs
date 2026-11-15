@@ -498,6 +498,7 @@ impl V3Session {
             .collect();
         let mut lifecycle = Vec::with_capacity(report.findings.len());
         let ladder_on = self.engine.ladder();
+        let mut run_decisions: Vec<crate::verify_ladder::Decision> = Vec::new();
         let mut ladder = if ladder_on {
             match self.store.load::<crate::verify_ladder::Ladder>("ladder")? {
                 Some(ladder) => ladder,
@@ -799,6 +800,7 @@ impl V3Session {
                     }
                 }
             }
+            run_decisions = decisions.clone();
             report.verification_decisions = decisions
                 .iter()
                 .map(|d| {
@@ -922,6 +924,29 @@ impl V3Session {
         self.store.save("closure_audit", &audit)?;
         report.closure_audit = Some(audit.status(&audit_policy, now));
         report.coverage_status = Some(self.coverage(report, &mut behavior_state, sensor_gap, now));
+        if self.engine.case_files() {
+            let mut history: crate::retro::History = self
+                .store
+                .load("retro")?
+                .unwrap_or_else(|| crate::retro::History::new(50_000));
+            let mut ledger: crate::reassess::Ledger = self
+                .store
+                .load("ledger")?
+                .unwrap_or_else(crate::reassess::Ledger::new);
+            let coverage = report.coverage_status.clone().unwrap_or_default();
+            let correlation = crate::correlation_layer::run(
+                &mut history,
+                &mut ledger,
+                &report.findings,
+                &run_decisions,
+                &coverage,
+                crate::verify_ladder::DEFAULT_PRIOR,
+                now.timestamp(),
+            );
+            self.store.save("retro", &history)?;
+            self.store.save("ledger", &ledger)?;
+            report.correlation = Some(correlation);
+        }
         if self.engine.behavior() {
             self.store.save("behavior", &behavior_state)?;
         }

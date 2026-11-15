@@ -191,6 +191,10 @@ impl Broker {
         result
     }
 
+    pub fn list(&self) -> &[Request] {
+        &self.requests
+    }
+
     pub fn status(&self, id: u64) -> Option<Status> {
         self.requests.iter().find(|r| r.id == id).map(|r| r.status)
     }

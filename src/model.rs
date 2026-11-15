@@ -151,6 +151,13 @@ pub struct RunReport {
         skip_serializing_if = "Option::is_none"
     )]
     pub coverage_status: Option<crate::coverage_status::CoverageStatus>,
+    /// Krok 12: spisy nerozhodnutych pripadu, incidenty a audit prehodnoceni (`case_files`).
+    #[serde(
+        default,
+        rename = "correlation",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub correlation: Option<crate::correlation_layer::Correlation>,
     /// Krok 8: pokrytí hostů koncovou telemetrií (kryté, tiché, nejednoznačné). Jen s `endpoint`.
     #[serde(
         default,

@@ -10,6 +10,7 @@ pub mod case_memory;
 pub mod analyst_feedback;
 pub mod closure_audit;
 pub mod conformal;
+pub mod correlation_layer;
 pub mod competing;
 pub mod config;
 pub mod context;

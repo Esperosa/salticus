@@ -134,6 +134,12 @@ pub async fn serve_with_config(addr: SocketAddr, config: AppConfig) -> Result<()
         )
         .route("/feedback/{id}/revoke", post(post_analyst_feedback_revoke))
         .route("/closure-audit", get(get_closure_audit))
+        .route(
+            "/forensic/requests",
+            get(get_forensic_requests).post(post_forensic_request),
+        )
+        .route("/forensic/{id}/approve", post(post_forensic_approve))
+        .route("/forensic/{id}/reject", post(post_forensic_reject))
         .route("/closure-audit/{id}/review", post(post_closure_review))
         .route(
             "/closure-audit/kinds/{kind}/enable",
@@ -1168,6 +1174,123 @@ async fn get_closure_audit(State(state): State<AppState>, headers: HeaderMap) ->
         Ok(value) => Json(value).into_response(),
         Err(response) => response,
     }
+}
+
+/// Krok 12: forenzni zadosti (jen cteci akce; engine je sam neprovadi, jen eviduje a schvaluje).
+#[derive(Debug, Deserialize)]
+struct ForensicRequestBody {
+    kind: crate::forensic::Kind,
+    hosts: Vec<String>,
+    from: i64,
+    to: i64,
+    artifact: String,
+    #[serde(default = "default_forensic_ttl")]
+    ttl_s: i64,
+}
+
+fn default_forensic_ttl() -> i64 {
+    24 * 3600
+}
+
+async fn get_forensic_requests(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(error) = authorize_for(&headers, &state, &["runs.read"]) {
+        return pair_to_response(error);
+    }
+    let root = state.workspace_root.clone();
+    match run_blocking(move || {
+        let store = crate::engine_state::EngineStateStore::open(&root.join("engine-state.sqlite"))?;
+        let broker: crate::forensic::Broker = store.load("forensic")?.unwrap_or_default();
+        Ok(serde_json::json!({ "requests": broker.list(), "audit": broker.audit }))
+    })
+    .await
+    {
+        Ok(value) => Json(value).into_response(),
+        Err(response) => response,
+    }
+}
+
+async fn post_forensic_request(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<ForensicRequestBody>,
+) -> Response {
+    let auth = match authorize_for(&headers, &state, &["findings.write"]) {
+        Ok(auth) => auth,
+        Err(error) => return pair_to_response(error),
+    };
+    if let Err(error) = ensure_csrf_guard_header(&auth, &headers) {
+        return pair_to_response(error);
+    }
+    let root = state.workspace_root.clone();
+    let actor = auth.subject.clone();
+    match run_blocking(move || {
+        let store = crate::engine_state::EngineStateStore::open(&root.join("engine-state.sqlite"))?;
+        let mut broker: crate::forensic::Broker = store.load("forensic")?.unwrap_or_default();
+        let result = broker.request(
+            body.kind,
+            body.hosts,
+            body.from,
+            body.to,
+            &body.artifact,
+            &actor,
+            body.ttl_s,
+            Utc::now().timestamp(),
+        );
+        store.save("forensic", &broker)?;
+        Ok(result)
+    })
+    .await
+    {
+        Ok(Ok(id)) => Json(serde_json::json!({ "id": id, "status": "pending" })).into_response(),
+        Ok(Err(message)) => error_response(StatusCode::BAD_REQUEST, message),
+        Err(response) => response,
+    }
+}
+
+async fn forensic_decide(state: AppState, headers: HeaderMap, id: u64, approve: bool) -> Response {
+    let auth = match authorize_for(&headers, &state, &["findings.write"]) {
+        Ok(auth) => auth,
+        Err(error) => return pair_to_response(error),
+    };
+    if let Err(error) = ensure_csrf_guard_header(&auth, &headers) {
+        return pair_to_response(error);
+    }
+    let root = state.workspace_root.clone();
+    let actor = auth.subject.clone();
+    match run_blocking(move || {
+        let store = crate::engine_state::EngineStateStore::open(&root.join("engine-state.sqlite"))?;
+        let mut broker: crate::forensic::Broker = store.load("forensic")?.unwrap_or_default();
+        let now = Utc::now().timestamp();
+        let result = if approve {
+            broker.approve(id, &actor, now)
+        } else {
+            broker.reject(id, &actor, now)
+        };
+        store.save("forensic", &broker)?;
+        Ok(result)
+    })
+    .await
+    {
+        Ok(Ok(())) => Json(serde_json::json!({ "id": id, "approved": approve })).into_response(),
+        Ok(Err(message)) => error_response(StatusCode::CONFLICT, message),
+        Err(response) => response,
+    }
+}
+
+async fn post_forensic_approve(
+    State(state): State<AppState>,
+    Path(id): Path<u64>,
+    headers: HeaderMap,
+) -> Response {
+    forensic_decide(state, headers, id, true).await
+}
+
+async fn post_forensic_reject(
+    State(state): State<AppState>,
+    Path(id): Path<u64>,
+    headers: HeaderMap,
+) -> Response {
+    forensic_decide(state, headers, id, false).await
 }
 
 #[derive(Debug, Deserialize)]
