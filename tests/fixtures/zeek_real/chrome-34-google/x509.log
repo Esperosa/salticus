@@ -1,0 +1,12 @@
+#separator \x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	x509
+#open	2026-11-15-00-46-16
+#fields	ts	fingerprint	certificate.version	certificate.serial	certificate.subject	certificate.issuer	certificate.not_valid_before	certificate.not_valid_after	certificate.key_alg	certificate.sig_alg	certificate.key_type	certificate.key_length	certificate.exponent	certificate.curve	san.dns	san.uri	san.email	san.ip	basic_constraints.ca	basic_constraints.path_len	host_cert	client_cert
+#types	time	string	count	string	string	string	time	time	string	string	string	count	string	string	vector[string]	vector[string]	vector[string]	vector[addr]	bool	count	bool	bool
+1398362902.712109	ee623e2c2700fe20dd9fb1ac6ed5203ac7573490b531c8b8e9b6b48d3ddf5b8b	3	5F16E91E8E863F49	CN=*.google.de,O=Google Inc,L=Mountain View,ST=California,C=US	CN=Google Internet Authority G2,O=Google Inc,C=US	1397045265.000000	1404777600.000000	rsaEncryption	sha1WithRSAEncryption	rsa	2048	65537	-	*.google.de,google.de	-	-	-	F	-	T	F
+1398362902.712109	a047a37fa2d2e118a4f5095fe074d6cfe0e352425a7632bf8659c03919a6c81d	3	023A69	CN=Google Internet Authority G2,O=Google Inc,C=US	CN=GeoTrust Global CA,O=GeoTrust Inc.,C=US	1365174955.000000	1428160555.000000	rsaEncryption	sha1WithRSAEncryption	rsa	2048	65537	-	-	-	-	-	T	0	F	F
+1398362902.712109	3c35cc963eb004451323d3275d05b353235053490d9cd83729a2faf5e7ca1cc0	3	12BBE6	CN=GeoTrust Global CA,O=GeoTrust Inc.,C=US	OU=Equifax Secure Certificate Authority,O=Equifax,C=US	1021953600.000000	1534824000.000000	rsaEncryption	sha1WithRSAEncryption	rsa	2048	65537	-	-	-	-	-	T	-	F	F
+#close	2026-11-15-00-46-16

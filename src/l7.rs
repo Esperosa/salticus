@@ -194,7 +194,7 @@ pub fn tls_from_zeek(row: &HashMap<String, String>) -> Option<TlsMeta> {
         not_after: None,
         issuer: field(row, &["issuer"]),
         subject: field(row, &["subject"]),
-        cert_fuid: field(row, &["cert_chain_fuids"])
+        cert_fuid: field(row, &["cert_chain_fps", "cert_chain_fuids"])
             .and_then(|f| f.split(',').next().map(str::to_string)),
     })
 }
@@ -203,8 +203,11 @@ pub fn tls_from_zeek(row: &HashMap<String, String>) -> Option<TlsMeta> {
 pub fn attach_x509(tls: &mut [TlsMeta], x509: &[HashMap<String, String>]) {
     let mut by_id: HashMap<&str, &HashMap<String, String>> = HashMap::new();
     for row in x509.iter().take(500_000) {
-        if let Some(id) = row.get("id") {
-            by_id.insert(id.as_str(), row);
+        // novejsi Zeek: `fingerprint` (a `cert_chain_fps` v ssl.log), starsi: `id` (fuid)
+        for key in ["id", "fingerprint"] {
+            if let Some(id) = row.get(key) {
+                by_id.insert(id.as_str(), row);
+            }
         }
     }
     for t in tls.iter_mut() {
@@ -438,6 +441,29 @@ pub fn load_eve_file(path: &std::path::Path, start: i64, end: i64) -> Vec<L7Even
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Skutecne logy Zeeku (docker zeek/zeek, pcap z testovaci sady Zeeku, BSD): TLS s x509
+    /// pres `cert_chain_fps` a DNS. Zachycuje rozdil proti dokumentaci (fuid vs. fingerprint).
+    #[test]
+    fn real_zeek_logs_parse_and_join_certificates() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/zeek_real");
+        let tls = load_zeek_dir(&root.join("chrome-34-google"), 0, i64::MAX / 4);
+        let handshakes: Vec<&TlsMeta> = tls
+            .iter()
+            .filter_map(|e| if let L7Event::Tls(t) = e { Some(t) } else { None })
+            .collect();
+        assert!(!handshakes.is_empty());
+        assert!(handshakes.iter().any(|t| t.sni.as_deref() == Some("google.de")));
+        assert!(
+            handshakes.iter().any(|t| t.not_before.is_some() && t.not_after.is_some()),
+            "x509 se musi spojit pres fingerprint"
+        );
+        let dns = load_zeek_dir(&root.join("dns-edns-ecs"), 0, i64::MAX / 4);
+        assert!(dns.iter().any(|e| matches!(e, L7Event::Dns(d) if d.qname == "ns1.weberdns.de")));
+        let txt = load_zeek_dir(&root.join("tcp-txt-character-strings-cap"), 0, i64::MAX / 4);
+        assert!(txt.iter().any(|e| matches!(e, L7Event::Dns(d) if d.qtype == "TXT")));
+    }
+
 
     const EVE_TLS: &str = r#"{"timestamp":"2026-01-05T10:00:01.000000+0000","event_type":"tls","src_ip":"10.0.0.5","src_port":50000,"dest_ip":"203.0.113.9","dest_port":443,"tls":{"sni":"Files.Example.net","version":"TLS 1.3","notbefore":"2026-01-01T00:00:00","notafter":"2026-04-01T00:00:00","issuerdn":"CN=Test CA","ja3":{"hash":"abcdef"},"ja4":"t13d1516h2_x_y"}}"#;
     const EVE_DNS3: &str = r#"{"timestamp":"2026-01-05T10:00:02+00:00","event_type":"dns","src_ip":"198.51.100.4","dest_ip":"10.0.0.2","dns":{"type":"answer","rcode":"NXDOMAIN","queries":[{"rrname":"A1.corp.example.","rrtype":"AXFR"}],"answers":[]}}"#;
