@@ -207,6 +207,9 @@ pub struct OutputStats {
     pub incident_labeled: u64,
     #[serde(default)]
     pub incident_mixed: u64,
+    /// Incidenty podle odstupu (`6h`, `1h`, `30m`): [pocet, nalezy, nalezy nejvetsi pravdy].
+    #[serde(default)]
+    pub incident_gaps: BTreeMap<String, [u64; 3]>,
     /// Krok 12: posteriory rozhodnutych pripadu `[pouzita posteriora, utok (kontrafaktual) 0/1,
     /// stav 0 potvrzeno / 1 vyvraceno / 2 eskalovano, cykly k rozhodnuti]`, nejvyse 6000 na sit
     /// (pro ECE po pripadech a konformalni pokryti).
@@ -326,6 +329,12 @@ impl OutputStats {
         self.incident_pure += o.incident_pure;
         self.incident_labeled += o.incident_labeled;
         self.incident_mixed += o.incident_mixed;
+        for (k, v) in &o.incident_gaps {
+            let row = self.incident_gaps.entry(k.clone()).or_default();
+            for i in 0..3 {
+                row[i] += v[i];
+            }
+        }
         merge_bins(&mut self.calib_raw, &o.calib_raw);
         merge_bins(&mut self.calib_used, &o.calib_used);
         self.device_classified += o.device_classified;

@@ -3431,24 +3431,31 @@ fn run_episode_inner(
         // krok 12: cistota seskupeni do incidentu (po prvni pripsane pravde; nalez bez
         // pripsani se pocita jako vlastni stitek, takze sum snizuje cistotu)
         let out = &mut agg.output;
-        for inc in inc_hist.incidents(6 * 3600) {
-            if inc.findings.len() < 2 {
-                continue;
-            }
-            out.incident_n += 1;
-            out.incident_findings += inc.findings.len() as u64;
-            let mut counts: HashMap<Option<usize>, u64> = HashMap::new();
-            for f in &inc.findings {
-                let label = inc_labels.get(f).copied().flatten();
-                *counts.entry(label).or_default() += 1;
-            }
-            // nepripsane nalezy: kazdy vlastni stitek (None se nesmi sloucit)
-            let none = counts.remove(&None).unwrap_or(0);
-            let best = counts.values().copied().max().unwrap_or(0).max(u64::from(none > 0));
-            out.incident_pure += best;
-            out.incident_labeled += inc.findings.len() as u64;
-            if inc.cause == crate::retro::Cause::Mixed {
-                out.incident_mixed += 1;
+        for (gap, tag) in [(6 * 3600, "6h"), (3600, "1h"), (1800, "30m")] {
+            for inc in inc_hist.incidents(gap) {
+                if inc.findings.len() < 2 {
+                    continue;
+                }
+                let mut counts: HashMap<Option<usize>, u64> = HashMap::new();
+                for f in &inc.findings {
+                    let label = inc_labels.get(f).copied().flatten();
+                    *counts.entry(label).or_default() += 1;
+                }
+                let none = counts.remove(&None).unwrap_or(0);
+                let best = counts.values().copied().max().unwrap_or(0).max(u64::from(none > 0));
+                if tag == "6h" {
+                    out.incident_n += 1;
+                    out.incident_findings += inc.findings.len() as u64;
+                    out.incident_pure += best;
+                    out.incident_labeled += inc.findings.len() as u64;
+                    if inc.cause == crate::retro::Cause::Mixed {
+                        out.incident_mixed += 1;
+                    }
+                }
+                let row = out.incident_gaps.entry(tag.to_string()).or_default();
+                row[0] += 1;
+                row[1] += inc.findings.len() as u64;
+                row[2] += best;
             }
         }
     }
