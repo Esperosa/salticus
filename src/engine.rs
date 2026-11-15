@@ -657,7 +657,8 @@ impl EngineConfig {
     /// Konfigurace paměti nálezů podle zapnutých změn.
     pub fn memory_config(&self) -> crate::finding_memory::MemoryConfig {
         crate::finding_memory::MemoryConfig {
-            escalate_first_source: self.recall(),
+            escalate_first_source: self.recall() || self.strict_close(),
+            reopen_stale: self.strict_close(),
             protect: self.protect(),
             volume_factor: if self.redisplay() { 2.0 } else { 4.0 },
             min_escalation_count: if self.redisplay() { 8 } else { 20 },

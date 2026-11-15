@@ -71,6 +71,11 @@ pub struct MemoryConfig {
     /// načtení převede na `Closed` (další výskyt ho znovu otevře a zobrazí).
     #[serde(default)]
     pub protect: bool,
+    /// Krok 12: zadne definitivni zavreni. Vyvraceny nebo automaticky vyresene zaznam se po
+    /// `quiet_close_s` bez vyskytu znovu otevre a zobrazi (zmena casu), nova zdrojova IP
+    /// reopens i kdyz zaznam zadny zdroj nemel.
+    #[serde(default)]
+    pub reopen_stale: bool,
 }
 
 impl Default for MemoryConfig {
@@ -86,6 +91,7 @@ impl Default for MemoryConfig {
             persist_last_seen_every_s: 90 * 60,
             escalate_first_source: false,
             protect: false,
+            reopen_stale: false,
         }
     }
 }
@@ -702,6 +708,7 @@ impl FindingMemory {
             }
             Some(entry) => {
                 entry.occurrences += 1;
+                let gap_s = (obs.at - entry.last_seen).num_seconds();
                 if obs.at > entry.last_seen {
                     entry.last_seen = obs.at;
                 }
@@ -735,6 +742,16 @@ impl FindingMemory {
                     }
                 }
                 let previous = entry.state;
+                // krok 12: stary vyvraceny nebo vyresenny zaznam nesmi pohltit novy vyskyt
+                let escalation = if escalation.is_none()
+                    && cfg.reopen_stale
+                    && matches!(previous, FindingState::Refuted | FindingState::AutoResolved)
+                    && gap_s >= cfg.quiet_close_s
+                {
+                    Some(Escalation::NewSource)
+                } else {
+                    escalation
+                };
                 // Objem v okne s neskodnym vysvetlenim (zaloha, davka) je ocekavany;
                 // vyssi zavaznost nebo novy zdroj se ale zobrazi i v okne kontextu.
                 let escalation = match (escalation, explanation) {
@@ -1102,6 +1119,44 @@ mod tests {
             memory.observe(&obs(&other, 120, Severity::Low, 1, &[]), None),
             Disposition::First
         );
+    }
+
+    /// Krok 12: vyvraceny klic nesmi pohltit pozdejsi vyskyt s novym zdrojem ani vyskyt po
+    /// dlouhe odmlce (puvodni chovani: Suppressed, utok pod starym klicem zmizel).
+    #[test]
+    fn refuted_key_does_not_swallow_new_source_or_stale_recurrence_when_strict() {
+        let k = key("asset:9", "scan_attempts");
+        let none: Vec<String> = Vec::new();
+        let src = vec!["203.0.113.9".to_string()];
+        for strict in [false, true] {
+            let mut memory = FindingMemory::new(MemoryConfig {
+                escalate_first_source: strict,
+                reopen_stale: strict,
+                ..MemoryConfig::default()
+            });
+            memory.observe(&obs(&k, 0, Severity::Low, 3, &none), None);
+            assert!(memory.refute(&k, "test", at(1)));
+            // novy zdroj u zaznamu, ktery zadny zdroj nemel
+            let d = memory.observe(&obs(&k, 10, Severity::Low, 3, &src), None);
+            if strict {
+                assert!(d.displayed(), "novy zdroj musi vyvraceny klic znovu otevrit: {d:?}");
+            } else {
+                assert_eq!(d, Disposition::Suppressed, "puvodni chovani");
+            }
+        }
+        // po odmlce delsi nez quiet_close_s
+        let mut memory = FindingMemory::new(MemoryConfig {
+            reopen_stale: true,
+            ..MemoryConfig::default()
+        });
+        memory.observe(&obs(&k, 0, Severity::Low, 3, &none), None);
+        assert!(memory.refute(&k, "test", at(1)));
+        assert_eq!(
+            memory.observe(&obs(&k, 60, Severity::Low, 3, &none), None),
+            Disposition::Suppressed,
+            "kratce po vyvraceni zustava potlaceno"
+        );
+        assert!(memory.observe(&obs(&k, 26 * 60, Severity::Low, 3, &none), None).displayed());
     }
 
     #[test]
