@@ -2217,6 +2217,31 @@ fn run_episode_inner(
                             let ledger = &mut ledgers[index];
                             if !suspect {
                                 *ledger.hidden.entry(show.reason).or_default() += 1;
+                                // krok 12: ve kterem stavu byl pohlcujici klic pameti
+                                let state = lc
+                                    .keys
+                                    .get(finding_index)
+                                    .and_then(|k| k.as_ref())
+                                    .and_then(|k| {
+                                        v3.as_ref()
+                                            .and_then(|r| r.memory.as_ref())
+                                            .and_then(|m| m.get(k))
+                                            .map(|e| e.state.label())
+                                    })
+                                    .unwrap_or("none");
+                                *ledger
+                                    .hidden
+                                    .entry(match state {
+                                        "open" => "state_open",
+                                        "new" => "state_new",
+                                        "refuted" => "state_refuted",
+                                        "auto_resolved" => "state_auto_resolved",
+                                        "confirmed" => "state_confirmed",
+                                        "reopened" => "state_reopened",
+                                        "closed" => "state_closed",
+                                        _ => "state_other",
+                                    })
+                                    .or_default() += 1;
                             }
                             if ledger.first_detect.is_none() {
                                 ledger.first_detect = Some(cycle);
