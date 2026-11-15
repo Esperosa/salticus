@@ -76,6 +76,10 @@ pub struct MemoryConfig {
     /// reopens i kdyz zaznam zadny zdroj nemel.
     #[serde(default)]
     pub reopen_stale: bool,
+    /// Krok 12: otevreny nalez, ktery se naposledy zobrazil pred vice nez tolika sekundami a
+    /// stale se opakuje, se zobrazi znovu (0 = vypnuto). Utok pod starym klicem nezmizi.
+    #[serde(default)]
+    pub redisplay_age_s: i64,
 }
 
 impl Default for MemoryConfig {
@@ -92,6 +96,7 @@ impl Default for MemoryConfig {
             escalate_first_source: false,
             protect: false,
             reopen_stale: false,
+            redisplay_age_s: 0,
         }
     }
 }
@@ -775,6 +780,14 @@ impl FindingMemory {
                         Disposition::AutoResolved(reason.to_string()),
                     ),
                     (S::AutoResolved, None, None) => (S::Reopened, Disposition::Reopened),
+                    (S::Open | S::New | S::Reopened, None, None)
+                        if cfg.redisplay_age_s > 0
+                            && entry.last_displayed.is_none_or(|d| {
+                                (obs.at - d).num_seconds() >= cfg.redisplay_age_s
+                            }) =>
+                    {
+                        (S::Reopened, Disposition::Reopened)
+                    }
                     (_, None, None) => (S::Open, Disposition::Suppressed),
                 };
                 entry.auto_reason = match &disposition {
@@ -1157,6 +1170,28 @@ mod tests {
             "kratce po vyvraceni zustava potlaceno"
         );
         assert!(memory.observe(&obs(&k, 26 * 60, Severity::Low, 3, &none), None).displayed());
+    }
+
+    /// Krok 12: opakujici se otevreny nalez se po `redisplay_age_s` zobrazi znovu.
+    #[test]
+    fn open_finding_is_redisplayed_after_the_configured_age() {
+        let k = key("asset:4", "scan_attempts");
+        let none: Vec<String> = Vec::new();
+        let mut memory = FindingMemory::new(MemoryConfig {
+            redisplay_age_s: 6 * 3600,
+            ..MemoryConfig::default()
+        });
+        assert_eq!(memory.observe(&obs(&k, 0, Severity::Low, 3, &none), None), Disposition::First);
+        assert_eq!(
+            memory.observe(&obs(&k, 60, Severity::Low, 3, &none), None),
+            Disposition::Suppressed
+        );
+        assert!(memory.observe(&obs(&k, 7 * 60, Severity::Low, 3, &none), None).displayed());
+        assert_eq!(
+            memory.observe(&obs(&k, 7 * 60 + 5, Severity::Low, 3, &none), None),
+            Disposition::Suppressed,
+            "hned po zobrazeni znovu potlaceno"
+        );
     }
 
     #[test]
