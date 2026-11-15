@@ -119,9 +119,22 @@ pub struct CampaignTag {
     pub template: u8,
 }
 
+/// Krok 13 (dodatek A): vazba udalosti rizeneho mixu. `relation`: 0 spolecna pricina,
+/// 1 soubeh bez vazby, 2 nasledek; `role`: 0 prvni udalost, 1 druha; `pair`: index dvojice
+/// v matici mixu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MixTag {
+    pub incident: u32,
+    pub relation: u8,
+    pub role: u8,
+    pub pair: u8,
+}
+
 /// Dalsi stav pravdy ve svete pokryti (vychozi = prazdne, nic nemeni).
 #[derive(Debug, Clone, Default)]
 pub struct TruthCoverage {
+    /// Krok 13: rizeny mix (jen mereni a plan, detektory to nevidi).
+    pub mix: Option<MixTag>,
     pub variation: Option<Variation>,
     pub campaign: Option<CampaignTag>,
     /// Dalsi vnitrni zdroje utoku (rozlozeni na vice adres).
@@ -585,10 +598,10 @@ pub fn plan_coverage(
     }
     // --- krok 9: varianty podle ATT&CK a provozni poruchy (vlastni proud) ---
     if matches!(mode, CoverageMode::K9 | CoverageMode::K10) {
-        crate::soak::variants::plan_variants(model, &pools, truths, hours, telemetry, false);
+        crate::soak::variants::plan_variants(model, &pools, truths, hours, telemetry, false, false);
     }
     if mode == CoverageMode::K10 {
-        crate::soak::variants::plan_variants(model, &pools, truths, hours, telemetry, true);
+        crate::soak::variants::plan_variants(model, &pools, truths, hours, telemetry, true, false);
     }
 }
 
@@ -916,6 +929,9 @@ pub struct AttackRecord {
     /// Krok 11: souhrn toku a ztracenych cyklu senzoru (diagnostika).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diag: Option<AttackDiag>,
+    /// Krok 13: vazba na rizeny mix (incident_id, vztah, role, dvojice).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mix: Option<MixTag>,
 }
 
 /// Krok 7 (A2, C2): viditelnost utoku a pocty po utoku.

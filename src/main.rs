@@ -141,6 +141,9 @@ struct SoakRunArgs {
     /// Krok 12: svet metadat TLS a DNS (`on` | `cal` (kalibrované pozadí, krok 13) | `off`).
     #[arg(long, default_value = "off")]
     l7: String,
+    /// Krok 13: planovac rizenych mixu dvojic udalosti (`on` | `off`).
+    #[arg(long, default_value = "off")]
+    mix: String,
     /// Krok 8: podil hostu s agentem v procentech.
     #[arg(long, default_value_t = 100)]
     endpoint_coverage: u32,
@@ -1058,6 +1061,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 other => anyhow::bail!("--endpoint: on | off, ne {other}"),
             }
+            cfg.world.mix = args.mix == "on";
             cfg.world.l7_cal = args.l7 == "cal";
             cfg.world.l7 = match args.l7.as_str() {
                 "on" | "cal" => true,

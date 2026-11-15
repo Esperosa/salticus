@@ -2148,10 +2148,17 @@ pub(crate) fn plan_variants(
     hours: u32,
     telemetry: &Telemetry,
     hard_only: bool,
+    mixes: bool,
 ) {
     let mut rng = Rng::new(derive(
         model.seed,
-        if hard_only { 0x4B31_0001 } else { 0x4B39_0001 },
+        if mixes {
+            0x4B31_3013
+        } else if hard_only {
+            0x4B31_0001
+        } else {
+            0x4B39_0001
+        },
     ));
     let cycles = hours * 2;
     let days = hours as f64 / 24.0;
@@ -2159,17 +2166,23 @@ pub(crate) fn plan_variants(
         .max(1.0)
         .powf(0.45)
         .min(4.0);
-    let sec_n = if hard_only {
+    let sec_n = if hard_only || mixes {
         0
     } else {
         (rng.poisson(2.5 * days * size_scale) as usize).min(60)
     };
-    let ops_n = if hard_only {
+    let ops_n = if mixes {
+        0
+    } else if hard_only {
         (rng.poisson(2.0 * days * size_scale.sqrt()) as usize).min(30)
     } else {
         (rng.poisson(1.3 * days * size_scale.sqrt()) as usize).min(30)
     };
-    let plan = |security: bool, rng: &mut Rng, truths: &mut Vec<Truth>| {
+    let plan = |security: bool,
+                forced: Option<(usize, Option<u32>)>,
+                rng: &mut Rng,
+                truths: &mut Vec<Truth>|
+     -> Option<usize> {
         let eligible: Vec<usize> = (0..SPECS.len())
             .filter(|&i| (SPECS[i].cat == Category::Security) == security)
             .filter(|&i| SPECS[i].hard == hard_only)
@@ -2182,18 +2195,32 @@ pub(crate) fn plan_variants(
                 ) || !pools.clients.is_empty()
             })
             .collect();
-        if eligible.is_empty() {
-            return;
+        if eligible.is_empty() && forced.is_none() {
+            return None;
         }
-        let index = eligible[rng.range(0, eligible.len() as u64 - 1) as usize];
+        let index = match forced {
+            Some((i, _)) => i,
+            None => eligible[rng.range(0, eligible.len() as u64 - 1) as usize],
+        };
         let s = &SPECS[index];
+        if forced.is_some()
+            && (pool_for(s.needs, model, pools).is_empty()
+                || (matches!(
+                    s.actor,
+                    Actor::IntToExt | Actor::IntToDns | Actor::IntToInt | Actor::FleetToExt
+                ) && pools.clients.is_empty()))
+        {
+            return None;
+        }
         let intensity = match rng.weighted(&[0.4, 0.4, 0.2]) {
             0 => rng.range_f(0.8, 1.0),
             1 => rng.range_f(0.4, 0.7),
             _ => rng.range_f(0.15, 0.35),
         };
         let len = (rng.range(s.len.0, s.len.1) as u32).min(cycles.max(1));
-        let start = if s.night {
+        let start = if let Some((_, Some(st))) = forced {
+            st.min(cycles.saturating_sub(1))
+        } else if s.night {
             let day = rng.range(0, (hours as u64 / 24).max(1) - 1) as i64;
             let hour = rng.range(0, 4) as i64;
             let secs = (-(model.tz_hours * 3600) + day * 86400 + hour * 3600)
@@ -2267,7 +2294,7 @@ pub(crate) fn plan_variants(
                     .filter(|d| *d != attacker)
                     .collect();
                 if truth.victim_devices.is_empty() {
-                    return;
+                    return None;
                 }
             }
             Actor::FleetToExt => {
@@ -2295,13 +2322,89 @@ pub(crate) fn plan_variants(
             // vnejsi zdroj uz je nastaven
         }
         truths.push(truth);
+        Some(truths.len() - 1)
     };
+    if mixes {
+        // krok 13 (dodatek A): rizene dvojice. Dvojice se berou po rade od nahodneho
+        // pocatku (rovnomerna frekvence v matici), druha udalost zacina v okne prvni.
+        let n = (rng.poisson(2.0 * days * size_scale.sqrt()) as usize).clamp(1, 24);
+        let offset = rng.range(0, MIX_PAIRS.len() as u64 - 1) as usize;
+        for k in 0..n {
+            let pair = (offset + k) % MIX_PAIRS.len();
+            let (la, lb, relation) = MIX_PAIRS[pair];
+            let find = |l: &str| SPECS.iter().position(|x| x.label == l);
+            let (Some(ia), Some(ib)) = (find(la), find(lb)) else {
+                continue;
+            };
+            let Some(ta) = plan(false, Some((ia, None)), &mut rng, truths) else {
+                continue;
+            };
+            let (a_start, a_end) = (truths[ta].start_cycle, truths[ta].end_cycle);
+            // druha udalost zacina uvnitr okna prvni (nasledek az po jejim zacatku)
+            let span = a_end.saturating_sub(a_start);
+            let delta = match relation {
+                2 => 1 + rng.range(0, span.min(3) as u64) as u32,
+                _ => rng.range(0, span.min(4) as u64) as u32,
+            };
+            let Some(tb) = plan(false, Some((ib, Some(a_start + delta))), &mut rng, truths) else {
+                continue;
+            };
+            if relation != 1 {
+                // spolecna pricina a nasledek sdili obet (stejne zarizeni), kde to druha udalost snese
+                let shared = truths[ta].victim_devices.clone();
+                if !shared.is_empty() && !truths[tb].victim_devices.is_empty() {
+                    truths[tb].victim_devices = shared;
+                }
+            }
+            let incident = truths[ta].id;
+            truths[ta].cov.mix = Some(crate::soak::coverage::MixTag {
+                incident,
+                relation,
+                role: 0,
+                pair: pair as u8,
+            });
+            truths[tb].cov.mix = Some(crate::soak::coverage::MixTag {
+                incident,
+                relation,
+                role: 1,
+                pair: pair as u8,
+            });
+        }
+    }
     for _ in 0..sec_n {
-        plan(true, &mut rng, truths);
+        plan(true, None, &mut rng, truths);
     }
     for _ in 0..ops_n {
-        plan(false, &mut rng, truths);
+        plan(false, None, &mut rng, truths);
     }
+}
+
+/// Krok 13 (dodatek A): matice rizenych dvojic (prvni, druha, vztah). Vztah: 0 spolecna
+/// pricina, 1 soubeh bez vazby, 2 nasledek. Sloupce: utok+utok (4), utok+porucha (4),
+/// utok+neskodna zmena (4), porucha+porucha (4).
+pub const MIX_PAIRS: &[(&str, &str, u8)] = &[
+    ("smb_sweep_ext", "exfil_https_burst", 1),
+    ("rdp_bruteforce", "lateral_rdp_hop", 2),
+    ("c2_https_legit_service", "exfil_cloud_storage_upload", 0),
+    ("ddos_syn_flood_distributed", "web_scanner_404_storm", 1),
+    ("share_encryption_wave_slow", "dns_partial_failure", 1),
+    ("ddos_syn_flood_distributed", "uplink_saturation", 2),
+    ("ssh_spray_slow_distributed", "switch_outage_subnet", 1),
+    ("dhcp_pool_exhaustion", "lateral_smb_admin_shares", 1),
+    ("c2_slow_long_interval", "hn_nightly_cloud_backup_upload", 1),
+    ("exfil_cloud_storage_upload", "hn_cdn_update_download", 1),
+    ("smb_sweep_ext", "planned_maintenance_window", 1),
+    ("vpn_password_spray_slow", "planned_patch_reboot_wave", 1),
+    ("uplink_saturation", "dns_slow_resolution", 2),
+    ("switch_outage_subnet", "dhcp_server_down", 0),
+    ("broadcast_storm_loop", "mdns_ssdp_storm", 0),
+    ("db_overload_degradation", "app_server_crash_cascade", 2),
+];
+
+/// Naplanuje rizene mixy dvojic (jen svet `--mix on`, vlastni proud nahodnosti).
+pub fn plan_mixes(model: &NetworkModel, truths: &mut Vec<Truth>, hours: u32, telemetry: &Telemetry) {
+    let pools = Pools::new(model);
+    plan_variants(model, &pools, truths, hours, telemetry, false, true);
 }
 
 /// Emise jedne variantny v jednom cyklu. Vola se z `emit_truth`.

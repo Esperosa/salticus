@@ -152,6 +152,9 @@ pub struct WorldOptions {
     /// Krok 13: pozadí metadat TLS a DNS kalibrované na reálná zachycení (`--l7 cal`).
     #[serde(default)]
     pub l7_cal: bool,
+    /// Krok 13 (dodatek A): planovac rizenych mixu dvojic udalosti (`--mix on`).
+    #[serde(default)]
+    pub mix: bool,
 }
 
 impl Default for WorldOptions {
@@ -166,6 +169,7 @@ impl Default for WorldOptions {
             endpoint: Default::default(),
             l7: false,
             l7_cal: false,
+            mix: false,
         }
     }
 }
@@ -670,6 +674,9 @@ fn run_episode_inner(
         &telemetry,
         cfg.world.coverage,
     );
+    if cfg.world.mix {
+        crate::soak::variants::plan_mixes(&model, &mut truths, hours, &telemetry);
+    }
     // kampan s vyrazenou rodinou se vyradi cela (jinak by zbyla torza)
     let dropped_campaigns: HashSet<u32> = truths
         .iter()
@@ -3346,6 +3353,7 @@ fn run_episode_inner(
                         .collect();
                     let variation = truth.cov.variation;
                     records.attacks.push(AttackRecord {
+                        mix: truth.cov.mix,
                         id: truth.id,
                         family: family.label().to_string(),
                         held: family.held_out(),
