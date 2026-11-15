@@ -78,3 +78,59 @@ Odchylky od těchto prahů se zapíšou jako odchylka, ne jako splnění.
 | B katalog `data/incident-catalog.json` | nezačato |
 | B generátory pro typy bez variant v `variants::SPECS` | nezačato |
 | B klasifikace a doporučení v engine | nezačato |
+
+## Výsledky kroku 13 (průběžně zapisované)
+
+### Bod 1: příčina chybějících logů Zeeku a kalibrace simulátoru
+
+**Příčina u botnetů 42 a 54.** U 42 byla příčina kontrolní součty (checksum offload na zachycení): `zeek -C -r` je přeskočí a logy vznikly (59 413 DNS řádků, 63 TLS). U 54 logy ve skutečnosti vznikly dřív (15 447 DNS řádků, 370 TLS), ale zapsaly se do chybně pojmenovaného adresáře `out$n` (chyba shellu při běhu); přesunuto do `out/54`. Suricata ani vlastní parser nebyly potřeba.
+
+**Pět zdrojů (Zeek, `tools/k13_real_stats.py`).**
+
+| zdroj | DNS řádků | NXDOMAIN | TXT/NULL | AAAA | TLS | bez SNI | self-signed |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| CTU-Normal-20 (normální Windows host, 3,1 h) | 15 089 | 0,013 % | 0 | 24,5 % | 2 464 | 1,5 % | 3,0 % |
+| CTU-13 č. 42 (Neris) | 59 413 | 1,26 % | 0 | 0 | 63 | 88,9 % | 0 |
+| CTU-13 č. 43 (Neris) | 1 005 | 0 | 0 | 0 | 43 | 97,7 % | 5,6 % |
+| CTU-13 č. 46 (fast-flux) | 163 | 2,0 % | 0 | 0 | 72 | 100 % | 0 |
+| CTU-13 č. 54 (fast-flux) | 15 447 | 1,69 % | 0 | 0 | 370 | 100 % | 0 |
+
+**Omezení kalibrace (H1).** Všechny zdroje jsou virtuální stroje jedné laboratoře (ČVUT), dohromady jeden normální a čtyři infikované hosty z roku 2011, takže podmínka „min. 3 nezávislé zdroje na veličinu“ **není splněna**: všechny níže uvedené hodnoty jsou jen **orientační**. Botnet hosté nemají AAAA ani moderní TLS (rok 2011), proto AAAA a podíl bez SNI se berou jen z normálního hosta.
+
+**Změny pozadí simulátoru (`--l7 cal`, `soak/l7sim.rs`):** NXDOMAIN 5 % na 1 % (rozpětí zdrojů 0,01 až 2 %); TXT z pošty 2 % na 0,5 % (všechny zdroje 0 %, tedy mimo ±2×, jen minimum pro mailové hosty); AAAA 20 % dotazů (normální host 24,5 %); dlouhá hashovaná jména 4 % beze změny (4,1 %); bez SNI 1,5 % a self-signed 3,0 % cílů (podle cíle, ne podle spojení; viz níže); neškodné změny míří na dosud neviděné jméno ve 13,4 % spojení (CTU-Normal-20). Mladé certifikáty (< 30 dní) se **nekalibrovaly** (čas zachycení nesedí s datem certifikátu, 100 % mladých je artefakt). Nepokryté veličiny: JA4 hostů, struktura cílů TLS, DNS útoku.
+
+**Chyba nalezená při kalibraci (poučení).** První verze přiřazovala self-signed a bez SNI náhodně každému spojení; skupina spojení na jeden cíl pak skoro jistě obsahovala self-signed spojení a detektor `tls_novel_burst` vyráběl falešné poplachy (hn_mail_newsletter_burst zobrazeno 5 % → 34 %, FP poměr 1,156). Self-signed je ale vlastnost cíle (serveru), ne spojení. Po opravě (rozhoduje hash cíle) FP poměr 1,120 a hn_* +0,8 p. b. Běhy s chybnou verzí (`c2-*`) se nepoužívají.
+
+**Kandidát v kalibrovaném světě (seed 20261102, 40 sítí, jeden seed, orientačně; matice viz protokol):** zobrazené FP na síť-den 7,52 → 8,42 (poměr 1,120, 1,050 až 1,201), detekce bezpečnostních útoků 84,8 → 87,7 % (+2,9 p. b.; +2,1 až +4,0), omylem zavřené 1,2 % → 0 %. Starý (nekalibrovaný) svět dával FP poměr 1,056 až 1,067: kalibrace přidala neškodná metadata, která FP zvyšují, ale pod prahem 1,15.
+
+### Bod 2: reálné přehrání pcap -> Zeek -> Salticus (H4)
+
+Nástroj `tools/k13_replay_zeek.py` (okna 1 800 s, logy conn, dns, ssl, x509, produkční cesta `beh spust`, bez inventáře, cold start). Škodlivý host = infikovaný 147.32.84.165 (CTU-13), neškodný host 10.0.2.15 (Normal-20). Hodnotí se na úrovni hostů.
+
+| zdroj | oken | toků | zobrazených nálezů o škodlivém hostu (první okno) | o jiných hostech | rozdíl s L7 přepínači (`l7_tls`, `l7_dns`, `icmp_payload`) |
+|---|---:|---:|---|---:|---|
+| CTU-13 č. 42 | 10 | 31 735 | 11 (okno 0) | 0 | žádný |
+| CTU-13 č. 43 | 7 | 40 198 | 9 (okno 0) | 5 (1 host) | žádný |
+| CTU-13 č. 46 | 1 | 1 549 | 3 (okno 0) | 0 | žádný |
+| CTU-13 č. 54 | 33 | 88 048 | 17 (okno 0) | 0 | žádný |
+| Normal-20 (neškodný host) | 7 | 18 892 | 47 nálezů na neškodném hostu (FP, cold start) | 0 | žádný |
+
+Čtení: všechny čtyři infikované hosty se zobrazí v prvním okně z tokových nálezů (pasivní událost bez inventáře, interaktivní relace, pravidelné volání, dlouhé spojení). **L7 detektory na těchto zachyceních nezasáhly ani u botnetů**: vyžadují zralého hosta (`mature_s`) a nový cíl s druhým rysem a objemem či dávkou; krátká zachycení (1 až 16 h) a malé objemy to nesplní, takže přínos L7 na reálných datech **nelze potvrdit ani vyvrátit**. Normální host dává 47 zobrazených nálezů za 3,1 h (hlavně „interaktivní relace“ k HTTPS cílům a pasivní události bez inventáře); je to cold-start měření s prázdným inventářem, ne provozní odhad. Rozdíl proti simulaci: simulace hlásí FP v jednotkách na síť-den, reálný neškodný host desítky za 3 h bez inventáře; srovnání je jen kvalitativní (H4).
+
+**DoH a DNS tunel (bez formulářů).** Zenodo DoH datasety (Jeřábek a kol., záznamy 5956044, 5957278, 5957122, 5957466, 5957421, 5957660, 5957677) mají licenci CC-BY 4.0, ale 12 až 46 GB na soubor. Z `DoH-Real-World` (12,8 GB) jsem stáhl začátek (300 MB komprimovaně, 2,2 GB pcapng): zachycení je od prostředku spojení (`data_before_established`, `possible_split_routing`), Zeek vydal jen `conn.log` (65 534 TCP spojení) bez `ssl.log`, takže z něj nejsou metadata TLS ani SNI. **Slepé místo:** DoH (SNI na resolvery, tvar provozu) a DNS tunel zůstávají bez reálných dat. Repozitáře s pcapy DNS tunelů (Utah1A, ggyggy666) nemají licenci (GitHub API `license: null`), proto nestaženy. Doporučení: DoH z `DoH-Real-World` zpracovat celé a hlásit jen toky; DNS tunel z veřejného zdroje s ověřenou licencí (např. CIC-Bell-DNS2021 po souhlasu uživatele s registrací) nebo vlastní iodine a dnscat2 v laboratoři.
+
+### Bod 3: seskupení incidentů (H2), ladicí seed 20261102 (40 sítí)
+
+Metrika čistoty jako dosud (nález bez připsání = vlastní štítek). Úplnost = podíl dvojic nálezů téže pravdy ve stejném incidentu (offline z exportu, `tools/k13_incidents.py`; export je omezen na 20 000 událostí na síť, proto se čísla mírně liší od vestavěných).
+
+| seskupení | čistota | nálezů na incident | podíl nálezů v incidentech >= 2 | úplnost |
+|---|---:|---:|---:|---:|
+| stávající, odstup 6 h | 37,5 % | 15,4 | neměřeno | neměřeno |
+| stávající, odstup 1 h | 54,0 % | 7,9 | 80 % | 32 % |
+| stávající, odstup 30 min | 55,3 % | 7,4 | 71 % | 26 % |
+| `incident_v2` (stejný cíl a protějšek, nebo stejný cíl a typ nálezu), 1 h | **84,3 %** | 2,65 | 44 % | **2,5 %** |
+| `incident_v2`, 30 min | 79,6 % | 2,78 | 26 % | 2,1 % |
+
+**Příčiny nízké čistoty.** (1) Sdílené hosty: nález nese jako `host_key` cíl; server nebo resolver dostává útoky a poruchy od různých zdrojů, takže tranzitivní spojování „stejný host nebo indikátor“ slévá nesouvisející nálezy. Omezení hub-hostů čistotu zvedlo (88 % při limitu 3), ale úplnost spadla pod 3 %. (2) Šum: asi 31 % nálezů nemá připsanou pravdu a každý se počítá jako vlastní štítek, takže skupina šumu o 3 nálezech má čistotu 1/3 bez ohledu na seskupení. (3) Opakování téhož nálezu v čase se v metrice počítá jako několik nálezů; dedup podle `finding_id` čistotu nezlepšil.
+
+**Verdikt H2.** Číselný práh (čistota >= 80 % na ladicím seedu, >= 2 nálezy na incident) `incident_v2` splňuje (84,3 %; 2,65), **ale zlepšení vzniklo roztříštěním**: úplnost spadla z 32 % na 2,5 % a v incidentech zůstalo 44 % nálezů místo 80 %. Takový incident je spíš shluk téhož hosta a téhož protějšku než celý příběh útoku. Cíl 90 % **není splněn**; držená část (>= 70 % na držených seedech) **nebyla změřena** (držené seedy se pouští až na konci). Žádná z vyzkoušených variant (hub limit, typ nálezu, dvojice host+protějšek, kombinace) nedala čistotu >= 80 % při úplnosti nad ~15 %; samotné rysy host, protějšek, typ a čas k lepšímu seskupení zřejmě nestačí a je potřeba vazba příčiny (závislosti služeb, `common_cause`), kterou simulace zatím nese jen u řízených mixů (dodatek A). `incident_v2` je v `retro::History::incidents_v2` (měření v soaku pod štítky `v2-1h`, `v2-30m`), **do produkční cesty (`correlation_layer`) není zapojen** a nedoporučuje se zapnout.

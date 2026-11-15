@@ -151,7 +151,8 @@ def main():
                 shown_other += 1
                 types[kind] += 1
                 hosts_other.add(f.get("host_key") or "")
-    lines = [f"### `{args.name or os.path.basename(args.logs.rstrip('/\\\\'))}` v3 [{args.v3 or 'bez L7'}]", "",
+    title = args.name or os.path.basename(args.logs.rstrip("/"))
+    lines = [f"### `{title}` v3 [{args.v3 or 'bez L7'}]", "",
              f"Oken {total['windows']} po {args.window} s (selhalo {failures}), toků {total['flows']}, "
              f"DNS řádků {total['dns']}, TLS řádků {total['ssl']}, škodlivý host {','.join(sorted(bad)) or '-'}.", "",
              f"- zobrazených nálezů zmiňujících škodlivý host: {shown_bad}, první v okně {first_bad if first_bad is not None else '-'}",
