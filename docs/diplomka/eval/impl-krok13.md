@@ -19,8 +19,18 @@ Zadáno 2026-11-15. Omezení: proces Idle, max 6 vláken, jedno rameno, nic se n
 | bod | stav |
 |---|---|
 | 0 předregistrace a licence | hotovo (tento dokument) |
-| 1 reálná data a kalibrace | rozpracováno: CTU-13 pcapy 42, 43, 46, 54 se stahují |
+| 1 reálná data a kalibrace | rozpracováno: stažené CTU-13 pcapy 42, 43, 46, 54 (CC-BY). Zeek vydal logy jen pro 43 a 46 (1005 a 163 DNS řádků, 43 a 72 TLS); u 42 a 54 žádné logy dnes nevznikly (příčina neprověřena). Nástroj `tools/k13_real_stats.py`. Pro kalibraci chybí zdroje: dosud 3 zdroje (Normal-20, 43, 46) a jen s botnet hostem, tedy veličiny jsou orientační; **simulátor zatím nekalibrován** |
 | 2 reálné přehrání | nezačato |
 | 3 incidenty | nezačato |
 | 4 posun k 100 % | nezačato |
 | 5 držené seedy, LOFO, souhrn | nezačato |
+
+## Naměřeno do tohoto bodu (reálné zdroje, Zeek)
+
+| zdroj | DNS řádků | NXDOMAIN | TXT/NULL | AAAA | TLS spojení | bez SNI | self-signed x509 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| CTU-Normal-20 (normální host, 3 h) | 15 089 | 0,013 % | 0 | 24,5 % | 2 464 | 1,5 % | 3,0 % |
+| CTU-13 botnet 43 (Neris) | 1 005 | 0 | 0 | 0 | 43 | 97,7 % | 5,6 % |
+| CTU-13 botnet 46 (fast-flux) | 163 | 2,0 % | 0 | 0 | 72 | 100 % | 0 |
+
+Pozorování: botnetové TLS je téměř vždy bez SNI (98 až 100 %) proti 1,5 % u normálního hosta, tedy „TLS bez SNI“ je u reálných botnetů silný rys; simulace ho má u útoku, ale pozadí bez SNI by mělo být ~1,5 %. NXDOMAIN je i u botnetů nízký (≤ 2 %), tj. simulační pozadí 5 % NXDOMAIN je nadsazené. Tři zdroje stále neumožňují kalibraci distribucí (zdroje jsou malé a jednoúčelové).
