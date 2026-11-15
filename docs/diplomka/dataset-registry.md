@@ -393,3 +393,13 @@ Záznamy obou datasetů už jsou v sekci „Vlna 1 (krok 5, 2026-11-04)“ výš
 | ICS-Flow | https://www.kaggle.com/datasets/alirezadehlaghi/icssim (podle článku arXiv 2305.09678) | Neověřeno (článek licenci dat neuvádí, stránku Kaggle bez přihlášení nelze ověřit). | Kaggle vyžaduje přihlášení, nestaženo. |
 | DARPA OpTC | https://github.com/FiveDirections/OpTC-data | README: „DARPA is releasing these files in the public domain to stimulate further research.“ a „The data is released as-is. DARPA makes no warranties…“; „Distribution A: Approved for public release: distribution unlimited“. GitHub API licenci nevrací. | Data (přibližně 1 TB komprimovaného JSON, složky `ecar-bro`, `ecar`, `bro`) jsou na Google Drive (https://drive.google.com/drive/u/0/folders/1n3kkS3KR31KUegn42yk3-e6JkZvf0Caa), ne přes přímé HTTP(S) URL; nestaženo. Ground truth je v `OpTCRedTeamGroundTruth.pdf` v repozitáři. |
 | LANL Unified Host and Network | https://csr.lanl.gov/data/cyber1/ | CC0 1.0 („Los Alamos National Laboratory has waived all copyright and related or neighboring rights“). Citace: A. D. Kent, „Comprehensive, Multi-Source Cybersecurity Events“, LANL, 2015, DOI 10.17021/1179829. | Vyžaduje žádost, neodesláno. Stažení vyžaduje formulář s e-mailem a popisem použití. Soubory: auth 7,2 GB, proc 2,2 GB, flows 1,1 GB, dns 177 MB, redteam 4,8 kB. |
+
+## Krok 13: CTU-13 pcap a CTU-Normal-20 (2026-11-15)
+
+| pole | hodnota |
+|---|---|
+| source | Stratosphere IPS / CTU (ČVUT), `mcfp.felk.cvut.cz/publicDatasets` |
+| licence | CTU-13: Creative Commons CC-BY (stránka stratosphereips.org/datasets-overview, ověřeno 2026-11-15); citovat Garcia, Grill, Stiborek, Zunino 2014. CTU-Normal-20: licence v README neuvedena, použito jen lokálně |
+| soubory | `ctu-normal-20/2017-04-30_win-normal.pcap` (282 415 864 B); `ctu13-pcap/botnet-{42,43,46,54}.pcap` |
+| zpracování | Zeek (docker zeek/zeek:latest), logy v `out/` vedle pcapů; data mimo repozitář (`F:\Projekty\bakula-datasets`) |
+| nezpracováno | CIRA-CIC-DoHBrw-2020 a CIC-Bell-DNS2021 (stažení přes formulář UNB, vyloučeno zadáním), MAWI (licence neověřena) |
