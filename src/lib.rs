@@ -55,6 +55,7 @@ pub mod paths;
 pub mod pentest;
 pub mod pipeline;
 pub mod reassess;
+pub mod incident_catalog;
 pub mod retro;
 pub mod platform;
 pub mod protection;

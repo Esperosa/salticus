@@ -1,0 +1,2222 @@
+{
+ "catalog_version": "1.0.0",
+ "created": "2026-11-15",
+ "description": "Katalog běžných síťových a provozních incidentů (porucha / neškodná změna / nejednoznačné) pro vysvětlení nálezů a doporučené kontroly. Kategorie 'nejednoznacne' = na síťové úrovni nelze s jistotou rozlišit od útoku.",
+ "note": "Texty o projevech jsou autorský souhrn z odborných znalostí; basis=assumption znamená, že tvrzení nebylo ověřeno primárním zdrojem v této relaci. Ověřené zdroje mají verified=true.",
+ "sources": {
+  "rfc1034": {
+   "title": "RFC 1034 Domain Names - Concepts and Facilities",
+   "url": "https://www.rfc-editor.org/rfc/rfc1034",
+   "verified": false
+  },
+  "rfc2308": {
+   "title": "RFC 2308 Negative Caching of DNS Queries",
+   "url": "https://www.rfc-editor.org/rfc/rfc2308",
+   "verified": false
+  },
+  "rfc8767": {
+   "title": "RFC 8767 Serving Stale Data to Improve DNS Resiliency",
+   "url": "https://www.rfc-editor.org/rfc/rfc8767",
+   "verified": false
+  },
+  "rfc2131": {
+   "title": "RFC 2131 Dynamic Host Configuration Protocol",
+   "url": "https://www.rfc-editor.org/rfc/rfc2131",
+   "verified": false
+  },
+  "rfc5227": {
+   "title": "RFC 5227 IPv4 Address Conflict Detection",
+   "url": "https://www.rfc-editor.org/rfc/rfc5227",
+   "verified": true,
+   "note": "abstrakt a sekce 2 načteny 2026-11-15"
+  },
+  "rfc826": {
+   "title": "RFC 826 Ethernet Address Resolution Protocol",
+   "url": "https://www.rfc-editor.org/rfc/rfc826",
+   "verified": false
+  },
+  "rfc5905": {
+   "title": "RFC 5905 Network Time Protocol Version 4",
+   "url": "https://www.rfc-editor.org/rfc/rfc5905",
+   "verified": false
+  },
+  "rfc5280": {
+   "title": "RFC 5280 X.509 PKI Certificate and CRL Profile",
+   "url": "https://www.rfc-editor.org/rfc/rfc5280",
+   "verified": false
+  },
+  "rfc8446": {
+   "title": "RFC 8446 TLS 1.3",
+   "url": "https://www.rfc-editor.org/rfc/rfc8446",
+   "verified": false
+  },
+  "rfc1191": {
+   "title": "RFC 1191 Path MTU Discovery",
+   "url": "https://www.rfc-editor.org/rfc/rfc1191",
+   "verified": false
+  },
+  "rfc4821": {
+   "title": "RFC 4821 Packetization Layer Path MTU Discovery",
+   "url": "https://www.rfc-editor.org/rfc/rfc4821",
+   "verified": false
+  },
+  "rfc4271": {
+   "title": "RFC 4271 BGP-4",
+   "url": "https://www.rfc-editor.org/rfc/rfc4271",
+   "verified": false
+  },
+  "rfc7196": {
+   "title": "RFC 7196 Making Route Flap Damping Usable",
+   "url": "https://www.rfc-editor.org/rfc/rfc7196",
+   "verified": false
+  },
+  "rfc4787": {
+   "title": "RFC 4787 NAT Behavioral Requirements for UDP",
+   "url": "https://www.rfc-editor.org/rfc/rfc4787",
+   "verified": false
+  },
+  "rfc6888": {
+   "title": "RFC 6888 Requirements for CGNs",
+   "url": "https://www.rfc-editor.org/rfc/rfc6888",
+   "verified": false
+  },
+  "rfc6762": {
+   "title": "RFC 6762 Multicast DNS",
+   "url": "https://www.rfc-editor.org/rfc/rfc6762",
+   "verified": false
+  },
+  "rfc2863": {
+   "title": "RFC 2863 The Interfaces Group MIB",
+   "url": "https://www.rfc-editor.org/rfc/rfc2863",
+   "verified": false
+  },
+  "rfc4301": {
+   "title": "RFC 4301 Security Architecture for IP (IPsec)",
+   "url": "https://www.rfc-editor.org/rfc/rfc4301",
+   "verified": false
+  },
+  "rfc7011": {
+   "title": "RFC 7011 IPFIX",
+   "url": "https://www.rfc-editor.org/rfc/rfc7011",
+   "verified": false
+  },
+  "ieee8021d": {
+   "title": "IEEE 802.1D / 802.1Q (STP, RSTP, VLAN)",
+   "url": "https://www.ieee802.org/1/pages/802.1D-2004.html",
+   "verified": false
+  },
+  "ieee8023": {
+   "title": "IEEE 802.3 (autonegotiace, duplex, FCS)",
+   "url": "https://standards.ieee.org/ieee/802.3/7071/",
+   "verified": false
+  },
+  "nist80061": {
+   "title": "NIST SP 800-61 Computer Security Incident Handling Guide (Rev. 2, nahrazen Rev. 3)",
+   "url": "https://csrc.nist.gov/pubs/sp/800/61/r3/final",
+   "verified": false,
+   "note": "načtení stránky vypršelo, neověřeno"
+  },
+  "itil": {
+   "title": "ITIL 4: incident management vs. problem management",
+   "url": "https://www.axelos.com/certifications/itil-service-management",
+   "verified": false
+  },
+  "danluu": {
+   "title": "danluu/post-mortems (sbírka veřejných postmortemů)",
+   "url": "https://github.com/danluu/post-mortems",
+   "verified": true,
+   "note": "obsah načten 2026-11-15; kategorie Config Errors, Hardware/Power, Conflicts, Time, Database; licence na stránce neuvedena"
+  },
+  "sre": {
+   "title": "Google SRE Book: Postmortem Culture",
+   "url": "https://sre.google/sre-book/postmortem-culture/",
+   "verified": false
+  },
+  "cloudflare": {
+   "title": "Cloudflare blog: post-mortemy",
+   "url": "https://blog.cloudflare.com/tag/post-mortem/",
+   "verified": false
+  },
+  "aws": {
+   "title": "AWS Post-Event Summaries",
+   "url": "https://aws.amazon.com/premiumsupport/technology/pes/",
+   "verified": false
+  },
+  "github": {
+   "title": "GitHub Availability Reports",
+   "url": "https://github.blog/tag/github-availability-report/",
+   "verified": false
+  },
+  "cisco": {
+   "title": "Cisco: dokumentace Catalyst/IOS (STP, storm-control, DHCP snooping, DAI)",
+   "url": "https://www.cisco.com/c/en/us/support/index.html",
+   "verified": false
+  },
+  "juniper": {
+   "title": "Juniper Junos dokumentace",
+   "url": "https://www.juniper.net/documentation/",
+   "verified": false
+  },
+  "mikrotik": {
+   "title": "MikroTik RouterOS Manual",
+   "url": "https://help.mikrotik.com/docs/",
+   "verified": false
+  },
+  "ubiquiti": {
+   "title": "Ubiquiti UniFi Help Center",
+   "url": "https://help.ui.com/",
+   "verified": false
+  },
+  "aruba": {
+   "title": "Aruba/HPE Networking dokumentace",
+   "url": "https://www.arubanetworks.com/techdocs/",
+   "verified": false
+  },
+  "microsoft": {
+   "title": "Microsoft Learn: DHCP, DNS, AD CS, Windows Time, Kerberos",
+   "url": "https://learn.microsoft.com/",
+   "verified": false
+  },
+  "linux": {
+   "title": "Linux dokumentace: networking, conntrack, systemd, chrony",
+   "url": "https://docs.kernel.org/networking/",
+   "verified": false
+  },
+  "nanog": {
+   "title": "NANOG archiv (provozní incidenty, BGP, DNS)",
+   "url": "https://www.nanog.org/",
+   "verified": false
+  }
+ },
+ "incidents": [
+  {
+   "id": "OPS-001",
+   "name": "Výpadek přepínače podsítě",
+   "category": "porucha",
+   "cause": "Selhání přepínače, napájení nebo uplinku",
+   "signals": {
+    "flows": "Náhlý pokles toků celé podsítě, zdroje mizí současně",
+    "dns": "Dotazy z podsítě přestanou",
+    "tls": "Žádné nové handshaky",
+    "dhcp": "Žádné DISCOVER z podsítě",
+    "arp": "Chybí ARP odpovědi podsítě",
+    "snmp": "ifOperStatus down, SNMP timeout",
+    "syslog": "LINK-DOWN, power fail",
+    "endpoint": "Heartbeat agentů chybí"
+   },
+   "confusable_with_attack": "Hromadné zmizení hostů vypadá jako izolace po kompromitaci",
+   "recommended_check": "Stav přepínače, napájení, uplinku; out-of-band",
+   "severity": "high",
+   "owner": "síť/NOC",
+   "sources": [
+    "cisco",
+    "rfc2863",
+    "sre"
+   ],
+   "sim_variant": "switch_outage_subnet",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-002",
+   "name": "Flapping páteřního směrovače",
+   "category": "porucha",
+   "cause": "Nestabilní spoj nebo směrovací proces",
+   "signals": {
+    "flows": "Střídání výpadků a obnov, vlny nových spojení",
+    "dns": "Přerušované SERVFAIL",
+    "tls": "Opakované handshaky",
+    "dhcp": "Opakovaný renew",
+    "arp": "ARP po každé obnově",
+    "snmp": "ifOperStatus flap, neighbor change",
+    "syslog": "OSPF/BGP adjacency up/down",
+    "endpoint": "Přerušované spojení agentů"
+   },
+   "confusable_with_attack": "Periodické výpadky připomínají beaconing nebo DoS",
+   "recommended_check": "Logy směrovače, stav linky, dampening",
+   "severity": "high",
+   "owner": "síť/NOC",
+   "sources": [
+    "rfc4271",
+    "rfc7196",
+    "juniper",
+    "nanog"
+   ],
+   "sim_variant": "core_router_flapping",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-003",
+   "name": "Vyčerpání DHCP poolu",
+   "category": "porucha",
+   "cause": "Pool menší než počet klientů, dlouhé zapomenuté leasy",
+   "signals": {
+    "flows": "Neúspěšná spojení nových hostů, hosty bez adresy",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "DISCOVER bez OFFER/NAK",
+    "arp": "-",
+    "snmp": "Využití poolu 100 %",
+    "syslog": "no free leases",
+    "endpoint": "APIPA adresa"
+   },
+   "confusable_with_attack": "Vypadá jako DHCP starvation útok",
+   "recommended_check": "Využití poolu, délka leasů, spoofované MAC",
+   "severity": "medium",
+   "owner": "síť/IT",
+   "sources": [
+    "rfc2131",
+    "microsoft",
+    "mikrotik"
+   ],
+   "sim_variant": "dhcp_pool_exhaustion",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-004",
+   "name": "Výpadek DHCP serveru",
+   "category": "porucha",
+   "cause": "Služba neběží, relay nedosáhne serveru",
+   "signals": {
+    "flows": "Klienti se po vypršení leasu ztrácejí",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "DISCOVER bez odpovědi",
+    "arp": "-",
+    "snmp": "Služba down",
+    "syslog": "DHCP service stopped",
+    "endpoint": "APIPA po leasu"
+   },
+   "confusable_with_attack": "Rozpad sítě po leasu vypadá jako útok na infrastrukturu",
+   "recommended_check": "Stav služby, relay, log serveru",
+   "severity": "high",
+   "owner": "síť/IT",
+   "sources": [
+    "rfc2131",
+    "microsoft"
+   ],
+   "sim_variant": "dhcp_server_down",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-005",
+   "name": "Částečné selhání DNS",
+   "category": "porucha",
+   "cause": "Jeden resolver neodpovídá nebo vrací SERVFAIL",
+   "signals": {
+    "flows": "Část dotazů timeout, opakování",
+    "dns": "SERVFAIL/timeout, retransmise",
+    "tls": "Zpožděné handshaky",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "Resolver degradovaný",
+    "syslog": "SERVFAIL, forwarder timeout",
+    "endpoint": "Pomalé weby"
+   },
+   "confusable_with_attack": "SERVFAIL bouře vypadá jako DGA nebo tunel",
+   "recommended_check": "Test každého resolveru, forwardery, upstream",
+   "severity": "medium",
+   "owner": "síť/IT",
+   "sources": [
+    "rfc1034",
+    "rfc2308",
+    "microsoft",
+    "linux"
+   ],
+   "sim_variant": "dns_partial_failure",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-006",
+   "name": "Pomalé DNS rozlišení",
+   "category": "porucha",
+   "cause": "Přetížený nebo vzdálený resolver, ztráty",
+   "signals": {
+    "flows": "Dlouhé RTT DNS, zpožděné navázání",
+    "dns": "Vysoké RTT, retransmise",
+    "tls": "Zpožděné handshaky",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "CPU resolveru",
+    "syslog": "Query latency",
+    "endpoint": "Pomalé aplikace"
+   },
+   "confusable_with_attack": "Retransmise vypadají jako enumerace",
+   "recommended_check": "Latence resolveru, cache hit ratio",
+   "severity": "low",
+   "owner": "síť/IT",
+   "sources": [
+    "rfc1034",
+    "linux"
+   ],
+   "sim_variant": "dns_slow_resolution",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-007",
+   "name": "Nedostupný NTP server",
+   "category": "porucha",
+   "cause": "NTP server, ACL nebo UDP 123 blokováno",
+   "signals": {
+    "flows": "Opakované UDP/123 bez odpovědi",
+    "dns": "-",
+    "tls": "Chyby ověření certifikátů při posunu",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "no server suitable",
+    "endpoint": "Čas se rozchází"
+   },
+   "confusable_with_attack": "NTP bez odpovědi vypadá jako blokovaný C2 kanál",
+   "recommended_check": "Dostupnost NTP, firewall UDP 123",
+   "severity": "low",
+   "owner": "IT",
+   "sources": [
+    "rfc5905",
+    "linux",
+    "microsoft"
+   ],
+   "sim_variant": "ntp_unreachable",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-008",
+   "name": "Drift hodin hostu",
+   "category": "porucha",
+   "cause": "Vadný oscilátor, VM bez synchronizace",
+   "signals": {
+    "flows": "Toky neškodné, časové značky mimo",
+    "dns": "-",
+    "tls": "Certifikát not yet valid / expired",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "Kerberos clock skew",
+    "endpoint": "Čas mimo"
+   },
+   "confusable_with_attack": "Posun času může skrýt nebo napodobit anomálie",
+   "recommended_check": "Offset vůči NTP, stav synchronizace",
+   "severity": "medium",
+   "owner": "IT",
+   "sources": [
+    "rfc5905",
+    "microsoft"
+   ],
+   "sim_variant": "ntp_clock_drift_host",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-009",
+   "name": "Vypršelý interní certifikát služby",
+   "category": "porucha",
+   "cause": "Certifikát nebyl obnoven",
+   "signals": {
+    "flows": "Spojení se navážou a ihned přeruší, vysoký podíl neúspěšných TLS",
+    "dns": "-",
+    "tls": "Alert certificate_expired",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "certificate expired v logu aplikace",
+    "endpoint": "Chyby klientů"
+   },
+   "confusable_with_attack": "Opakované selhání TLS vypadá jako skenování TLS",
+   "recommended_check": "Datum platnosti, řetěz, obnova (ACME/CA)",
+   "severity": "high",
+   "owner": "PKI/IT",
+   "sources": [
+    "rfc5280",
+    "microsoft",
+    "sre",
+    "danluu"
+   ],
+   "sim_variant": "cert_expired_internal_service",
+   "basis": "partly-verified",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-010",
+   "name": "Chybný řetěz externího certifikátu",
+   "category": "porucha",
+   "cause": "Chybí intermediate, špatné pořadí, změna CA",
+   "signals": {
+    "flows": "Část klientů selže podle trust store",
+    "dns": "-",
+    "tls": "Chain verification failure u části klientů",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "unable to get local issuer certificate",
+    "endpoint": "Chyby klientů"
+   },
+   "confusable_with_attack": "Selhání handshaku vypadá jako MITM",
+   "recommended_check": "openssl s_client, trust store",
+   "severity": "medium",
+   "owner": "PKI/webmaster",
+   "sources": [
+    "rfc5280",
+    "rfc8446"
+   ],
+   "sim_variant": "cert_chain_misconfig_external",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-011",
+   "name": "Saturace uplinku",
+   "category": "porucha",
+   "cause": "Linka plně vytížena (záloha, stahování, DDoS)",
+   "signals": {
+    "flows": "Růst zpoždění a ztrát, retransmise",
+    "dns": "Timeouts",
+    "tls": "Zpožděné handshaky",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "ifHCOutOctets u kapacity, drops",
+    "syslog": "tail drop",
+    "endpoint": "Pomalé aplikace"
+   },
+   "confusable_with_attack": "Nasycení vypadá jako DDoS nebo exfiltrace",
+   "recommended_check": "Top talkers, průběh, QoS, plánované úlohy",
+   "severity": "medium",
+   "owner": "síť",
+   "sources": [
+    "rfc7011",
+    "cisco",
+    "rfc2863"
+   ],
+   "sim_variant": "uplink_saturation",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-012",
+   "name": "Přetečení okna zálohy",
+   "category": "porucha",
+   "cause": "Záloha déle než okno",
+   "signals": {
+    "flows": "Dlouhý objemný přenos mimo okno na jedno úložiště",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "Vytížení linky",
+    "syslog": "Backup job still running",
+    "endpoint": "Agent zálohy aktivní"
+   },
+   "confusable_with_attack": "Dlouhý odchozí přenos vypadá jako exfiltrace",
+   "recommended_check": "Plán a stav zálohy, cíl úložiště",
+   "severity": "low",
+   "owner": "IT/zálohy",
+   "sources": [
+    "sre",
+    "microsoft"
+   ],
+   "sim_variant": "backup_window_overrun",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-013",
+   "name": "Broadcast storm / smyčka L2",
+   "category": "porucha",
+   "cause": "Smyčka bez STP nebo selhání STP",
+   "signals": {
+    "flows": "Obří počet broadcast/multicast, saturace",
+    "dns": "mDNS/ARP zahltí",
+    "tls": "-",
+    "dhcp": "DHCP broadcasty rostou",
+    "arp": "Lavina ARP, MAC flap",
+    "snmp": "Broadcast pps, CPU přepínače",
+    "syslog": "MAC flapping, STP TC",
+    "endpoint": "Zpomalení hostů"
+   },
+   "confusable_with_attack": "Záplava vypadá jako DoS na L2",
+   "recommended_check": "Trasování smyčky, storm-control, STP topologie",
+   "severity": "critical",
+   "owner": "síť",
+   "sources": [
+    "ieee8021d",
+    "cisco",
+    "juniper"
+   ],
+   "sim_variant": "broadcast_storm_loop",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-014",
+   "name": "Bouře mDNS/SSDP",
+   "category": "porucha",
+   "cause": "Chybně nastavené IoT/tiskárna, reflektor",
+   "signals": {
+    "flows": "Mnoho multicast UDP 5353/1900",
+    "dns": "mDNS dotazy",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "-",
+    "endpoint": "Zařízení generuje multicast"
+   },
+   "confusable_with_attack": "Skenování služeb nebo SSDP amplifikace",
+   "recommended_check": "Zdroj, mDNS reflector, IGMP snooping",
+   "severity": "low",
+   "owner": "síť/IT",
+   "sources": [
+    "rfc6762",
+    "ubiquiti",
+    "aruba"
+   ],
+   "sim_variant": "mdns_ssdp_storm",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-015",
+   "name": "Duplicitní IP adresa",
+   "category": "porucha",
+   "cause": "Dva hosty se stejnou IP (statika vs DHCP)",
+   "signals": {
+    "flows": "Střídavé odpovědi, RST, přeskakování relací",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "Leasy v konfliktu",
+    "arp": "Dvě MAC pro jednu IP",
+    "snmp": "-",
+    "syslog": "Duplicate address detected",
+    "endpoint": "OS hlásí konflikt"
+   },
+   "confusable_with_attack": "Dvě MAC na IP vypadá jako ARP spoofing",
+   "recommended_check": "ARP tabulka, DHCP leasy, výrobce MAC",
+   "severity": "medium",
+   "owner": "síť/IT",
+   "sources": [
+    "rfc5227",
+    "rfc826",
+    "microsoft"
+   ],
+   "sim_variant": "duplicate_ip_conflict",
+   "basis": "partly-verified",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-016",
+   "name": "Kaskáda pádu aplikačního serveru",
+   "category": "porucha",
+   "cause": "Pád backendu přetíží závislé služby",
+   "signals": {
+    "flows": "Opakované pokusy klientů, RST, vlny spojení",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "process crashed, restart loop",
+    "endpoint": "Crash dump"
+   },
+   "confusable_with_attack": "Vlna pokusů vypadá jako DoS aplikace",
+   "recommended_check": "Logy aplikace, závislosti, circuit breaker",
+   "severity": "high",
+   "owner": "aplikace/SRE",
+   "sources": [
+    "sre",
+    "danluu"
+   ],
+   "sim_variant": "app_server_crash_cascade",
+   "basis": "partly-verified",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-017",
+   "name": "Přetížení databáze",
+   "category": "porucha",
+   "cause": "Dotazy bez indexu, zámky, vyčerpaný pool",
+   "signals": {
+    "flows": "Dlouhá odezva, mnoho spojení",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "CPU/IO DB",
+    "syslog": "slow query, too many connections",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Plný pool vypadá jako credential stuffing proti DB",
+   "recommended_check": "Slow log, aktivní dotazy, nedávné nasazení",
+   "severity": "high",
+   "owner": "DBA",
+   "sources": [
+    "sre",
+    "danluu"
+   ],
+   "sim_variant": "db_overload_degradation",
+   "basis": "partly-verified",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-018",
+   "name": "Částečný výpadek load balanceru",
+   "category": "porucha",
+   "cause": "Backend vypadl z poolu, health check selhává",
+   "signals": {
+    "flows": "Nerovnoměrný provoz, chyby 5xx",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "LB health",
+    "syslog": "backend marked down",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Nerovnoměrný provoz vypadá jako cílený útok",
+   "recommended_check": "Health checky, stav backendů",
+   "severity": "high",
+   "owner": "SRE/síť",
+   "sources": [
+    "sre",
+    "cloudflare"
+   ],
+   "sim_variant": "load_balancer_partial_outage",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-019",
+   "name": "Flapping služby",
+   "category": "porucha",
+   "cause": "Služba se opakovaně restartuje",
+   "signals": {
+    "flows": "Střídavé úspěšné a neúspěšné spojení na stejný port",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "systemd restart counter",
+    "endpoint": "Proces restartuje"
+   },
+   "confusable_with_attack": "Vypadá jako skenování nebo opakovaná přihlášení",
+   "recommended_check": "Logy služby, limity zdrojů",
+   "severity": "medium",
+   "owner": "aplikace",
+   "sources": [
+    "linux",
+    "sre"
+   ],
+   "sim_variant": "flapping_service",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-020",
+   "name": "Degradace linky se ztrátami",
+   "category": "porucha",
+   "cause": "Vadný optický modul, kabel, Wi-Fi interference",
+   "signals": {
+    "flows": "Retransmise, nízká propustnost",
+    "dns": "Timeouts",
+    "tls": "Zpožděné handshaky",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "ifInErrors/CRC",
+    "syslog": "CRC/FCS errors",
+    "endpoint": "Pomalé aplikace"
+   },
+   "confusable_with_attack": "Ztráty vypadají jako zásah do provozu",
+   "recommended_check": "Čítače portu, optika, výměna kabelu",
+   "severity": "medium",
+   "owner": "síť",
+   "sources": [
+    "ieee8023",
+    "cisco",
+    "rfc2863"
+   ],
+   "sim_variant": "slow_link_loss_degradation",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-021",
+   "name": "Zaplnění disku a selhání zálohy",
+   "category": "porucha",
+   "cause": "Disk plný, záloha se nezapíše",
+   "signals": {
+    "flows": "Opakované pokusy zálohy, kratší přenosy",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "Disk usage",
+    "syslog": "No space left on device",
+    "endpoint": "Agent hlásí chybu"
+   },
+   "confusable_with_attack": "Opakované pokusy vypadají jako brute force",
+   "recommended_check": "Volné místo, retence, kvóty",
+   "severity": "medium",
+   "owner": "IT/zálohy",
+   "sources": [
+    "linux",
+    "sre"
+   ],
+   "sim_variant": "disk_full_backup_failure",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-022",
+   "name": "Vyčerpání paměti a zamrznutí",
+   "category": "porucha",
+   "cause": "Únik paměti, OOM",
+   "signals": {
+    "flows": "Služba přestane odpovídat, spojení visí",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "Memory",
+    "syslog": "OOM killer",
+    "endpoint": "Swap thrash"
+   },
+   "confusable_with_attack": "Zamrznutí vypadá jako DoS",
+   "recommended_check": "Paměť procesů, OOM log",
+   "severity": "high",
+   "owner": "aplikace/IT",
+   "sources": [
+    "linux",
+    "sre"
+   ],
+   "sim_variant": "memory_exhaustion_stall",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-023",
+   "name": "Pád koncentrátoru VPN",
+   "category": "porucha",
+   "cause": "Selhání zařízení, licence nebo certifikátu VPN",
+   "signals": {
+    "flows": "Zmizení tunelů, hromadný reconnect",
+    "dns": "-",
+    "tls": "Selhání handshaku VPN",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "Stav tunelů",
+    "syslog": "IKE failures",
+    "endpoint": "Klienti odpojeni"
+   },
+   "confusable_with_attack": "Hromadné opakování přihlášení vypadá jako spray",
+   "recommended_check": "Stav koncentrátoru, certifikáty, licence",
+   "severity": "high",
+   "owner": "síť/IT",
+   "sources": [
+    "rfc4301",
+    "cisco",
+    "microsoft"
+   ],
+   "sim_variant": "vpn_concentrator_down",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-024",
+   "name": "Selhání řadiče AP",
+   "category": "porucha",
+   "cause": "Kontroler Wi-Fi nedostupný",
+   "signals": {
+    "flows": "Bezdrátoví klienti ztrácejí relace, re-auth",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "DHCP renew",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "AP lost controller",
+    "endpoint": "Wi-Fi odpojeno"
+   },
+   "confusable_with_attack": "Hromadné re-auth vypadá jako deauth nebo rogue AP",
+   "recommended_check": "Stav kontroleru, adopce AP",
+   "severity": "high",
+   "owner": "síť",
+   "sources": [
+    "ubiquiti",
+    "aruba"
+   ],
+   "sim_variant": "access_point_controller_failure",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-025",
+   "name": "Fronta a opakování pošty",
+   "category": "porucha",
+   "cause": "Relay nedostupný, fronta retry",
+   "signals": {
+    "flows": "Pravidelné opakování SMTP, dávky",
+    "dns": "-",
+    "tls": "STARTTLS fail",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "mail queue deferred",
+    "endpoint": "Fronta roste"
+   },
+   "confusable_with_attack": "Pravidelné opakování vypadá jako beaconing",
+   "recommended_check": "Fronta pošty, stav relaye, MX",
+   "severity": "low",
+   "owner": "IT/pošta",
+   "sources": [
+    "microsoft",
+    "linux"
+   ],
+   "sim_variant": "mail_relay_queue_retry",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-026",
+   "name": "Smyčka firmware chatter IoT",
+   "category": "porucha",
+   "cause": "Zařízení po aktualizaci vysílá ve smyčce",
+   "signals": {
+    "flows": "Extrémně časté drobné spojení na jeden cíl",
+    "dns": "Opakované dotazy",
+    "tls": "Opakované handshaky",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "-",
+    "endpoint": "Verze firmware"
+   },
+   "confusable_with_attack": "Vypadá jako C2 beacon nebo DoS",
+   "recommended_check": "Verze firmware, výrobce, izolace",
+   "severity": "medium",
+   "owner": "IoT/IT",
+   "sources": [
+    "ubiquiti",
+    "aruba"
+   ],
+   "sim_variant": "iot_firmware_chatter_loop",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-027",
+   "name": "Chybně nastavený monitoring (polling)",
+   "category": "porucha",
+   "cause": "Příliš agresivní polling nebo špatný cíl",
+   "signals": {
+    "flows": "Pravidelný polling mnoha hostů a portů",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "SNMP polling",
+    "syslog": "-",
+    "endpoint": "Agent monitoringu"
+   },
+   "confusable_with_attack": "Vypadá jako skenování",
+   "recommended_check": "Plán pollingu, zdroj, inventář monitoringu",
+   "severity": "low",
+   "owner": "IT/monitoring",
+   "sources": [
+    "sre",
+    "linux"
+   ],
+   "sim_variant": "monitoring_agent_misconfig_poll",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-001",
+   "name": "Sezónní špička webu",
+   "category": "neskodna_zmena",
+   "cause": "Kampaň, akce, sezóna",
+   "signals": {
+    "flows": "Růst spojení z mnoha zdrojů na web",
+    "dns": "Růst DNS",
+    "tls": "Více handshaků",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "Zátěž roste",
+    "syslog": "-",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Flash crowd vs DDoS",
+   "recommended_check": "Zdroje, user-agent, kampaň, trend",
+   "severity": "low",
+   "owner": "SRE/marketing",
+   "sources": [
+    "cloudflare",
+    "sre"
+   ],
+   "sim_variant": "seasonal_peak_web",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-002",
+   "name": "Plánované okno údržby",
+   "category": "neskodna_zmena",
+   "cause": "Plánovaná změna",
+   "signals": {
+    "flows": "Krátké výpadky v plánovaném okně",
+    "dns": "Změny záznamů",
+    "tls": "Změna certifikátů",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "Plánovaný restart",
+    "syslog": "Change ticket",
+    "endpoint": "Patch"
+   },
+   "confusable_with_attack": "Plánovaný výpadek vs útok",
+   "recommended_check": "Porovnat s kalendářem změn",
+   "severity": "info",
+   "owner": "IT/change",
+   "sources": [
+    "itil",
+    "sre"
+   ],
+   "sim_variant": "planned_maintenance_window",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-003",
+   "name": "Plánovaný patch a restart",
+   "category": "neskodna_zmena",
+   "cause": "Aktualizace OS a restart",
+   "signals": {
+    "flows": "Vlna restartů a stahování aktualizací",
+    "dns": "Dotazy na update servery",
+    "tls": "Handshaky k update serverům",
+    "dhcp": "Renew po restartu",
+    "arp": "ARP znovu",
+    "snmp": "Reboot",
+    "syslog": "Update installed",
+    "endpoint": "WU/yum"
+   },
+   "confusable_with_attack": "Vlna stahování vs exfiltrace",
+   "recommended_check": "Kalendář patchů, WSUS/repo",
+   "severity": "info",
+   "owner": "IT",
+   "sources": [
+    "microsoft",
+    "linux"
+   ],
+   "sim_variant": "planned_patch_reboot_wave",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-004",
+   "name": "Noční záloha do cloudu",
+   "category": "neskodna_zmena",
+   "cause": "Plánovaná záloha",
+   "signals": {
+    "flows": "Velký odchozí objem mimo pracovní dobu na stejný cíl",
+    "dns": "Dotazy na cloud",
+    "tls": "TLS k poskytovateli",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "Backup job",
+    "endpoint": "Agent zálohy"
+   },
+   "confusable_with_attack": "Velký odchozí objem vs exfiltrace",
+   "recommended_check": "Plán úlohy, cíl dle smlouvy",
+   "severity": "low",
+   "owner": "IT/zálohy",
+   "sources": [
+    "sre"
+   ],
+   "sim_variant": "hn_nightly_cloud_backup_upload",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-005",
+   "name": "Stahování z CDN (aktualizace)",
+   "category": "neskodna_zmena",
+   "cause": "Aktualizace klientů z CDN",
+   "signals": {
+    "flows": "Velký příchozí objem z CDN, nové IP",
+    "dns": "Dotazy na CDN",
+    "tls": "SNI CDN",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "-",
+    "endpoint": "Update agent"
+   },
+   "confusable_with_attack": "Drive-by stažení vs aktualizace",
+   "recommended_check": "SNI/ASN vydavatele, podpis balíku",
+   "severity": "info",
+   "owner": "IT",
+   "sources": [
+    "cloudflare"
+   ],
+   "sim_variant": "hn_cdn_update_download",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-006",
+   "name": "Sweep monitoringu (SNMP)",
+   "category": "neskodna_zmena",
+   "cause": "Plánovaný discovery sweep",
+   "signals": {
+    "flows": "Mnoho hostů na UDP 161",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "SNMP poll",
+    "syslog": "-",
+    "endpoint": "Monitoring server"
+   },
+   "confusable_with_attack": "Síťový sweep vs recon",
+   "recommended_check": "Zdroj je inventarizovaný monitoring",
+   "severity": "info",
+   "owner": "IT/monitoring",
+   "sources": [
+    "rfc2863"
+   ],
+   "sim_variant": "hn_monitoring_snmp_sweep",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-007",
+   "name": "Periodická synchronizace hesel",
+   "category": "neskodna_zmena",
+   "cause": "AD/IdP synchronizace",
+   "signals": {
+    "flows": "Pravidelná spojení na LDAP/Kerberos",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "Directory sync",
+    "endpoint": "Služba sync"
+   },
+   "confusable_with_attack": "Pravidelnost vs beacon",
+   "recommended_check": "Plán a identita služebního účtu",
+   "severity": "info",
+   "owner": "IT/identita",
+   "sources": [
+    "microsoft"
+   ],
+   "sim_variant": "hn_password_sync_periodic",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-008",
+   "name": "Hromadná administrace SSH",
+   "category": "neskodna_zmena",
+   "cause": "Správce nasazuje změnu",
+   "signals": {
+    "flows": "Mnoho SSH relací z jednoho hosta",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "sshd accepted (key)",
+    "endpoint": "Správce přihlášen"
+   },
+   "confusable_with_attack": "Bulk SSH vs lateral movement nebo spray",
+   "recommended_check": "Autentizace klíčem, ticket změny",
+   "severity": "low",
+   "owner": "IT",
+   "sources": [
+    "linux"
+   ],
+   "sim_variant": "hn_admin_bulk_ssh",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-009",
+   "name": "Replikace databáze",
+   "category": "neskodna_zmena",
+   "cause": "Naplánovaná replikace",
+   "signals": {
+    "flows": "Objemný stálý přenos mezi dvěma servery",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "replication stream",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Objem mezi servery vs exfiltrace",
+   "recommended_check": "Topologie replikace, plán",
+   "severity": "info",
+   "owner": "DBA",
+   "sources": [
+    "sre"
+   ],
+   "sim_variant": "hn_db_replication_bulk",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-010",
+   "name": "Hromadný newsletter",
+   "category": "neskodna_zmena",
+   "cause": "Rozeslání pošty",
+   "signals": {
+    "flows": "Mnoho SMTP spojení na různé MX",
+    "dns": "DNS MX dotazy",
+    "tls": "STARTTLS k MX",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "mail queue",
+    "endpoint": "MTA aktivní"
+   },
+   "confusable_with_attack": "Burst SMTP vs spam bot",
+   "recommended_check": "Odesílatel, SPF/DKIM",
+   "severity": "info",
+   "owner": "IT/marketing",
+   "sources": [
+    "microsoft"
+   ],
+   "sim_variant": "hn_mail_newsletter_burst",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-011",
+   "name": "Autorizovaný interní sken",
+   "category": "neskodna_zmena",
+   "cause": "Plánovaný audit zranitelností",
+   "signals": {
+    "flows": "Skenovací vzorec z jednoho zdroje",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "scanner log",
+    "endpoint": "Scanner"
+   },
+   "confusable_with_attack": "Rozliší jen autorizace",
+   "recommended_check": "Seznam autorizovaných skenerů a oken",
+   "severity": "low",
+   "owner": "bezpečnost",
+   "sources": [
+    "nist80061"
+   ],
+   "sim_variant": "hn_authorized_internal_scan",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-028",
+   "name": "Špatný resolver v konfiguraci klienta",
+   "category": "porucha",
+   "cause": "Chybný DNS server po změně DHCP nebo GPO",
+   "signals": {
+    "flows": "Dotazy na špatný resolver, timeout",
+    "dns": "Dotazy mimo firemní resolver",
+    "tls": "Zpoždění",
+    "dhcp": "Option 6 chybná",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "-",
+    "endpoint": "NIC DNS"
+   },
+   "confusable_with_attack": "Dotazy na cizí resolver vypadají jako DNS hijack",
+   "recommended_check": "DHCP option 6 a GPO",
+   "severity": "medium",
+   "owner": "IT",
+   "sources": [
+    "rfc2131",
+    "rfc1034",
+    "microsoft"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-029",
+   "name": "Zastaralý DNS záznam",
+   "category": "porucha",
+   "cause": "Záznam ukazuje na starou IP po migraci",
+   "signals": {
+    "flows": "Spojení na starou adresu, RST",
+    "dns": "A záznam s vysokým TTL na starou IP",
+    "tls": "Handshake selže",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "-",
+    "endpoint": "Klient míří na starý cíl"
+   },
+   "confusable_with_attack": "Spojení na neznámou IP vypadá jako C2",
+   "recommended_check": "Porovnat A záznam a službu, TTL",
+   "severity": "medium",
+   "owner": "IT/DNS",
+   "sources": [
+    "rfc1034",
+    "rfc2308",
+    "danluu"
+   ],
+   "sim_variant": null,
+   "basis": "partly-verified",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-030",
+   "name": "Chyba split-horizon DNS",
+   "category": "porucha",
+   "cause": "Interní a externí odpověď se liší",
+   "signals": {
+    "flows": "Klienti míří na externí IP místo interní",
+    "dns": "Různé odpovědi z různých resolverů",
+    "tls": "SNI sedí, cíl ne",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "-",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Hairpin provoz ven vypadá jako exfiltrace",
+   "recommended_check": "Porovnat interní a externí odpověď",
+   "severity": "medium",
+   "owner": "IT/DNS",
+   "sources": [
+    "rfc1034",
+    "microsoft"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-031",
+   "name": "NXDOMAIN bouře",
+   "category": "porucha",
+   "cause": "Špatně nastavená aplikace, odstraněná zóna",
+   "signals": {
+    "flows": "Mnoho dotazů na neexistující jména",
+    "dns": "Vysoký podíl NXDOMAIN",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "DNS zátěž",
+    "syslog": "resolver NXDOMAIN rate",
+    "endpoint": "Aplikace ve smyčce"
+   },
+   "confusable_with_attack": "Vypadá jako DGA malware",
+   "recommended_check": "Zdroj a vzor jmen (DGA má entropii)",
+   "severity": "medium",
+   "owner": "IT/DNS",
+   "sources": [
+    "rfc2308",
+    "rfc1034"
+   ],
+   "sim_variant": "dns_nxdomain_storm",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-032",
+   "name": "Chybné TTL DNS",
+   "category": "porucha",
+   "cause": "Příliš nízké nebo vysoké TTL",
+   "signals": {
+    "flows": "Nárůst dotazů nebo pomalé přechody po změně",
+    "dns": "TTL 0 až 5 s, opakované",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "DNS zátěž",
+    "syslog": "-",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Častý dotaz vypadá jako DNS beaconing",
+   "recommended_check": "Zkontrolovat TTL záznamů",
+   "severity": "low",
+   "owner": "IT/DNS",
+   "sources": [
+    "rfc2308",
+    "rfc8767"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-033",
+   "name": "Nesoulad native VLAN",
+   "category": "porucha",
+   "cause": "Různý native VLAN na trunku",
+   "signals": {
+    "flows": "Provoz v nesprávné VLAN",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "ARP v cizí VLAN",
+    "snmp": "-",
+    "syslog": "Native VLAN mismatch (CDP)",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "VLAN hopping vypadá stejně",
+   "recommended_check": "CDP/LLDP hlášky, trunky",
+   "severity": "medium",
+   "owner": "síť",
+   "sources": [
+    "ieee8021d",
+    "cisco"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-034",
+   "name": "VLAN hopping vs chybná konfigurace",
+   "category": "nejednoznacne",
+   "cause": "Neúmyslná nebo útočná dvojitá značka",
+   "signals": {
+    "flows": "Provoz mezi VLAN, které spolu komunikovat nemají",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "ARP napříč VLAN",
+    "snmp": "-",
+    "syslog": "Native VLAN mismatch",
+    "endpoint": "Neznámé spojení mezi VLAN"
+   },
+   "confusable_with_attack": "Chyba a útok jsou na síti stejné",
+   "recommended_check": "Konfigurace trunků a access portů, původ rámců",
+   "severity": "high",
+   "owner": "síť/bezpečnost",
+   "sources": [
+    "ieee8021d",
+    "cisco"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-035",
+   "name": "MTU/MSS nesoulad",
+   "category": "porucha",
+   "cause": "Různé MTU, ICMP frag-needed filtrován (PMTUD black hole)",
+   "signals": {
+    "flows": "Malé pakety projdou, velké visí",
+    "dns": "-",
+    "tls": "Handshake visí na velkém ClientHello nebo certifikátu",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "ICMP frag needed zablokováno",
+    "endpoint": "Zamrzání velkých odpovědí"
+   },
+   "confusable_with_attack": "Visící spojení vypadá jako tarpit",
+   "recommended_check": "Test PMTUD, MSS clamping, ICMP politika",
+   "severity": "medium",
+   "owner": "síť",
+   "sources": [
+    "rfc1191",
+    "rfc4821"
+   ],
+   "sim_variant": "mtu_mss_mismatch",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-036",
+   "name": "Rogue DHCP server",
+   "category": "nejednoznacne",
+   "cause": "Cizí DHCP server (omyl nebo útok)",
+   "signals": {
+    "flows": "Klienti dostanou cizí adresy a bránu",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "OFFER z neznámého serveru",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "DHCP snooping violation",
+    "endpoint": "Špatná brána"
+   },
+   "confusable_with_attack": "Man-in-the-middle vs omyl",
+   "recommended_check": "DHCP snooping, MAC serveru, dohledání portu",
+   "severity": "high",
+   "owner": "síť/bezpečnost",
+   "sources": [
+    "rfc2131",
+    "cisco"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-037",
+   "name": "Špatné DHCP lease",
+   "category": "porucha",
+   "cause": "Chybný rozsah, brána, překryv scopů",
+   "signals": {
+    "flows": "Spojení na špatnou bránu",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "ACK s chybnými parametry",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "-",
+    "endpoint": "Špatná brána"
+   },
+   "confusable_with_attack": "Podvržená brána vs překlep",
+   "recommended_check": "Scopy a options",
+   "severity": "medium",
+   "owner": "síť/IT",
+   "sources": [
+    "rfc2131",
+    "microsoft"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-038",
+   "name": "Selhání DHCP relay",
+   "category": "porucha",
+   "cause": "Relay (ip helper) chybí nebo ukazuje špatně",
+   "signals": {
+    "flows": "Klienti jedné VLAN bez adres",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "DISCOVER bez OFFER v jedné VLAN",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "helper-address chybí",
+    "endpoint": "APIPA"
+   },
+   "confusable_with_attack": "Jako DHCP starvation",
+   "recommended_check": "Konfigurace relay, dosažitelnost serveru",
+   "severity": "medium",
+   "owner": "síť",
+   "sources": [
+    "rfc2131",
+    "cisco"
+   ],
+   "sim_variant": "dhcp_relay_failure",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-012",
+   "name": "Změna certifikační autority",
+   "category": "neskodna_zmena",
+   "cause": "Plánovaná změna nebo rotace CA",
+   "signals": {
+    "flows": "Nový issuer, mladé certifikáty",
+    "dns": "-",
+    "tls": "Nový issuer a řetěz",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "-",
+    "endpoint": "Trust store aktualizován"
+   },
+   "confusable_with_attack": "Mladý certifikát vs podvržení",
+   "recommended_check": "Kalendář změny, CA v inventáři",
+   "severity": "info",
+   "owner": "PKI",
+   "sources": [
+    "rfc5280"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-040",
+   "name": "Routovací černá díra",
+   "category": "porucha",
+   "cause": "Chybná trasa, zrušená agregace",
+   "signals": {
+    "flows": "Spojení na cíl timeoutují, ICMP unreachable",
+    "dns": "Resolve OK, spojení nejde",
+    "tls": "SYN bez odpovědi",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "Route to null0",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Blackhole vypadá jako filtrování útoku",
+   "recommended_check": "traceroute, tabulka tras",
+   "severity": "high",
+   "owner": "síť",
+   "sources": [
+    "rfc4271",
+    "juniper",
+    "nanog"
+   ],
+   "sim_variant": "routing_blackhole",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-041",
+   "name": "Asymetrické směrování",
+   "category": "porucha",
+   "cause": "Odpovědi jinou cestou, stavový firewall zahazuje",
+   "signals": {
+    "flows": "Jednosměrně navázaná spojení, RST",
+    "dns": "-",
+    "tls": "Handshake nedokončen",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "out-of-state drop",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Jednosměrné toky vypadají jako skenování nebo spoof",
+   "recommended_check": "Trasy tam a zpět, stav firewallu",
+   "severity": "medium",
+   "owner": "síť",
+   "sources": [
+    "rfc4271",
+    "cisco"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-042",
+   "name": "Špatná výchozí trasa",
+   "category": "porucha",
+   "cause": "Změna default route, dvě brány",
+   "signals": {
+    "flows": "Provoz mizí nebo jde jinam",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "ARP na špatnou bránu",
+    "snmp": "-",
+    "syslog": "-",
+    "endpoint": "Cesta ven přerušena"
+   },
+   "confusable_with_attack": "Přesměrování vs MITM",
+   "recommended_check": "Tabulka tras hosta, DHCP option 3",
+   "severity": "high",
+   "owner": "síť/IT",
+   "sources": [
+    "rfc2131"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-043",
+   "name": "Vyčerpání NAT/PAT",
+   "category": "porucha",
+   "cause": "Došly porty nebo conntrack",
+   "signals": {
+    "flows": "Nová spojení selhávají, SYN bez odpovědi",
+    "dns": "-",
+    "tls": "Handshake neprojde",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "Využití conntrack",
+    "syslog": "nf_conntrack: table full",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "SYN flood nebo skener vyčerpá totéž",
+   "recommended_check": "Využití NAT tabulky, top talkers",
+   "severity": "high",
+   "owner": "síť",
+   "sources": [
+    "rfc4787",
+    "rfc6888",
+    "mikrotik",
+    "linux"
+   ],
+   "sim_variant": "nat_pat_exhaustion",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-044",
+   "name": "Duplex mismatch",
+   "category": "porucha",
+   "cause": "Autonegotiace selhala",
+   "signals": {
+    "flows": "Kolize, nízká propustnost, retransmise",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "ifInErrors, late collisions",
+    "syslog": "late collision",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Ztráty vypadají jako zásah do provozu",
+   "recommended_check": "Čítače portu, nastavení obou stran",
+   "severity": "low",
+   "owner": "síť",
+   "sources": [
+    "ieee8023",
+    "cisco"
+   ],
+   "sim_variant": "duplex_mismatch",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-045",
+   "name": "Chyby CRC na portu",
+   "category": "porucha",
+   "cause": "Vadný kabel nebo SFP",
+   "signals": {
+    "flows": "Retransmise, nespolehlivá spojení",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "ifInErrors rostou",
+    "syslog": "CRC/FCS",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Poškozené pakety vypadají jako fuzzing",
+   "recommended_check": "Čítače, výměna kabelu nebo SFP",
+   "severity": "medium",
+   "owner": "síť",
+   "sources": [
+    "ieee8023",
+    "rfc2863"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-046",
+   "name": "Zahazování QoS",
+   "category": "porucha",
+   "cause": "Špatné třídy, policing",
+   "signals": {
+    "flows": "Určitý typ provozu (VoIP, video) ztrácí pakety",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "Zahozené pakety ve frontách",
+    "syslog": "QoS drop",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Selektivní ztráty vypadají jako cílený zásah",
+   "recommended_check": "Politiky QoS a čítače front",
+   "severity": "medium",
+   "owner": "síť",
+   "sources": [
+    "cisco"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "CHG-013",
+   "name": "Nové neznámé zařízení (onboarding)",
+   "category": "neskodna_zmena",
+   "cause": "Legitimní nasazení nového zařízení",
+   "signals": {
+    "flows": "Nový host s typickými prvními spojeními (DHCP, DNS, NTP, update)",
+    "dns": "Prvotní dotazy",
+    "tls": "Prvotní handshaky",
+    "dhcp": "DISCOVER s novou MAC",
+    "arp": "Nová ARP",
+    "snmp": "-",
+    "syslog": "-",
+    "endpoint": "Inventář chybí"
+   },
+   "confusable_with_attack": "Nový host vs rogue zařízení",
+   "recommended_check": "Ticket a inventář, MAC OUI",
+   "severity": "low",
+   "owner": "IT",
+   "sources": [
+    "itil",
+    "ubiquiti"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-048",
+   "name": "Rogue zařízení v síti",
+   "category": "nejednoznacne",
+   "cause": "Cizí zařízení (host, útočník)",
+   "signals": {
+    "flows": "Nový host skenuje nebo mluví s mnoha cíli",
+    "dns": "Neobvyklé dotazy",
+    "tls": "-",
+    "dhcp": "DISCOVER cizí MAC",
+    "arp": "Nová ARP",
+    "snmp": "-",
+    "syslog": "Port security violation",
+    "endpoint": "Nezná inventář"
+   },
+   "confusable_with_attack": "Stejné jako onboarding, liší se chováním",
+   "recommended_check": "Inventář, switchport, DHCP fingerprint",
+   "severity": "high",
+   "owner": "bezpečnost/IT",
+   "sources": [
+    "nist80061",
+    "cisco"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-049",
+   "name": "Smyčka restartů zařízení",
+   "category": "porucha",
+   "cause": "Zařízení se opakovaně restartuje (boot loop)",
+   "signals": {
+    "flows": "Opakované vlny DHCP, DNS, NTP od jednoho zařízení",
+    "dns": "Opakované dotazy po startu",
+    "tls": "Opakované handshaky",
+    "dhcp": "Opakované DISCOVER",
+    "arp": "Opakované ARP",
+    "snmp": "Reset uptime",
+    "syslog": "boot messages",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Opakování vypadá jako beacon",
+   "recommended_check": "Uptime, napájení, firmware",
+   "severity": "medium",
+   "owner": "IT/IoT",
+   "sources": [
+    "ubiquiti"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-050",
+   "name": "Selhávající aktualizace firmwaru",
+   "category": "porucha",
+   "cause": "Stažení selže nebo nesedí hash",
+   "signals": {
+    "flows": "Opakované stahování stejného souboru",
+    "dns": "Dotazy na update server",
+    "tls": "TLS k update serveru opakovaně",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "update failed",
+    "endpoint": "Verze se nemění"
+   },
+   "confusable_with_attack": "Opakované stahování vs staging",
+   "recommended_check": "Log aktualizace, hash, úložiště",
+   "severity": "low",
+   "owner": "IT",
+   "sources": [
+    "ubiquiti",
+    "microsoft"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "CHG-014",
+   "name": "Aktualizace čeká na restart",
+   "category": "neskodna_zmena",
+   "cause": "Čeká na schválení nebo restart",
+   "signals": {
+    "flows": "Žádný nový provoz, jen stav",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "pending reboot",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "-",
+   "recommended_check": "Seznam čekajících aktualizací",
+   "severity": "info",
+   "owner": "IT",
+   "sources": [
+    "microsoft"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-052",
+   "name": "Zpožděná replikace",
+   "category": "porucha",
+   "cause": "Síť nebo disk zpomalí replikaci",
+   "signals": {
+    "flows": "Pomalejší přenos mezi servery, dlouhé trvání",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "replication lag",
+    "syslog": "replication lag",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Dlouhé spojení vypadá jako C2 long-lived tunnel",
+   "recommended_check": "Lag, linka, IO",
+   "severity": "medium",
+   "owner": "DBA",
+   "sources": [
+    "sre",
+    "danluu"
+   ],
+   "sim_variant": null,
+   "basis": "partly-verified",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-053",
+   "name": "Vypršení licence",
+   "category": "porucha",
+   "cause": "Licence produktu vypršela",
+   "signals": {
+    "flows": "Přerušení licenčního spojení",
+    "dns": "Dotazy na licenční server",
+    "tls": "TLS k licenčnímu serveru selže",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "license expired",
+    "endpoint": "Aplikace hlásí"
+   },
+   "confusable_with_attack": "Selhání vypadá jako blokace",
+   "recommended_check": "Datum licence, kontakt dodavatele",
+   "severity": "medium",
+   "owner": "IT",
+   "sources": [
+    "sre"
+   ],
+   "sim_variant": "license_expiry",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-054",
+   "name": "Selhávající zdravotní kontroly",
+   "category": "porucha",
+   "cause": "Špatný health endpoint",
+   "signals": {
+    "flows": "Opakované krátké dotazy na jeden port s chybou",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "health check failed",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Opakované dotazy vypadají jako brute force",
+   "recommended_check": "Cíl a stav kontroly",
+   "severity": "low",
+   "owner": "SRE",
+   "sources": [
+    "sre"
+   ],
+   "sim_variant": "health_check_failing",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-055",
+   "name": "Padání VPN tunelu",
+   "category": "porucha",
+   "cause": "Nestabilní tunel (MTU, NAT, rekey)",
+   "signals": {
+    "flows": "Periodické přerušení a obnova tunelu",
+    "dns": "-",
+    "tls": "IKE/TLS opakovaně",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "Flap stavu tunelu",
+    "syslog": "IKE rekey failed",
+    "endpoint": "Klient odpojen"
+   },
+   "confusable_with_attack": "Periodické spojení vypadá jako beacon",
+   "recommended_check": "IKE log, MTU, NAT-T",
+   "severity": "medium",
+   "owner": "síť",
+   "sources": [
+    "rfc4301",
+    "cisco"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-056",
+   "name": "Chyba proxy nebo WAF (falešné blokování)",
+   "category": "porucha",
+   "cause": "Pravidlo WAF blokuje legitimní provoz",
+   "signals": {
+    "flows": "Vysoký podíl 403 a RST k jedné aplikaci",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "WAF block",
+    "endpoint": "Chyby aplikace"
+   },
+   "confusable_with_attack": "403 vypadá jako úspěšná obrana nebo skenování",
+   "recommended_check": "Log WAF, pravidlo, výjimka",
+   "severity": "medium",
+   "owner": "bezpečnost/web",
+   "sources": [
+    "cloudflare"
+   ],
+   "sim_variant": "waf_false_block",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-057",
+   "name": "Výpadek cloudového regionu",
+   "category": "porucha",
+   "cause": "Region poskytovatele nedostupný",
+   "signals": {
+    "flows": "Náhlý pokles spojení do cloud ASN, přepnutí na záložní region",
+    "dns": "Změna rozlišení",
+    "tls": "Timeout nebo jiné IP",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "-",
+    "endpoint": "SDK chyby"
+   },
+   "confusable_with_attack": "Výpadek vs blokace nebo DoS",
+   "recommended_check": "Status poskytovatele, failover",
+   "severity": "high",
+   "owner": "cloud/SRE",
+   "sources": [
+    "aws",
+    "github",
+    "cloudflare",
+    "danluu"
+   ],
+   "sim_variant": "cloud_region_outage",
+   "basis": "partly-verified",
+   "sim_status": "generator"
+  },
+  {
+   "id": "CHG-015",
+   "name": "Reklasifikace služby",
+   "category": "neskodna_zmena",
+   "cause": "Změna role služby (nové porty a cíle)",
+   "signals": {
+    "flows": "Nová spojení na nové porty v rámci legitimní změny",
+    "dns": "Nová jména",
+    "tls": "Nové SNI",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "change record",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Nový cíl a port vs lateral movement",
+   "recommended_check": "Změnový záznam, inventář",
+   "severity": "info",
+   "owner": "IT/change",
+   "sources": [
+    "itil"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-059",
+   "name": "DDoS vs flash crowd",
+   "category": "nejednoznacne",
+   "cause": "Skutečná poptávka nebo útok",
+   "signals": {
+    "flows": "Růst z mnoha zdrojů; liší se chování klientů",
+    "dns": "Růst dotazů",
+    "tls": "Dokončené handshaky (flash) vs nedokončené (DDoS)",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "Zátěž",
+    "syslog": "-",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Zásadní nejednoznačnost",
+   "recommended_check": "Poměr dokončených relací, geografie, user-agent, kampaň",
+   "severity": "high",
+   "owner": "SRE/bezpečnost",
+   "sources": [
+    "cloudflare",
+    "sre"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-060",
+   "name": "Rozbitý aktualizační server",
+   "category": "porucha",
+   "cause": "Update server vrací chyby",
+   "signals": {
+    "flows": "Opakované pokusy klientů, chyby 5xx",
+    "dns": "Dotazy na update server",
+    "tls": "TLS ok, HTTP chyby",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "5xx",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Opakování vypadá jako DoS na server",
+   "recommended_check": "Log serveru, repozitář",
+   "severity": "medium",
+   "owner": "IT",
+   "sources": [
+    "microsoft",
+    "linux"
+   ],
+   "sim_variant": "update_server_broken",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-061",
+   "name": "Zablokované ICMP firewallem",
+   "category": "porucha",
+   "cause": "Změna firewallu zablokuje ICMP",
+   "signals": {
+    "flows": "ICMP bez odpovědi, TCP funguje",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "ping fail",
+    "syslog": "ICMP deny",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Blokace ICMP vypadá jako stealth",
+   "recommended_check": "Pravidla firewallu",
+   "severity": "low",
+   "owner": "síť",
+   "sources": [
+    "cisco"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-062",
+   "name": "Topology change smyčka STP",
+   "category": "porucha",
+   "cause": "Flapping portu spouští TC a flush MAC",
+   "signals": {
+    "flows": "Přechodné záplavy unknown unicast",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "ARP po flushi",
+    "snmp": "TC counter",
+    "syslog": "STP topology change",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Unknown unicast vypadá jako MAC flooding",
+   "recommended_check": "Zdroj TC, portfast, BPDU guard",
+   "severity": "medium",
+   "owner": "síť",
+   "sources": [
+    "ieee8021d",
+    "cisco"
+   ],
+   "sim_variant": null,
+   "basis": "assumption",
+   "sim_status": "chybi"
+  },
+  {
+   "id": "OPS-063",
+   "name": "Selhání AD/Kerberos (čas nebo DC)",
+   "category": "porucha",
+   "cause": "Nedostupný DC, posun času",
+   "signals": {
+    "flows": "Opakované pokusy autentizace",
+    "dns": "DNS SRV dotazy na DC",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "KRB_AP_ERR_SKEW",
+    "endpoint": "Přihlášení selhává"
+   },
+   "confusable_with_attack": "Mnoho selhání vypadá jako spray",
+   "recommended_check": "Stav DC, čas, DNS SRV",
+   "severity": "high",
+   "owner": "IT/identita",
+   "sources": [
+    "microsoft",
+    "rfc5905"
+   ],
+   "sim_variant": "kerberos_dc_failure",
+   "basis": "assumption",
+   "sim_status": "generator"
+  },
+  {
+   "id": "OPS-064",
+   "name": "Limit spojení služby dosažen",
+   "category": "porucha",
+   "cause": "Vyčerpané file descriptory nebo connection limit",
+   "signals": {
+    "flows": "Nová spojení odmítána, RST",
+    "dns": "-",
+    "tls": "-",
+    "dhcp": "-",
+    "arp": "-",
+    "snmp": "-",
+    "syslog": "too many open files",
+    "endpoint": "-"
+   },
+   "confusable_with_attack": "Odmítání vypadá jako firewall blok",
+   "recommended_check": "Limity, ulimit, leaky spojení",
+   "severity": "medium",
+   "owner": "aplikace",
+   "sources": [
+    "linux",
+    "sre"
+   ],
+   "sim_variant": "connection_limit_reached",
+   "basis": "assumption",
+   "sim_status": "generator"
+  }
+ ]
+}

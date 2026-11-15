@@ -1833,6 +1833,163 @@ pub static SPECS: &[Spec] = &[
     .rate(400.0)
     .len(1, 2)
     .hard(),
+    sp(
+        "dns_nxdomain_storm",
+        "-",
+        OF,
+        P::Flood,
+        A::IntToDns,
+        N::Dns,
+        "udp",
+        53,
+    )
+    .rate(150.0)
+    .len(4, 24),
+    sp(
+        "nat_pat_exhaustion",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Gateway,
+        "tcp",
+        443,
+    )
+    .rate(40.0)
+    .len(4, 24),
+    sp(
+        "mtu_mss_mismatch",
+        "-",
+        OF,
+        P::Degrade,
+        A::Fault,
+        N::Server,
+        "tcp",
+        443,
+    )
+    .rate(30.0)
+    .len(6, 48),
+    sp(
+        "routing_blackhole",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Gateway,
+        "tcp",
+        443,
+    )
+    .rate(30.0)
+    .len(4, 24),
+    sp(
+        "duplex_mismatch",
+        "-",
+        OF,
+        P::Degrade,
+        A::Fault,
+        N::Server,
+        "tcp",
+        445,
+    )
+    .rate(20.0)
+    .len(8, 48),
+    sp(
+        "kerberos_dc_failure",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Server,
+        "tcp",
+        88,
+    )
+    .rate(40.0)
+    .len(2, 12),
+    sp(
+        "dhcp_relay_failure",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Gateway,
+        "udp",
+        67,
+    )
+    .rate(15.0)
+    .len(4, 24),
+    sp(
+        "waf_false_block",
+        "-",
+        OF,
+        P::Degrade,
+        A::Fault,
+        N::Web,
+        "tcp",
+        443,
+    )
+    .rate(40.0)
+    .len(2, 12),
+    sp(
+        "update_server_broken",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Web,
+        "tcp",
+        443,
+    )
+    .rate(25.0)
+    .len(4, 24),
+    sp(
+        "cloud_region_outage",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Any,
+        "tcp",
+        443,
+    )
+    .rate(60.0)
+    .len(8, 48),
+    sp(
+        "health_check_failing",
+        "-",
+        OF,
+        P::Flap,
+        A::Fault,
+        N::Server,
+        "tcp",
+        8080,
+    )
+    .rate(10.0)
+    .period(1.0)
+    .len(4, 24),
+    sp(
+        "license_expiry",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Vpn,
+        "tcp",
+        443,
+    )
+    .rate(10.0)
+    .len(4, 24),
+    sp(
+        "connection_limit_reached",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Server,
+        "tcp",
+        8080,
+    )
+    .rate(30.0)
+    .len(4, 24),
 ];
 
 /// Pocet variant (index do `SPECS`).
