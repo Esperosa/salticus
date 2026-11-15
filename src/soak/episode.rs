@@ -766,6 +766,8 @@ fn run_episode_inner(
     let mut scan_devices: HashSet<u32> = HashSet::new();
     let mut restart_cold = false;
     let mut memory = CaseMemory::in_memory();
+    let mut inc_hist = crate::retro::History::new(20_000);
+    let mut inc_labels: HashMap<String, Option<usize>> = HashMap::new();
     let poisoned = rng.chance(0.03);
     // Oddeleny nahodny proud pro vyhodnoceni (verdikty operatora, otrava, chyby
     // operatora): jeho spotreba zavisi na nalezech enginu, takze nesmi posouvat
@@ -2180,6 +2182,7 @@ fn run_episode_inner(
             let mut attributed = false;
             let mut attacked = false;
             let mut attack_family: Option<&'static str> = None;
+            let mut first_truth: Option<(usize, bool)> = None;
             let fhash = finding_hash(&finding.finding_id);
             let first_key = coverage_on
                 && is_behavioral
@@ -2226,6 +2229,12 @@ fn run_episode_inner(
                             attributed_to_attack += 1;
                             attacked = true;
                             attack_family.get_or_insert(family.label());
+                            first_truth.get_or_insert((
+                                index,
+                                matches!(family, crate::soak::traffic::Family::Var(i)
+                                    if crate::soak::variants::spec(i).cat
+                                        == crate::soak::variants::Category::OpsFault),
+                            ));
                             let ledger = &mut ledgers[index];
                             if !suspect {
                                 *ledger.hidden.entry(show.reason).or_default() += 1;
@@ -2437,6 +2446,27 @@ fn run_episode_inner(
                     }
                 }
             }
+            // krok 12: zobrazene nalezy do historie incidentu (stitek = prvni pripsana pravda)
+            if suspect
+                && is_behavioral
+                && let Some(host) = finding.host_key.clone()
+            {
+                inc_hist.add(crate::retro::Event {
+                    ts: ts(t0).timestamp(),
+                    host,
+                    finding_id: finding.finding_id.clone(),
+                    indicators: crate::correlation_layer::indicators_of(finding),
+                    tactic: crate::correlation_layer::tactic_of(&finding.finding_type)
+                        .map(str::to_string),
+                    cause: match first_truth {
+                        Some((_, true)) => crate::retro::Cause::Fault,
+                        Some((_, false)) => crate::retro::Cause::Attack,
+                        None => crate::retro::Cause::Unknown,
+                    },
+                });
+                inc_labels.insert(finding.finding_id.clone(), first_truth.map(|x| x.0));
+            }
+
             if lc.opened.contains(&finding_index)
                 && let Some(Some(key)) = lc.keys.get(finding_index)
             {
@@ -3397,6 +3427,31 @@ fn run_episode_inner(
     }
     agg.verification.skipped_budget += plan_queue.dropped;
     agg.verification.deferred += plan_queue.deferred;
+    {
+        // krok 12: cistota seskupeni do incidentu (po prvni pripsane pravde; nalez bez
+        // pripsani se pocita jako vlastni stitek, takze sum snizuje cistotu)
+        let out = &mut agg.output;
+        for inc in inc_hist.incidents(6 * 3600) {
+            if inc.findings.len() < 2 {
+                continue;
+            }
+            out.incident_n += 1;
+            out.incident_findings += inc.findings.len() as u64;
+            let mut counts: HashMap<Option<usize>, u64> = HashMap::new();
+            for f in &inc.findings {
+                let label = inc_labels.get(f).copied().flatten();
+                *counts.entry(label).or_default() += 1;
+            }
+            // nepripsane nalezy: kazdy vlastni stitek (None se nesmi sloucit)
+            let none = counts.remove(&None).unwrap_or(0);
+            let best = counts.values().copied().max().unwrap_or(0).max(u64::from(none > 0));
+            out.incident_pure += best;
+            out.incident_labeled += inc.findings.len() as u64;
+            if inc.cause == crate::retro::Cause::Mixed {
+                out.incident_mixed += 1;
+            }
+        }
+    }
     if let Some(runtime) = v3.as_ref().filter(|_| ladder_on) {
         let st = &runtime.ladder.stats;
         let out = &mut agg.output;

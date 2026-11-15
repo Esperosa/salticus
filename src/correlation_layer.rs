@@ -58,6 +58,20 @@ pub fn is_fault(finding_type: &str) -> bool {
     )
 }
 
+/// Indikatory nalezu (IPv4 z titulku a dukazu), nejvyse 8.
+pub fn indicators_of(f: &Finding) -> Vec<String> {
+    let mut indicators = ips_in(&f.title);
+    for e in &f.evidence {
+        for ip in ips_in(e) {
+            if !indicators.contains(&ip) {
+                indicators.push(ip);
+            }
+        }
+    }
+    indicators.truncate(8);
+    indicators
+}
+
 fn ips_in(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for token in text.split(|c: char| !(c.is_ascii_digit() || c == '.')) {

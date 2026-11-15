@@ -196,6 +196,17 @@ pub struct OutputStats {
     pub ladder_latency_max: u64,
     /// Výsledky kontrol rozhodnutých případů podle pravdy: "kontrola:značka|attack|benign".
     pub ladder_outcome_truth: BTreeMap<String, u64>,
+    /// Krok 12: incidenty (>= 2 nalezy), nalezy v nich, nalezy nejvetsi pravdy, smisene (utok i porucha).
+    #[serde(default)]
+    pub incident_n: u64,
+    #[serde(default)]
+    pub incident_findings: u64,
+    #[serde(default)]
+    pub incident_pure: u64,
+    #[serde(default)]
+    pub incident_labeled: u64,
+    #[serde(default)]
+    pub incident_mixed: u64,
     /// Krok 12: posteriory rozhodnutych pripadu `[pouzita posteriora, utok (kontrafaktual) 0/1,
     /// stav 0 potvrzeno / 1 vyvraceno / 2 eskalovano, cykly k rozhodnuti]`, nejvyse 6000 na sit
     /// (pro ECE po pripadech a konformalni pokryti).
@@ -310,6 +321,11 @@ impl OutputStats {
         self.ladder_latency_max = self.ladder_latency_max.max(o.ladder_latency_max);
         merge_map(&mut self.ladder_outcome_truth, &o.ladder_outcome_truth);
         self.ladder_log.extend(o.ladder_log.iter().copied());
+        self.incident_n += o.incident_n;
+        self.incident_findings += o.incident_findings;
+        self.incident_pure += o.incident_pure;
+        self.incident_labeled += o.incident_labeled;
+        self.incident_mixed += o.incident_mixed;
         merge_bins(&mut self.calib_raw, &o.calib_raw);
         merge_bins(&mut self.calib_used, &o.calib_used);
         self.device_classified += o.device_classified;
