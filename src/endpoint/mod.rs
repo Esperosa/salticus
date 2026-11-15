@@ -14,6 +14,7 @@
 pub mod correlate;
 pub mod evtx;
 pub mod graph;
+pub mod linux;
 pub mod model;
 pub mod osquery;
 pub mod persist;
@@ -46,6 +47,9 @@ pub enum Format {
     Sysmon,
     Wazuh,
     Osquery,
+    Falco,
+    Tetragon,
+    Auditd,
 }
 
 impl std::str::FromStr for Format {
@@ -55,7 +59,12 @@ impl std::str::FromStr for Format {
             "sysmon" => Ok(Format::Sysmon),
             "wazuh" => Ok(Format::Wazuh),
             "osquery" => Ok(Format::Osquery),
-            other => Err(format!("neznamy format {other} (sysmon | wazuh | osquery)")),
+            "falco" => Ok(Format::Falco),
+            "tetragon" => Ok(Format::Tetragon),
+            "auditd" => Ok(Format::Auditd),
+            other => Err(format!(
+                "neznamy format {other} (sysmon | wazuh | osquery | falco | tetragon | auditd)"
+            )),
         }
     }
 }
@@ -72,6 +81,10 @@ impl Format {
             Format::Sysmon => sysmon::parse(&map),
             Format::Wazuh => wazuh::parse(&map),
             Format::Osquery => osquery::parse(&map),
+            Format::Falco => linux::parse_falco(&map),
+            Format::Tetragon => linux::parse_tetragon(&map),
+            // auditd je textovy a sdruzuje zaznamy po davkach (`parse_batch`)
+            Format::Auditd => Err(ParseError("auditd se cte po davkach".into())),
         }
     }
 }
@@ -98,6 +111,19 @@ pub fn parse_batch(format: Format, text: &str, limits: &correlate::Limits) -> Pa
     } else {
         text
     };
+    if format == Format::Auditd {
+        for r in linux::parse_auditd(text, None) {
+            if out.events.len() >= limits.max_batch_events {
+                out.truncated = true;
+                break;
+            }
+            match r {
+                Ok(e) => out.events.push(e),
+                Err(_) => out.errors += 1,
+            }
+        }
+        return out;
+    }
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() {

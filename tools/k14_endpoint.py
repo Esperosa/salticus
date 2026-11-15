@@ -98,9 +98,9 @@ def main():
     ra, n_a = fam_sum(sa, NI)
     rb, _ = fam_sum(sb, NI)
     lo, hi = km.boot(st, lambda x, y: fam_sum(y, NI)[0] - fam_sum(x, NI)[0], rng)
-    out.append(f"| A1 správné rozhodnutí, rodiny kde síť nestačí (n = {n_a}) | {km.fmt(ra, True)} | {km.fmt(rb, True)} | {100*(rb-ra):+.1f} ({100*lo:+.1f} až {100*hi:+.1f}) p. b. | >= +10, dolní mez > 0 |".replace(".", ","))
+    out.append(f"| A1 správné rozhodnutí, rodiny kde síť nestačí (n = {n_a}) | {km.fmt(ra, True)} | {km.fmt(rb, True)} | {100*(rb-ra):+.1f} ({100*lo:+.1f} až {100*hi:+.1f}) p. b. | >= +10, dolní mez > 0 |".replace(".", ",").replace("p, b,", "p. b."))
     ra, rb, lo, hi = dr("sec_k", "sec_n")
-    out.append(f"| A2 detekce bezpečnostních útoků | {km.fmt(ra, True)} | {km.fmt(rb, True)} | {100*(rb-ra):+.1f} ({100*lo:+.1f} až {100*hi:+.1f}) p. b. | >= +2, dolní mez > 0 |".replace(".", ","))
+    out.append(f"| A2 detekce bezpečnostních útoků | {km.fmt(ra, True)} | {km.fmt(rb, True)} | {100*(rb-ra):+.1f} ({100*lo:+.1f} až {100*hi:+.1f}) p. b. | >= +2, dolní mez > 0 |".replace(".", ",").replace("p, b,", "p. b."))
     fa, fb = km.ratio(sa, "fp", "days"), km.ratio(sb, "fp", "days")
     lo, hi = km.boot(st, lambda x, y: km.ratio(y, "fp", "days") / max(km.ratio(x, "fp", "days"), 1e-12), rng)
     out.append(f"| A3 zobrazené FP na síť-den | {km.fmt(fa)} | {km.fmt(fb)} | poměr {km.fmt(fb/max(fa,1e-12), d=3)} ({km.fmt(lo, d=3)} až {km.fmt(hi, d=3)}) | <= 1,10 |")
@@ -108,9 +108,9 @@ def main():
     wb = sum(i["wrong"] for i in sb)
     na = sum(i["att_n"] for i in sa)
     nb = sum(i["att_n"] for i in sb)
-    out.append(f"| A4 útoky s omylem zavřeným | {wa} z {na} | {wb} z {nb} (horní mez Wilson {100*wilson_hi(wb, nb):.2f} %) | rameno <= základ | `on100` <= `off` |".replace(".", ","))
+    out.append(f"| A4 útoky s omylem zavřeným | {int(wa)} z {int(na)} | {int(wb)} z {int(nb)} (horní mez Wilson {100*wilson_hi(wb, nb):.2f} %) | rameno <= základ | `on100` <= `off` |".replace(".", ",").replace("p, b,", "p. b."))
     ra, rb, lo, hi = dr("hn_k", "hn_n")
-    out.append(f"| A5 hn_* zobrazeno (nižší je lepší) | {km.fmt(ra, True)} | {km.fmt(rb, True)} | {100*(rb-ra):+.1f} ({100*lo:+.1f} až {100*hi:+.1f}) p. b. | <= -10 |".replace(".", ","))
+    out.append(f"| A5 hn_* zobrazeno (nižší je lepší) | {km.fmt(ra, True)} | {km.fmt(rb, True)} | {100*(rb-ra):+.1f} ({100*lo:+.1f} až {100*hi:+.1f}) p. b. | <= -10 |".replace(".", ",").replace("p, b,", "p. b."))
     ea = [p[4] for p in pairs]
     eb = [p[5] for p in pairs]
     days = sum(i["virtual_days"] if "virtual_days" in i else 0 for i in sb)
@@ -132,7 +132,7 @@ def main():
         if n0 == 0:
             continue
         lo, hi = km.boot(st, lambda x, y, f=f: fam_sum(y, [f])[0] - fam_sum(x, [f])[0], rng)
-        out.append(f"| {f} | {n0} | {km.fmt(r0, True)} | {km.fmt(r1, True)} | {100*(r1-r0):+.1f} ({100*lo:+.1f} až {100*hi:+.1f}) |".replace(".", ","))
+        out.append(f"| {f} | {n0} | {km.fmt(r0, True)} | {km.fmt(r1, True)} | {100*(r1-r0):+.1f} ({100*lo:+.1f} až {100*hi:+.1f}) |".replace(".", ",").replace("p, b,", "p. b."))
     hn = sorted({f for i in sa for f in i["fam"] if f.startswith("hn_")})
     out += ["", "### hn_* po rodinách (zobrazeno, nižší je lepší)", "", "| rodina | n | základ | rameno |", "|---|---:|---:|---:|"]
     for f in hn:

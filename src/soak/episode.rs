@@ -796,6 +796,8 @@ fn run_episode_inner(
     let mut memory = CaseMemory::in_memory();
     let mut inc_hist = crate::retro::History::new(20_000);
     let mut inc_labels: HashMap<String, Option<usize>> = HashMap::new();
+    // krok 14 (C2): spolecna pricina z provozni telemetrie (finding_id -> `ops:<podsit>`)
+    let mut ops_roots: HashMap<String, String> = HashMap::new();
     let poisoned = rng.chance(0.03);
     // Oddeleny nahodny proud pro vyhodnoceni (verdikty operatora, otrava, chyby
     // operatora): jeho spotreba zavisi na nalezech enginu, takze nesmi posouvat
@@ -1555,6 +1557,31 @@ fn run_episode_inner(
                 "endpoint_covered_host_cycles",
                 view.coverage.hosts_covered as u64,
             );
+            // krok 14 (A11): nesoulad sit x agent: host s provozem v siti a bez zive telemetrie
+            {
+                let mut active: BTreeSet<&str> = BTreeSet::new();
+                for o in &output.observations {
+                    if let Some(ip) = o.src_ip.as_deref() {
+                        active.insert(ip);
+                    }
+                }
+                for ip in active {
+                    let Some(d) = ips.iter().position(|x| x == ip) else {
+                        continue;
+                    };
+                    let silent_truth = rt.sim.silenced(d as u32);
+                    agg.output.k7_add("endpoint_active_host_cycles", 1);
+                    if silent_truth {
+                        agg.output.k7_add("endpoint_silent_active_host_cycles", 1);
+                    }
+                    if !view.covered(ip) {
+                        agg.output.k7_add("endpoint_mismatch_flagged", 1);
+                        if silent_truth {
+                            agg.output.k7_add("endpoint_mismatch_flagged_true", 1);
+                        }
+                    }
+                }
+            }
             for a in view.suspicious_hosts() {
                 let peers: Vec<String> = a
                     .indicators
@@ -2388,6 +2415,9 @@ fn run_episode_inner(
                                         d.class,
                                         d.catalog_id.as_deref().unwrap_or("-")
                                     );
+                                    if let Some(root) = &d.root {
+                                        ops_roots.insert(finding.finding_id.clone(), format!("ops:{root}"));
+                                    }
                                     if exclusive {
                                         *ledger.cat_x.entry(key.clone()).or_default() += 1;
                                         // ruční diagnostika: K14_DIAG_DUMP=soubor (jedna řádka na nález)
@@ -2605,11 +2635,15 @@ fn run_episode_inner(
                 && is_behavioral
                 && let Some(host) = finding.host_key.clone()
             {
+                let mut indicators = crate::correlation_layer::indicators_of(finding);
+                if let Some(root) = ops_roots.get(&finding.finding_id) {
+                    indicators.push(root.clone());
+                }
                 inc_hist.add(crate::retro::Event {
                     ts: ts(t0).timestamp(),
                     host,
                     finding_id: finding.finding_id.clone(),
-                    indicators: crate::correlation_layer::indicators_of(finding),
+                    indicators,
                     tactic: crate::correlation_layer::tactic_of(&finding.finding_type)
                         .map(str::to_string),
                     cause: match first_truth {

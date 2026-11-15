@@ -118,3 +118,31 @@ Pravidla ověřená testy: úplná sada signálů každého typu ho pozná nebo 
 
 1. Smoke 20261102 (4 sítě, ops): C1 71 %, C2 34 %, C4 22 %, C5 24 %. Příčina: signály poruch měly rozsah /24 pro všechny klíče, takže se přenášely mezi souběžnými poruchami a na útoky v téže podsíti. Oprava v simulátoru (realismus): /24 jen u podsíťových klíčů, ostatní na postiženém hostu; do rozsahu se počítá i `attacker_device` (hn_authorized_internal_scan neměl žádné signály).
 2. Množina `COMPATIBLE` rozšířena o typy, které nález skutečně produkuje u poruch a změn (egress_volume_anomaly, ingest_volume_anomaly, novel_peer_burst, novel_burst_peer, peer_burst, tls_novel_burst, retry_storm, vpn_reconnect_storm).
+
+### Reálná data: EVTX-ATTACK-SAMPLES a OTRF (A14), přehrání produkční cestou
+
+Cesta: soubor -> `endpoint::evtx` (crate `evtx` 0.15, MIT/Apache-2.0, parser v `catch_unwind`, soubor <= 64 MiB) -> adaptér Sysmon/Windows Security -> `EndpointStore` -> `assess` (verdikt hosta) -> `Graph`. CLI: `endpoint replay-evtx --path <soubor|adresář> [--extended]` a `endpoint replay-jsonl --file <jsonl> [--extended]` (hodinová okna). Licence ověřeny 2026-11-15 (viz `dataset-registry.md`): OTRF MIT, EVTX-ATTACK-SAMPLES GPL-3.0; data zůstávají mimo git.
+
+**EVTX-ATTACK-SAMPLES (5 souborů, 71 záznamů):** 0 chyb parseru, 34 záznamů přeloženo, 37 mají ID mimo podporovanou množinu (4624, 4672, 4776, 5140, 1102 a další 5145 bez administrativního sdílení) a jsou `Ok(None)`. Práh A14 (>= 95 % záznamů s podporovaným ID bez chyby) splněn (100 %).
+
+| soubor | záznamů | přeloženo | skóre verdiktu | indikátory | by se zobrazilo |
+|---|---:|---:|---:|---|---|
+| CA_DCSync_4662 | 3 | 3 | 3 | ids_rule_high (4662, replikační práva od ne-řadiče) | ano |
+| LM_REMCOM_5145_TargetHost | 30 | 15 | 6 | 3x ids_rule_medium (admin share + remcom/svcctl) | ano |
+| LM_Remote_Service02_7045 | 3 | 3 | 2 | service_unknown | **ne** (práh 3) |
+| LM_ScheduledTask_ATSVC_target_host | 34 | 12 | 2 | ids_rule_medium (5145 atsvc) | **ne** |
+| LM_PowershellRemoting_sysmon_1_wsmprovhost | 1 | 1 | 0 | žádný | **ne** |
+
+Výsledek: **2 z 5 vzorků** vyústí v nález, a to jen díky pravidlům 4662 a 5145, která jsem do adaptéru doplnil PO prohlédnutí těchto souborů (parser před tím vracel `Ok(None)`). Proto jde o vývojová data parseru, ne o nezávislé ověření detekce. Jednotlivá událost (vzdálená služba, vzdálený PowerShell) práh 3 nepřekročí, protože pravidlo `lateral_remote_exec` potřebuje předchozí vzdálené přihlášení v okně 600 s, které vzorky (jediná událost) neobsahují. Pravidlo se kvůli těmto vzorkům neupravovalo.
+
+**OTRF Security-Datasets (hodinová okna po hostu):**
+
+| scénář | řádků | přeloženo | oken | oken s nálezem | indikátory |
+|---|---:|---:|---:|---:|---|
+| cmd_psexec_lsa_secrets_dump | 286 | 57 | 1 | 1 | remote_exec_tool, service_unknown, unsigned_from_writable_path, ids_rule_medium |
+| covenant_psremoting_command | 4 284 | 2 003 (z toho 1 922 Sysmon 10) | 3 | 1 | lsass_access |
+| empire_dcsync_dcerpc_drsuapi | - | - | - | - | **nezpracováno**: antivirus hostitele soubor zablokoval (chyba OS 225); ochranu jsem neobcházel |
+
+`--extended` nezměnil výsledek žádného reálného souboru (indikátory kroku 14 míří na cloudové a DNS techniky, které tyto scénáře neobsahují). U covenant scénáře nelze rozhodnout, zda je okno s `lsass_access` útok nebo pozadí (OTRF nemá štítek času útoku); počet falešných poplachů z reálných dat se proto neodhaduje.
+
+**Rozdíl proti simulaci (kvalitativně):** reálné záznamy Sysmon 10 tvoří v covenant scénáři 96 % přeložených událostí (šum od systémových procesů), kdežto simulace generuje jen několik podepsaných procesů na host a cyklus; simulovaný endpoint je proto čistší než reálný a objem z A9 (viz tabulka měření) je podhodnocený. Reálné příkazové řádky jsou delší a obsahují kódované PowerShell příkazy (viz registr datasetů), což simulace nemá.

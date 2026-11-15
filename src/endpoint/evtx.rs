@@ -230,6 +230,7 @@ pub fn replay_jsonl(
     format: super::Format,
     extended: bool,
     window_s: i64,
+    graph_out: Option<&std::path::Path>,
 ) -> Result<ReplayWindows, String> {
     use super::correlate::{Policy, assess};
     let name = path
@@ -310,6 +311,30 @@ pub fn replay_jsonl(
             }
             w += window_s;
         }
+    }
+    // graf okna s prvním nálezem (kauzální řetěz, uživatelé pseudonymizovaní)
+    if let (Some(path), Some(w)) = (graph_out, out.first_alert_window) {
+        use super::correlate::{EndpointStore, Limits, Resolution};
+        let mut store = EndpointStore::new(Limits {
+            max_per_host_cycle: u32::MAX / 2,
+            max_events_per_host: 200_000,
+            ..Limits::default()
+        });
+        let hosts: Vec<String> = by_host.keys().cloned().collect();
+        for (host, events) in &by_host {
+            for e in events.iter().filter(|e| e.ts >= w && e.ts < w + window_s) {
+                store.ingest(e.clone(), &Resolution::Unique(host.clone()), w + window_s);
+            }
+        }
+        let g = super::graph::Graph::build(
+            &store,
+            &hosts,
+            w,
+            w + window_s,
+            &super::graph::Privacy::default(),
+        );
+        let json = serde_json::to_string_pretty(&g).map_err(|e| e.to_string())?;
+        std::fs::write(path, json).map_err(|e| e.to_string())?;
     }
     Ok(out)
 }

@@ -334,6 +334,13 @@ impl EndpointSim {
         }
     }
 
+    /// Host s agentem, kterého kompromitace ztišila (`silent`): kryje se jen v tom režimu.
+    pub fn silenced(&self, device: u32) -> bool {
+        self.world.agent == AgentMode::Silent
+            && self.covered(device)
+            && self.compromised.get(device as usize).copied().unwrap_or(false)
+    }
+
     pub fn covered(&self, device: u32) -> bool {
         self.covered.get(device as usize).copied().unwrap_or(false)
     }
@@ -710,13 +717,16 @@ impl EndpointSim {
                             vendor: vendor.map(str::to_string),
                         })
                     };
-                    let conn_ev = |image: &str, signed: Option<bool>, vendor: Option<&str>| {
+                    let conn_to = |image: &str,
+                                   signed: Option<bool>,
+                                   vendor: Option<&str>,
+                                   dst: &str| {
                         EventKind::NetConnect(Conn {
                             image: Some(image.to_string()),
                             proto: "tcp".into(),
                             src_ip: None,
                             src_port: None,
-                            dst_ip: peer.clone(),
+                            dst_ip: dst.to_string(),
                             dst_port: 443,
                             vendor: vendor.map(str::to_string),
                             signed,
@@ -725,7 +735,8 @@ impl EndpointSim {
                     const PS: &str =
                         "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
                     const MS: &str = "Microsoft Corporation";
-                    if let Some(v) = victims.first().copied() {
+                    // aktivní stroj: oběť, nebo interní klient (u IntToExt je to `attacker_device`)
+                    if let Some(v) = victims.first().copied().or(t.attacker_device) {
                         match label {
                             "bucket_mass_download" | "exfil_cloud_storage_upload" if first => {
                                 let img = format!("{WRITABLE}rclone.exe");
@@ -742,7 +753,7 @@ impl EndpointSim {
                                     &mut r,
                                     &mut out,
                                 );
-                                emit(v, conn_ev(&img, None, None), 5, &mut r, &mut out);
+                                emit(v, conn_to(&img, None, None, &peer), 5, &mut r, &mut out);
                             }
                             "c2_cloud_storage_dead_drop" if first || r.chance(0.3) => {
                                 emit(
@@ -868,20 +879,49 @@ impl EndpointSim {
                                         (image, Some(true), Some(vendor))
                                     };
                                     if first || r.chance(0.2) {
-                                        emit(
-                                            v,
-                                            proc_ev(
-                                                img,
-                                                "C:\\Windows\\System32\\services.exe",
-                                                "",
-                                                signed,
-                                                ven,
-                                            ),
-                                            0,
-                                            &mut r,
-                                            &mut out,
-                                        );
-                                        emit(v, conn_ev(img, signed, ven), 3, &mut r, &mut out);
+                                        // všichni zúčastnění hosté nálezu hlásí nástroj (jinak by
+                                        // zdroj nálezu zůstal bez vysvětlení)
+                                        let involved: Vec<u32> = victims
+                                            .iter()
+                                            .copied()
+                                            .chain(t.attacker_device)
+                                            .take(12)
+                                            .collect();
+                                        for (k, h) in involved.iter().enumerate() {
+                                            let dst = if peer.is_empty() {
+                                                involved
+                                                    .iter()
+                                                    .find(|o| **o != *h)
+                                                    .map(|o| ips[*o as usize].clone())
+                                                    .unwrap_or_default()
+                                            } else {
+                                                peer.clone()
+                                            };
+                                            if dst.is_empty() {
+                                                continue;
+                                            }
+                                            let _ = k;
+                                            emit(
+                                                *h,
+                                                proc_ev(
+                                                    img,
+                                                    "C:\\Windows\\System32\\services.exe",
+                                                    "",
+                                                    signed,
+                                                    ven,
+                                                ),
+                                                0,
+                                                &mut r,
+                                                &mut out,
+                                            );
+                                            emit(
+                                                *h,
+                                                conn_to(img, signed, ven, &dst),
+                                                3,
+                                                &mut r,
+                                                &mut out,
+                                            );
+                                        }
                                     }
                                 }
                             }

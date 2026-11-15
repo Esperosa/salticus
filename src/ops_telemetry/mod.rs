@@ -194,6 +194,18 @@ impl OpsStore {
             .collect()
     }
 
+    /// CIDR rozsahy signálů daného klíče, které se týkají `ips` v okně.
+    fn subnet_roots(&self, ips: &[String], keys: &[&str], from: i64, to: i64) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .matching(ips, from, to)
+            .filter(|s| keys.contains(&s.key.as_str()))
+            .flat_map(|s| s.scope.iter().filter(|t| t.contains('/')).cloned())
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
     fn matching<'a>(
         &'a self,
         ips: &'a [String],
@@ -259,6 +271,38 @@ pub fn compatible_type(finding_type: &str) -> bool {
     COMPATIBLE.contains(&finding_type)
 }
 
+/// Behaviorální typy (nový partner, rozptyl cílů, pravidelný maják, pokusy o sken): útok i porucha
+/// nebo změna je dělají; přeřadí se jen při silné shodě (viz `diagnose`). Signaturní a neznámé
+/// typy se nepřeřazují nikdy (fail closed).
+const BEHAVIORAL: &[&str] = &[
+    "novel_persistent_peer",
+    "novel_fanout",
+    "beacon_periodic",
+    "scan_attempts",
+    "multi_target_pattern",
+    "pivot_chain",
+    "novel_burst",
+];
+
+pub fn behavioral_type(finding_type: &str) -> bool {
+    BEHAVIORAL.contains(&finding_type)
+}
+
+/// Typy, jejichž podstatou je nedostupnost nebo přetížení: bez telemetrie je třeba říct, že
+/// poruchu nelze vyloučit (i bez tokového vzoru E1 až E3).
+const AVAILABILITY: &[&str] = &[
+    "service_unreachable",
+    "connection_timeout_burst",
+    "service_overload_risk",
+    "broadcast_storm",
+    "retry_storm",
+    "vpn_reconnect_storm",
+    "packet_loss_signal",
+];
+
+/// Zdroje, bez nichž se porucha dostupnosti nedá vyloučit.
+const PRIMARY: [OpsSource; 2] = [OpsSource::Snmp, OpsSource::Syslog];
+
 /// Výsledek diagnózy jednoho nálezu.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpsDiagnosis {
@@ -276,6 +320,10 @@ pub struct OpsDiagnosis {
     pub reason: String,
     /// Útokový typ nálezu, ale v okně jsou signály poruchy: jen poznámka, zařazení zůstává `utok`.
     pub explains_partly: bool,
+    /// Společná příčina: podsíť (CIDR), které se týká nejsilnější signál shody; nálezy téže podsítě
+    /// ve stejném okně mají společný kořen (seskupení incidentů).
+    #[serde(default)]
+    pub root: Option<String>,
 }
 
 impl OpsDiagnosis {
@@ -290,6 +338,7 @@ impl OpsDiagnosis {
             missing: Vec::new(),
             reason: reason.to_string(),
             explains_partly: false,
+            root: None,
         }
     }
 }
@@ -316,14 +365,19 @@ pub struct DiagPolicy {
     pub window_s: i64,
     pub min_score: f64,
     pub min_margin: f64,
+    /// Prahy pro behaviorální typy nálezů (přísnější).
+    pub strict_score: f64,
+    pub strict_margin: f64,
 }
 
 impl Default for DiagPolicy {
     fn default() -> Self {
         Self {
-            window_s: 3600,
+            window_s: 3 * 3600,
             min_score: 0.45,
             min_margin: 0.10,
+            strict_score: 0.65,
+            strict_margin: 0.15,
         }
     }
 }
@@ -391,14 +445,18 @@ pub fn diagnose(
         .map(|s| s.key.as_str())
         .collect();
     let compatible = compatible_type(finding_type);
+    let behavioral = behavioral_type(finding_type);
     if present.is_empty() {
         let silent: Vec<String> = store
             .silent_sources(now)
             .into_iter()
+            .filter(|s| flow_fault_like || PRIMARY.contains(s))
             .map(|s| s.label().to_string())
             .collect();
         // bez signálu: ticho zdrojů je slepé místo jen tehdy, když tok sám naznačuje poruchu
-        if compatible && flow_fault_like && !silent.is_empty() {
+        // nebo když jde o typ nedostupnosti a chybí primární zdroj (SNMP, syslog)
+        let fault_like = flow_fault_like || AVAILABILITY.contains(&finding_type);
+        if compatible && fault_like && !silent.is_empty() {
             let mut d = OpsDiagnosis::plain("neurceno", "nelze určit, chybí telemetrie");
             d.reason = format!("nelze určit, chybí telemetrie: {}", silent.join(", "));
             d.missing = silent;
@@ -459,7 +517,18 @@ pub fn diagnose(
         .take(3)
         .map(|r| (r.1.to_string(), r.0))
         .collect();
-    if !compatible {
+    // behaviorální typ se přeřadí jen při silné shodě (víc signálů nebo typ s ≤ 2 signály)
+    let strict_ok = behavioral && {
+        let total_signals = index
+            .by_entry
+            .iter()
+            .find(|e| e.0 == best.1)
+            .map_or(usize::MAX, |e| e.2.len());
+        best.0 >= policy.strict_score
+            && d.margin >= policy.strict_margin
+            && (best.3.len() >= 2 || total_signals <= 2)
+    };
+    if !compatible && !strict_ok {
         d.explains_partly = best.0 >= policy.min_score;
         d.reason = "útokový typ nálezu, signály poruchy jen jako poznámka".into();
         d.evidence.clear();
@@ -488,6 +557,10 @@ pub fn diagnose(
         return d;
     }
     d.reason = "shoda signálů s typem katalogu".into();
+    d.root = store
+        .subnet_roots(ips, &best.3, now - policy.window_s, now)
+        .into_iter()
+        .next();
     d
 }
 

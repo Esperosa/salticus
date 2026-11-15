@@ -213,8 +213,8 @@ Odchylka od A9: kategorie útoků se v UNSW-NB15 v čase prolínají, takže roz
 
 | dataset | url | licence podle oficiální stránky | použití v kroku 8 |
 |---|---|---|---|
-| OTRF Security-Datasets | https://github.com/OTRF/Security-Datasets | stránka uvádí zároveň GPL-3.0 a MIT, nerozhodnuto | nepoužit; před použitím ověřit LICENSE |
-| EVTX-ATTACK-SAMPLES | https://github.com/sbousseaden/EVTX-ATTACK-SAMPLES | GPL-3.0 | nepoužit, parser se testuje vlastními syntetickými záznamy |
+| OTRF Security-Datasets | https://github.com/OTRF/Security-Datasets | **MIT** (soubor LICENSE v kořeni repozitáře, ověřeno 2026-11-15 přes raw.githubusercontent.com; Copyright 2021 Open Threat Research Forge) | použito v kroku 14 pro přehrání (2 ze 3 archivů; třetí, empire_dcsync, zablokoval antivirus hostitele, chyba OS 225, nezpracováno) |
+| EVTX-ATTACK-SAMPLES | https://github.com/sbousseaden/EVTX-ATTACK-SAMPLES | GPL-3.0 (soubor LICENSE.GPL v repozitáři, ověřeno 2026-11-15 přes GitHub API) | použito v kroku 14 pro přehrání produkční cestou (evtx -> adapter -> graf -> nalezy), data zůstávají mimo git a do repa se nekopírují |
 | DARPA OpTC | https://github.com/FiveDirections/OpTC-data | public domain, Distribution A, bez záruk | nepoužit (formát eCAR, velikost) |
 | LANL Unified Host and Network | https://csr.lanl.gov/data/cyber1/ | CC0 1.0, žádá citaci DOI 10.17021/1179829, stažení po zadání e-mailu | nepoužit (stažení vyžaduje e-mail, to se neodesílá) |
 

@@ -14,6 +14,9 @@ pub enum EndpointSource {
     Sysmon,
     Wazuh,
     Osquery,
+    Falco,
+    Tetragon,
+    Auditd,
     /// Simulace soak harnessu.
     Sim,
 }
@@ -24,6 +27,9 @@ impl EndpointSource {
             EndpointSource::Sysmon => "sysmon",
             EndpointSource::Wazuh => "wazuh",
             EndpointSource::Osquery => "osquery",
+            EndpointSource::Falco => "falco",
+            EndpointSource::Tetragon => "tetragon",
+            EndpointSource::Auditd => "auditd",
             EndpointSource::Sim => "sim",
         }
     }

@@ -133,7 +133,14 @@ impl History {
                 e.indicators
                     .iter()
                     .filter(|x| **x != e.host)
-                    .map(|x| format!("hp:{}|{x}", e.host)),
+                    .map(|x| {
+                        // krok 14: společná příčina z provozní telemetrie (`ops:<podsíť>`) spojuje i různé hosty
+                        if x.starts_with("ops:") {
+                            x.clone()
+                        } else {
+                            format!("hp:{}|{x}", e.host)
+                        }
+                    }),
             );
             keys
         })

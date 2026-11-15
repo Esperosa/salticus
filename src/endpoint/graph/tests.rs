@@ -244,3 +244,97 @@ fn fuzz_redaction_never_panics() {
         let _ = Privacy::default().user(&s);
     }
 }
+
+#[test]
+fn extended_indicators_fire_on_cloud_dns_and_drop_and_run_patterns() {
+    use crate::endpoint::correlate::{Policy, assess};
+    let host = "10.0.0.5";
+    let mut s = EndpointStore::new(Limits::default());
+    let ps = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    put(
+        &mut s,
+        host,
+        T0,
+        proc(
+            "C:\\Users\\svc\\AppData\\Local\\Temp\\rclone.exe",
+            ps,
+            "rclone.exe copy D:\\share remote:b",
+            "svc",
+            None,
+        ),
+    );
+    let p = Policy {
+        extended: true,
+        ..Policy::default()
+    };
+    let a = assess(host, s.events_of(host), T0 + 60, &p);
+    assert!(
+        a.indicators.iter().any(|i| i.code == "cloud_sync_tool"),
+        "{:?}",
+        a.indicators
+    );
+    assert!(a.suspicious(&p), "{:?}", a.indicators);
+    // bez rozšířeného režimu se nic nového neprojeví (krok 8 beze změny)
+    let off = assess(host, s.events_of(host), T0 + 60, &Policy::default());
+    assert!(!off.indicators.iter().any(|i| i.code == "cloud_sync_tool"));
+    // průzkum cloudovým CLI: aspoň tři různé příkazy
+    let mut s2 = EndpointStore::new(Limits::default());
+    for (n, sub) in [
+        "iam list-users",
+        "s3 ls",
+        "ec2 describe-instances",
+        "sts get-caller-identity",
+    ]
+    .iter()
+    .enumerate()
+    {
+        put(
+            &mut s2,
+            host,
+            T0 + n as i64,
+            proc(
+                "C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe",
+                ps,
+                &format!("aws {sub}"),
+                "svc",
+                None,
+            ),
+        );
+    }
+    let a2 = assess(host, s2.events_of(host), T0 + 60, &p);
+    assert!(
+        a2.indicators.iter().any(|i| i.code == "cloud_cli_discovery"),
+        "{:?}",
+        a2.indicators
+    );
+    // stažení a spuštění
+    let mut s3 = EndpointStore::new(Limits::default());
+    put(
+        &mut s3,
+        host,
+        T0,
+        EventKind::FileCreate {
+            image: Some("msedge.exe".into()),
+            path: "C:\\Users\\a\\Downloads\\setup.exe".into(),
+        },
+    );
+    put(
+        &mut s3,
+        host,
+        T0 + 5,
+        proc(
+            "C:\\Users\\a\\Downloads\\setup.exe",
+            "explorer.exe",
+            "setup.exe",
+            "a",
+            None,
+        ),
+    );
+    let a3 = assess(host, s3.events_of(host), T0 + 60, &p);
+    assert!(
+        a3.indicators.iter().any(|i| i.code == "drop_and_run"),
+        "{:?}",
+        a3.indicators
+    );
+    assert!(a3.suspicious(&p), "{:?}", a3.indicators);
+}

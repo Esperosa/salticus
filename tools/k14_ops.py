@@ -66,6 +66,7 @@ def main():
     unk = collections.Counter()
     wrong_fault = [0, 0]  # zavřené omylem poruchy (C6)
     by_type = collections.defaultdict(lambda: collections.Counter())
+    c7 = [0, 0]  # správná kategorie nálezu přes všechny složky (útok, porucha, změna)
     for d in a.runs.split(","):
         with open(os.path.join(d, "networks.jsonl"), encoding="utf-8") as h:
             for line in h:
@@ -97,6 +98,8 @@ def main():
                     ntot = sum(classes.values())
                     if ntot == 0:
                         continue
+                    c7[1] += ntot
+                    c7[0] += classes["utok"] if want == "utok" else classes[want] if want in ("porucha", "zmena") else classes["nejednoznacne"] + classes["zmena"] + classes["porucha"]
                     if want == "porucha":
                         c1[0] += classes["porucha"]
                         c1[1] += ntot
@@ -134,6 +137,7 @@ def main():
     lines.append(f"- C4 útok maskovaný jako porucha: nálezů zařazených jako porucha, změna nebo nejednoznačné {pct(c4['as_fault'], c4['n'])} (cíl <= 5 %); událostí s většinou nálezů jako porucha nebo změna {pct(*c4_ev)}")
     lines.append(f"- C5 porucha maskovaná jako útok: nálezů z poruch zařazených jako útok {pct(*c5)} (cíl <= 10 %)")
     lines.append(f"- neškodné změny a nejednoznačné: správná třída {pct(*chg)}")
+    lines.append(f"- C7 správná kategorie nálezu přes všechny složky (útok = utok, porucha, změna): {pct(*c7)} (cíl >= 85 %)")
     lines.append(f"- C10 typ mimo katalog nebo tiché poruchy s doručenou telemetrií: hlášeno „nelze určit“ {pct(unk['tel_neurceno'], unk['tel_n'])} (smysl jen v rameni `--ops-unknown`)")
     lines += ["", "| typ | třída | nálezů | třída správně % | catalog_id správně % | nelze určit % | s telemetrií % |", "|---|---|---:|---:|---:|---:|---:|"]
     for fam in sorted(by_type):

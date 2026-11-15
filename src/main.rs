@@ -117,6 +117,9 @@ struct EndpointReplayJsonlArgs {
     /// Delka okna v sekundach.
     #[arg(long, default_value_t = 3600)]
     window_s: i64,
+    /// Zapise graf okna s prvnim nalezem (JSON) do souboru.
+    #[arg(long)]
+    graph_out: Option<PathBuf>,
 }
 
 #[derive(Args, Debug)]
@@ -1118,6 +1121,7 @@ fn main() -> anyhow::Result<()> {
                 format,
                 args.extended,
                 args.window_s.max(60),
+                args.graph_out.as_deref(),
             )
             .map_err(anyhow::Error::msg)?;
             println!("{}", serde_json::to_string_pretty(&r)?);
