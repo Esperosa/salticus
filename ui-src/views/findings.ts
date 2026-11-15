@@ -71,6 +71,30 @@ function planBlock(finding: Finding): string {
     <button type="button" class="btn btn-ghost" data-action="goto" data-key="overovani">Všechny plány</button></section>`;
 }
 
+const CLASS_LABEL: Record<string, string> = {
+  utok: "Podezření na útok",
+  porucha: "Pravděpodobně porucha",
+  zmena: "Pravděpodobně neškodná změna",
+};
+
+/** Zařazení nálezu podle katalogu provozních incidentů: třída, pravděpodobná příčina, doporučená kontrola. */
+function catalogBlock(finding: Finding): string {
+  const note = state.report?.finding_lifecycle?.find((r) => r.finding_id === finding.finding_id)?.catalog;
+  if (!note) return "";
+  const label = CLASS_LABEL[note.class] ?? note.class;
+  if (!note.id) {
+    return `<section><h3 class="eyebrow">Zařazení</h3><p>${esc(label)}</p><p class="small muted">Bez provozního důkazu se nález vede jako podezření; katalog mu nepřiřazuje příčinu.</p></section>`;
+  }
+  return `<section><h3 class="eyebrow">Zařazení</h3>
+    <p>${esc(label)} <span class="mono small muted">${esc(note.id)}</span></p>
+    <dl class="kv">
+      <dt>typ</dt><dd>${esc(note.name ?? "")}</dd>
+      <dt>pravděpodobná příčina</dt><dd>${esc(note.cause ?? "")}</dd>
+      <dt>co ověřit</dt><dd>${esc(note.check ?? "")}</dd>
+    </dl>
+    <p class="small muted">Odhad podle typu nálezu a provozního důkazu; není to potvrzení příčiny.</p></section>`;
+}
+
 function detail(finding: Finding): string {
   const report = state.report!;
   const host = report.hosts.find((h) => h.host_key === finding.host_key);
@@ -86,6 +110,7 @@ function detail(finding: Finding): string {
     <button type="button" class="btn btn-ghost" data-action="ask" data-key="${esc(finding.finding_id)}">Zeptat se asistenta</button>
   </div>
   <section><h3 class="eyebrow">Proč</h3><p>${esc(finding.rationale)}</p></section>
+  ${catalogBlock(finding)}
   <section><h3 class="eyebrow">Doporučení</h3><p>${esc(finding.recommendation)}</p></section>
   <section><h3 class="eyebrow">Důkazy (${finding.evidence.length})</h3><ul class="plain evidence">${finding.evidence.map((e) => `<li class="mono small">${esc(e)}</li>`).join("")}</ul></section>
   ${hypothesisBlock(hypothesisForFinding(report, finding))}

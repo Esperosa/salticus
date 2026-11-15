@@ -69,6 +69,21 @@ export type Finding = {
   recommendation: string;
 };
 
+export type CatalogNote = {
+  class: "utok" | "porucha" | "zmena";
+  id?: string | null;
+  name?: string | null;
+  cause?: string | null;
+  check?: string | null;
+};
+
+export type LifecycleRecord = {
+  finding_id: string;
+  displayed: boolean;
+  ops_note?: string | null;
+  catalog?: CatalogNote | null;
+};
+
 export type Uncertainty = {
   identity: number | null;
   observation: number | null;
@@ -192,6 +207,7 @@ export type Report = {
   summary: Record<string, number | string>;
   hosts: Host[];
   findings: Finding[];
+  finding_lifecycle?: LifecycleRecord[];
   hypotheses?: Hypothesis[];
   verification_plans?: VerificationPlan[];
   verification_results?: VerificationResult[];
