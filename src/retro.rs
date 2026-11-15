@@ -46,6 +46,9 @@ pub struct Event {
     pub indicators: Vec<String>,
     pub tactic: Option<String>,
     pub cause: Cause,
+    /// Typ nálezu (krok 13: seskupení v2 ho používá, `cause` je jen pro měření).
+    #[serde(default)]
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -98,6 +101,11 @@ impl History {
     /// První výskyt (pacient nula): nejstarší host s indikátorem.
     pub fn patient_zero(&self, indicator: &str) -> Option<(&str, i64)> {
         self.hits(indicator).first().map(|e| (e.host.as_str(), e.ts))
+    }
+
+    /// Surové události (jen pro export měření v soaku).
+    pub fn events(&self) -> &[Event] {
+        &self.events
     }
 
     pub fn host_timeline(&self, host: &str) -> Vec<&Event> {
@@ -199,6 +207,7 @@ mod tests {
             indicators: ind.iter().map(|s| s.to_string()).collect(),
             tactic: tactic.map(str::to_string),
             cause,
+            kind: String::new(),
         }
     }
 

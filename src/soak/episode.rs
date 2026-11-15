@@ -149,6 +149,9 @@ pub struct WorldOptions {
     /// Krok 12: svet metadat TLS a DNS (`--l7`).
     #[serde(default)]
     pub l7: bool,
+    /// Krok 13: pozadí metadat TLS a DNS kalibrované na reálná zachycení (`--l7 cal`).
+    #[serde(default)]
+    pub l7_cal: bool,
 }
 
 impl Default for WorldOptions {
@@ -162,6 +165,7 @@ impl Default for WorldOptions {
             coverage: Default::default(),
             endpoint: Default::default(),
             l7: false,
+            l7_cal: false,
         }
     }
 }
@@ -1095,6 +1099,7 @@ fn run_episode_inner(
                 &output.flow_truth,
                 &truths,
                 &|ip| own.contains(ip),
+                cfg.world.l7_cal,
             );
         }
         agg.cycles += 1;
@@ -2463,6 +2468,7 @@ fn run_episode_inner(
                         Some((_, false)) => crate::retro::Cause::Attack,
                         None => crate::retro::Cause::Unknown,
                     },
+                    kind: finding.finding_type.clone(),
                 });
                 inc_labels.insert(finding.finding_id.clone(), first_truth.map(|x| x.0));
             }
@@ -3430,6 +3436,25 @@ fn run_episode_inner(
     {
         // krok 12: cistota seskupeni do incidentu (po prvni pripsane pravde; nalez bez
         // pripsani se pocita jako vlastni stitek, takze sum snizuje cistotu)
+        if let Ok(path) = std::env::var("K13_INC_DUMP") {
+            // krok 13: export událostí a štítků pro offline ladění seskupení
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                let evs: Vec<_> = inc_hist
+                    .events()
+                    .iter()
+                    .map(|e| {
+                        serde_json::json!({
+                            "ts": e.ts, "host": e.host, "id": e.finding_id, "ind": e.indicators,
+                            "tactic": e.tactic, "kind": e.kind,
+                            "label": inc_labels.get(&e.finding_id).copied().flatten(),
+                            "fault": e.cause == crate::retro::Cause::Fault,
+                        })
+                    })
+                    .collect();
+                let _ = writeln!(f, "{}", serde_json::json!({"events": evs}));
+            }
+        }
         let out = &mut agg.output;
         for (gap, tag) in [(6 * 3600, "6h"), (3600, "1h"), (1800, "30m")] {
             for inc in inc_hist.incidents(gap) {

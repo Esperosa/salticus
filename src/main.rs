@@ -138,7 +138,7 @@ struct SoakRunArgs {
     /// Krok 8: koncova telemetrie `on` (zapne i prepinac `endpoint` ve v3) nebo `off`.
     #[arg(long, default_value = "off")]
     endpoint: String,
-    /// Krok 12: svet metadat TLS a DNS (`on` | `off`).
+    /// Krok 12: svet metadat TLS a DNS (`on` | `cal` (kalibrované pozadí, krok 13) | `off`).
     #[arg(long, default_value = "off")]
     l7: String,
     /// Krok 8: podil hostu s agentem v procentech.
@@ -1058,8 +1058,9 @@ fn main() -> anyhow::Result<()> {
                 }
                 other => anyhow::bail!("--endpoint: on | off, ne {other}"),
             }
+            cfg.world.l7_cal = args.l7 == "cal";
             cfg.world.l7 = match args.l7.as_str() {
-                "on" => true,
+                "on" | "cal" => true,
                 "off" => false,
                 other => anyhow::bail!("--l7: on | off, ne {other}"),
             };

@@ -160,6 +160,7 @@ pub fn synthesize(
     tags: &HashMap<FlowKey, usize>,
     truths: &[Truth],
     internal: &dyn Fn(&str) -> bool,
+    cal: bool,
 ) -> Vec<L7Event> {
     let mut out = Vec::new();
     for o in observations {
@@ -175,9 +176,9 @@ pub fn synthesize(
         let mut rng = Rng::new(key);
         let ts = o.timestamp.timestamp();
         if o.proto == "tcp" && tls_port(dport) && internal(src) && !internal(&o.dst_ip) {
-            out.push(L7Event::Tls(tls_for(class, src, o, key, &mut rng, ts)));
+            out.push(L7Event::Tls(tls_for(class, src, o, key, &mut rng, ts, cal)));
         } else if o.proto == "udp" && dport == 53 {
-            out.push(L7Event::Dns(dns_for(class, src, o, key, &mut rng, ts, internal)));
+            out.push(L7Event::Dns(dns_for(class, src, o, key, &mut rng, ts, internal, cal)));
         }
     }
     out
@@ -190,6 +191,7 @@ fn tls_for(
     key: u64,
     rng: &mut Rng,
     ts: i64,
+    cal: bool,
 ) -> TlsMeta {
     let day = 86_400i64;
     let mature_cert = |h: u64| (ts - (200 + (mix(h) % 400) as i64) * day, ts + (30 + (mix(h ^ 1) % 300) as i64) * day);
@@ -204,10 +206,28 @@ fn tls_for(
             } else {
                 name
             };
+            if cal {
+                // krok 13: podíly z CTU-Normal-20 (bez SNI 1,5 %, self-signed 3,0 %)
+                let no_sni = rng.chance(0.015);
+                let selfsigned = rng.chance(0.03);
+                let sni = if no_sni { None } else { Some(sni) };
+                if selfsigned {
+                    let cn = format!("CN=dev{}.local", h % 997);
+                    return finish_tls(o, src, ts, sni, host_print(src, 1), (ts - 30 * day, ts + 3650 * day), cn.clone(), Some(cn));
+                }
+                return finish_tls(o, src, ts, sni, host_print(src, 1), mature_cert(h), "CN=Large Public CA".to_string(), None);
+            }
             (Some(sni), host_print(src, 1), mature_cert(h), "CN=Large Public CA".to_string(), String::new())
         }
         Class::Benign(id) => {
-            let name = POPULAR[(mix(id) % POPULAR.len() as u64) as usize].to_string();
+            // krok 13: 13,4 % spojení reálného hosta míří na jméno, které před tím neviděl
+            // (CTU-Normal-20); neškodná změna proto občas jde na nové jméno
+            let fresh = cal && rng.chance(0.134);
+            let name = if fresh {
+                rare_name(id ^ key)
+            } else {
+                POPULAR[(mix(id) % POPULAR.len() as u64) as usize].to_string()
+            };
             (Some(name), host_print(src, 1), mature_cert(id), "CN=Large Public CA".to_string(), String::new())
         }
         Class::Attack { id, blend } => {
@@ -237,6 +257,20 @@ fn tls_for(
         }
     };
     let _ = key;
+    finish_tls(o, src, ts, sni, print, nb_na, issuer, (!subject.is_empty()).then_some(subject))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_tls(
+    o: &ConnectionObservation,
+    src: &str,
+    ts: i64,
+    sni: Option<String>,
+    print: &str,
+    nb_na: (i64, i64),
+    issuer: String,
+    subject: Option<String>,
+) -> TlsMeta {
     TlsMeta {
         ts,
         src_ip: src.to_string(),
@@ -251,7 +285,7 @@ fn tls_for(
         not_before: Some(nb_na.0),
         not_after: Some(nb_na.1),
         issuer: Some(issuer),
-        subject: (!subject.is_empty()).then_some(subject),
+        subject,
         cert_fuid: None,
     }
 }
@@ -264,6 +298,7 @@ fn dns_for(
     rng: &mut Rng,
     ts: i64,
     internal: &dyn Fn(&str) -> bool,
+    cal: bool,
 ) -> DnsMeta {
     let from_inside = internal(src);
     let (qname, qtype, rcode) = match (class, from_inside) {
@@ -290,16 +325,20 @@ fn dns_for(
         }
         (_, true) => {
             let h = derive(key, 3);
-            let rc = if rng.chance(0.05) { "NXDOMAIN" } else { "NOERROR" };
+            // krok 13: NXDOMAIN 1 % a pošta (TXT) 0,5 % z reálných zachycení; bez `cal` původní 5 % a 2 %
+            let rc = if rng.chance(if cal { 0.01 } else { 0.05 }) { "NXDOMAIN" } else { "NOERROR" };
             let t = rng.f64();
+            let mail_end = if cal { 0.045 } else { 0.06 };
             if t < 0.04 {
                 // CDN a reklama: dlouha hashovana znacka, ale typ A
                 (format!("{:016x}{:016x}.cdn.example", derive(key, 7), derive(key, 8)), "A", rc)
-            } else if t < 0.06 {
+            } else if t < mail_end {
                 // pošta: SPF, DKIM (typ TXT) na beznych jmenech
                 (format!("mail{}.tail.example", zipf(h, 200)), "TXT", rc)
             } else {
-                (format!("host{}.tail.example", zipf(h, 3000)), "A", rc)
+                // krok 13: AAAA tvoří u moderního klienta ~ 24 % dotazů (CTU-Normal-20)
+                let qtype = if cal && rng.chance(0.20) { "AAAA" } else { "A" };
+                (format!("host{}.tail.example", zipf(h, 3000)), qtype, rc)
             }
         }
         (_, false) => {
@@ -354,8 +393,8 @@ mod tests {
             flow("198.51.100.4", "10.0.0.2", 40003, 53, "udp", 1_800_000_003),
         ];
         let internal = |ip: &str| ip.starts_with("10.");
-        let a = synthesize(7, &flows, &HashMap::new(), &[], &internal);
-        let b = synthesize(7, &flows, &HashMap::new(), &[], &internal);
+        let a = synthesize(7, &flows, &HashMap::new(), &[], &internal, false);
+        let b = synthesize(7, &flows, &HashMap::new(), &[], &internal, false);
         assert_eq!(a, b);
         assert_eq!(a.len(), 3, "22/tcp nema TLS ani DNS");
         assert!(matches!(a[0], L7Event::Tls(_)));

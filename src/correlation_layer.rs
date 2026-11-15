@@ -139,6 +139,7 @@ pub fn run(
             } else {
                 Cause::Attack
             },
+            kind: f.finding_type.clone(),
         });
     }
     let mut out = Correlation::default();
