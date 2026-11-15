@@ -45,7 +45,8 @@ Platí pro zbytek kroku 13 a pro krok 14. Porovnání verzí se nedělá jedním
 - **Jednotka analýzy** je síť. Poměrové ukazatele jsou součty přes sítě (poměr součtů). Intervaly 95 %: bootstrap po sítích stratifikovaný po seed x konfigurace, B = 2000, pevný seed, stejné vzorkování pro obě ramena; Wilson jen doplňkově. Hlásí se celek, konfigurace, rozptyl mezi seedy a rodiny zvlášť.
 - **Dvě sady seedů.** Ladicí (smí se ladit): 20261102, 20261103, 20266101, 20266102, 20266103, 20266104, 20266105, 20266106, 20266107, 20266108. Držené (zapsáno dopředu, použít jednou na konci, nikdy nepoužity): 20265101, 20265102, 20265201, 20265202, 20265301, 20265302, 20265401, 20265402, 20265501, 20265502. hn_* ladicí (hn_cdn_update_download, hn_mail_newsletter_burst, hn_admin_bulk_ssh, hn_authorized_internal_scan) a držené (hn_nightly_cloud_backup_upload, hn_db_replication_bulk, hn_monitoring_snmp_sweep, hn_password_sync_periodic) zvlášť jako dosud.
 - **Rozsah (skutečný, upraveno 2026-11-15 podle výkonu stroje, ~3 min na síť při 6 vláknech Idle):** ladicí sada seed 20261102 = 20 sítí, ostatních devět seedů po 8 sítích = 92 sítí na rameno; držená sada 10 seedů po 8 sítích = 80 sítí na rameno. Cíl 600 až 1 000 sítí **nesplněn** (potřeboval by ~30 h na rameno). Tabulky po konfiguracích mají proto malé buňky (kolem 3 sítí na seed x konfiguraci); intervaly to ukazují a závěry jsou orientační, dokud se matice nerozšíří.
-- **Pořadí běhů (skripty v `F:\claude-tmp\k13uns3b.ps1`, `runs4.ps1`, `runs5.ps1`):** ladicí base/cand (`k13m`), ladicí mixy `--mix on` (`k13mix`), držené base/cand, držené mixy, LOFO po detektorech (`l7_tls`, `l7_dns`, `icmp_payload`; rameno = kandidát bez jednoho detektoru). Držená část se spouští až po rozhodnutí o kandidátu.
+- **Pořadí běhů (skripty v `F:\claude-tmp\k13
+uns3b.ps1`, `runs4.ps1`, `runs5.ps1`):** ladicí base/cand (`k13m`), ladicí mixy `--mix on` (`k13mix`), držené base/cand, držené mixy, LOFO po detektorech (`l7_tls`, `l7_dns`, `icmp_payload`; rameno = kandidát bez jednoho detektoru). Držená část se spouští až po rozhodnutí o kandidátu.
 - **Dlouhé běhy** (soak 72 h) jen jako test stability a objemu, ne pro porovnání verzí.
 - **Nástroj:** `tools/k13_matrix.py --families TSV --base DIRS --cand DIRS` (párové srovnání po sítích, tabulky po konfiguracích, seedech a rodinách). Stav: viz „Stav matice“ níže.
 
@@ -74,11 +75,11 @@ Odchylky od těchto prahů se zapíšou jako odchylka, ne jako splnění.
 
 | bod | stav |
 |---|---|
-| A plánovač mixů | nezačato (předregistrováno) |
-| B rešerše, studie 13 | nezačato |
-| B katalog `data/incident-catalog.json` | nezačato |
-| B generátory pro typy bez variant v `variants::SPECS` | nezačato |
-| B klasifikace a doporučení v engine | nezačato |
+| A plánovač mixů | hotovo: `--mix on`, 16 dvojic (4 x útok+útok, útok+porucha, útok+změna, porucha+porucha), vztah společná příčina / souběh / následek, `incident_id` v ground truth (`MixTag`), nástroj `tools/k13_mix.py` (A1 až A5); trojice nejsou. Zkušební běh 6 sítí OK (176 událostí, rovnoměrné dvojice). **Měření na ladicích seedech běží** (`k13mix`), držené zatím ne |
+| B rešerše, studie 13 | hotovo ve smyslu poctivého omezení: `studie/13-katalog-provoznich-incidentu.md`; jen 2 zdroje (danluu, RFC 5227) skutečně načteny, ostatní `verified: false` |
+| B katalog `data/incident-catalog.json` | hotovo: 75 typů (56 poruch, 15 neškodných změn, 4 nejednoznačné), modul `src/incident_catalog.rs` + test konzistence se simulátorem |
+| B generátory | 51 z 75 typů má generátor (38 stávajících + 13 nových variant tvaru toků v `variants::SPECS`); 24 typů bez generátoru (rozlišené hlavně obsahem L2, DNS, syslog) |
+| B klasifikace a doporučení v engine | **nezačato**: nález zatím nenese `catalog_id`, doporučení z katalogu v UI není; stávající třída provoz (`ops_class`, `ops_annotate`) byla v kroku 6 zamítnuta (útoky jen ve frontě provoz). B2, B3, B6 nejsou splněny ani změřeny; základní měření klasifikace složek mixů (A5) běží |
 
 ## Výsledky kroku 13 (průběžně zapisované)
 
