@@ -65,6 +65,8 @@ pub struct BehaviorSwitches {
     pub l7_dns: bool,
     /// Krok 12: ICMP s velkou uzitecnou casti.
     pub icmp_payload: bool,
+    /// Krok 13: `slow_egress` s mezí počtu zdrojů na cíl.
+    pub slow_fanin: bool,
 }
 
 impl BehaviorSwitches {
@@ -88,6 +90,7 @@ impl BehaviorSwitches {
             l7_tls: engine.l7_tls(),
             l7_dns: engine.l7_dns(),
             icmp_payload: engine.icmp_payload(),
+            slow_fanin: engine.slow_fanin(),
         }
     }
 
@@ -296,9 +299,13 @@ pub fn run_window(
         let habit = |host: &str, peer: &str, proto: &str, port: u16| {
             profile.is_habit(host, peer, proto, port)
         };
+        let mut breadth_t = thresholds.breadth.clone();
+        if switches.slow_fanin && breadth_t.slow_dst_fanin == 0 {
+            breadth_t.slow_dst_fanin = 6;
+        }
         out.findings.extend(breadth::detect(
             &mut state.breadth,
-            &thresholds.breadth,
+            &breadth_t,
             input.outbound,
             input.internal,
             now,

@@ -61,6 +61,9 @@ pub struct BreadthThresholds {
     pub slow_max_mean: f64,
     /// Nejmensi podil prispevatele na objemu site, aby byl uveden jako aktér.
     pub link_actor_share: f64,
+    /// Cil, na ktery v historii odesilalo vice zdroju nez tento pocet, neni pomaly unik
+    /// jednoho hosta, ale sluzba site (SaaS, API, sklad); 0 = vypnuto.
+    pub slow_dst_fanin: u32,
 }
 
 impl Default for BreadthThresholds {
@@ -84,6 +87,7 @@ impl Default for BreadthThresholds {
             host_mature_s: 12 * 3600,
             slow_max_mean: 12.0e6,
             link_actor_share: 0.5,
+            slow_dst_fanin: 0,
         }
     }
 }
@@ -136,6 +140,8 @@ pub struct BreadthState {
     /// Prvni pozorovani hosta (zahrivani: bez zralosti se pomaly unik nehlasi).
     host_first: HashMap<String, i64>,
     pairs: HashMap<String, PairAcc>,
+    /// Cil -> nejvyse `slow_dst_fanin + 1` ruznych zdroju, ktere na nej odesilaly.
+    dst_sources: HashMap<String, Vec<String>>,
     pub evicted: u64,
 }
 
@@ -344,6 +350,12 @@ pub fn detect(
                 ..PairAcc::default()
             };
         }
+        if t.slow_dst_fanin > 0 && state.dst_sources.len() < t.max_pairs {
+            let srcs = state.dst_sources.entry(dst.to_string()).or_default();
+            if srcs.len() <= t.slow_dst_fanin as usize && !srcs.iter().any(|s| s == src) {
+                srcs.push(src.to_string());
+            }
+        }
         acc.last = now;
         acc.windows += 1;
         acc.up += up;
@@ -360,6 +372,11 @@ pub fn detect(
             && acc.up >= t.slow_ratio * acc.down.max(1.0)
             && (acc.alarmed_at == 0 || now - acc.alarmed_at > 48 * 1800)
             && !habit(src, dst, proto, port)
+            && (t.slow_dst_fanin == 0
+                || state
+                    .dst_sources
+                    .get(dst)
+                    .is_none_or(|s| s.len() <= t.slow_dst_fanin as usize))
         {
             acc.alarmed_at = now;
             let f = finding(
@@ -570,6 +587,29 @@ mod tests {
         for w in 40..52 {
             let flows = vec![flow("10.0.0.7", "203.0.113.9", 443, 900_000, 1_000)];
             got += detect(&mut habitual, &t, &flows, &[], 1800 * w, &|_, _, _, _| true, true).len();
+        }
+        assert_eq!(got, 0);
+    }
+
+    #[test]
+    fn slow_egress_skips_destination_used_by_many_sources() {
+        let t = BreadthThresholds {
+            slow_dst_fanin: 3,
+            ..BreadthThresholds::default()
+        };
+        let mut state = BreadthState::default();
+        warmed(&mut state, &t);
+        let mut got = 0;
+        for w in 40..52 {
+            // sluzba site: na stejny cil odesila pet hostu
+            let mut flows = vec![flow("10.0.0.7", "203.0.113.9", 443, 900_000, 1_000)];
+            for h in 1..5 {
+                flows.push(flow(&format!("10.0.1.{h}"), "203.0.113.9", 443, 1_000, 1_000));
+            }
+            got += detect(&mut state, &t, &flows, &[], 1800 * w, &no_habit, true)
+                .iter()
+                .filter(|f| f.finding.finding_type == "slow_egress")
+                .count();
         }
         assert_eq!(got, 0);
     }

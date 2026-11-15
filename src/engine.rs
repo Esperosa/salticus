@@ -162,6 +162,9 @@ pub struct V3Features {
     /// Krok 12: ICMP s neobvykle velkou uzitecnou casti (`icmp_payload_anomaly`).
     #[serde(default)]
     pub icmp_payload: bool,
+    /// Krok 13: `slow_egress` mlci o cilech, na ktere odesila mnoho zdroju (sluzba site).
+    #[serde(default)]
+    pub slow_fanin: bool,
     /// Krok 12: spisy pripadu, incidenty, prehodnoceni s auditem (report `correlation`).
     #[serde(default)]
     pub case_files: bool,
@@ -183,7 +186,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 43] = [
+    pub const NAMES: [&'static str; 44] = [
         "memory",
         "rate",
         "volume",
@@ -224,6 +227,7 @@ impl V3Features {
         "hypotheses",
         "redisplay",
         "icmp_payload",
+        "slow_fanin",
         "case_files",
         "l7_ladder",
         "redisplay_age",
@@ -271,6 +275,7 @@ impl V3Features {
             hypotheses: true,
             redisplay: true,
             icmp_payload: true,
+            slow_fanin: true,
             case_files: true,
             l7_ladder: true,
             redisplay_age: true,
@@ -326,6 +331,7 @@ impl V3Features {
             hypotheses: false,
             redisplay: false,
             icmp_payload: false,
+            slow_fanin: false,
             case_files: false,
             l7_ladder: false,
             redisplay_age: false,
@@ -384,6 +390,7 @@ impl V3Features {
             hypotheses: false,
             redisplay: false,
             icmp_payload: false,
+            slow_fanin: false,
             case_files: false,
             l7_ladder: false,
             redisplay_age: false,
@@ -456,6 +463,7 @@ impl V3Features {
             "hypotheses" => &mut self.hypotheses,
             "redisplay" => &mut self.redisplay,
             "icmp_payload" => &mut self.icmp_payload,
+            "slow_fanin" => &mut self.slow_fanin,
             "case_files" => &mut self.case_files,
             "l7_ladder" => &mut self.l7_ladder,
             "redisplay_age" => &mut self.redisplay_age,
@@ -651,6 +659,9 @@ impl EngineConfig {
     }
     pub fn icmp_payload(&self) -> bool {
         self.on(|f| f.egress && f.icmp_payload)
+    }
+    pub fn slow_fanin(&self) -> bool {
+        self.breadth() && self.v3.slow_fanin
     }
     pub fn redisplay(&self) -> bool {
         self.on(|f| f.redisplay && f.memory)
