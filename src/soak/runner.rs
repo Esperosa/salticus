@@ -45,6 +45,9 @@ pub struct SoakConfig {
     /// 0 = bez casoveho limitu (zastavi `max_networks` nebo soubor STOP).
     pub wall_hours: f64,
     pub max_networks: Option<u64>,
+    /// Posun cisla bloku (rozsireni matice o dalsi site stejneho seedu; 0 = od zacatku).
+    #[serde(default)]
+    pub block_offset: u64,
     pub threads: usize,
     pub block_size: u64,
     /// 0 = nahodna delka epizodu (24/48/72/96 virtualnich hodin).
@@ -161,6 +164,7 @@ impl SoakConfig {
             run_seed: 20_260_131,
             wall_hours: 0.0,
             max_networks: None,
+            block_offset: 0,
             threads: std::thread::available_parallelism()
                 .map(|n| (n.get() * 3 / 4).max(1))
                 .unwrap_or(4),
@@ -440,7 +444,7 @@ pub fn run(mut cfg: SoakConfig, resume: bool) -> Result<()> {
                             block
                         }
                     };
-                    let (agg, digest, summaries) = run_block_with_summaries(cfg, block);
+                    let (agg, digest, summaries) = run_block_with_summaries(cfg, block + cfg.block_offset);
                     let mut guard = shared.lock().unwrap();
                     guard.state.aggregate.merge(&agg);
                     guard.committed.insert(block);

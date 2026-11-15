@@ -102,6 +102,9 @@ struct SoakRunArgs {
     wall_hours: f64,
     #[arg(long)]
     max_networks: Option<u64>,
+    /// Posun cisla bloku: dalsi site stejneho seedu (rozsireni matice).
+    #[arg(long, default_value_t = 0)]
+    block_offset: u64,
     /// Pocet pracovnich vlaken (vychozi 3/4 logickych jader).
     #[arg(long)]
     threads: Option<usize>,
@@ -1033,6 +1036,7 @@ fn main() -> anyhow::Result<()> {
             let mut cfg = salticus_program::soak::runner::SoakConfig::with_defaults(args.out.clone());
             cfg.wall_hours = args.wall_hours;
             cfg.max_networks = args.max_networks;
+            cfg.block_offset = args.block_offset;
             if let Some(threads) = args.threads {
                 cfg.threads = threads.max(1);
             }
