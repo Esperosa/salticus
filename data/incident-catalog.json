@@ -2,190 +2,257 @@
  "catalog_version": "1.0.0",
  "created": "2026-11-15",
  "description": "Katalog běžných síťových a provozních incidentů (porucha / neškodná změna / nejednoznačné) pro vysvětlení nálezů a doporučené kontroly. Kategorie 'nejednoznacne' = na síťové úrovni nelze s jistotou rozlišit od útoku.",
- "note": "Texty o projevech jsou autorský souhrn z odborných znalostí; basis=assumption znamená, že tvrzení nebylo ověřeno primárním zdrojem v této relaci. Ověřené zdroje mají verified=true.",
+ "note": "Texty o projevech jsou autorský souhrn z odborných znalostí; basis=assumption znamená, že tvrzení nebylo ověřeno primárním zdrojem v této relaci. Ověřené zdroje mají verified=true. Pole verified=true znamena, ze se stranka zdroje 2026-11-15 skutecne nacetla a odpovida tvrzenemu zdroji (RFC, norma, portal vyrobce); jednotliva tvrzeni o projevech zustavaji basis=assumption, dokud se neoveri v konkretni casti zdroje.",
  "sources": {
   "rfc1034": {
    "title": "RFC 1034 Domain Names - Concepts and Facilities",
    "url": "https://www.rfc-editor.org/rfc/rfc1034",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 1034: Domain names - concepts and facilities | RFC Editor"
   },
   "rfc2308": {
    "title": "RFC 2308 Negative Caching of DNS Queries",
    "url": "https://www.rfc-editor.org/rfc/rfc2308",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 2308: Negative Caching of DNS Queries (DNS NCACHE) | RFC Editor"
   },
   "rfc8767": {
    "title": "RFC 8767 Serving Stale Data to Improve DNS Resiliency",
    "url": "https://www.rfc-editor.org/rfc/rfc8767",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 8767: Serving Stale Data to Improve DNS Resiliency | RFC Editor"
   },
   "rfc2131": {
    "title": "RFC 2131 Dynamic Host Configuration Protocol",
    "url": "https://www.rfc-editor.org/rfc/rfc2131",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 2131: Dynamic Host Configuration Protocol | RFC Editor"
   },
   "rfc5227": {
    "title": "RFC 5227 IPv4 Address Conflict Detection",
    "url": "https://www.rfc-editor.org/rfc/rfc5227",
    "verified": true,
-   "note": "abstrakt a sekce 2 načteny 2026-11-15"
+   "note": "abstrakt a sekce 2 načteny 2026-11-15",
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 5227: IPv4 Address Conflict Detection | RFC Editor"
   },
   "rfc826": {
    "title": "RFC 826 Ethernet Address Resolution Protocol",
    "url": "https://www.rfc-editor.org/rfc/rfc826",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 826: An Ethernet Address Resolution Protocol: Or Converting Networ"
   },
   "rfc5905": {
    "title": "RFC 5905 Network Time Protocol Version 4",
    "url": "https://www.rfc-editor.org/rfc/rfc5905",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 5905: Network Time Protocol Version 4: Protocol and Algorithms Spe"
   },
   "rfc5280": {
    "title": "RFC 5280 X.509 PKI Certificate and CRL Profile",
    "url": "https://www.rfc-editor.org/rfc/rfc5280",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 5280: Internet X.509 Public Key Infrastructure Certificate and Cer"
   },
   "rfc8446": {
    "title": "RFC 8446 TLS 1.3",
    "url": "https://www.rfc-editor.org/rfc/rfc8446",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 8446: The Transport Layer Security (TLS) Protocol Version 1.3 | RF"
   },
   "rfc1191": {
    "title": "RFC 1191 Path MTU Discovery",
    "url": "https://www.rfc-editor.org/rfc/rfc1191",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 1191: Path MTU discovery | RFC Editor"
   },
   "rfc4821": {
    "title": "RFC 4821 Packetization Layer Path MTU Discovery",
    "url": "https://www.rfc-editor.org/rfc/rfc4821",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 4821: Packetization Layer Path MTU Discovery | RFC Editor"
   },
   "rfc4271": {
    "title": "RFC 4271 BGP-4",
    "url": "https://www.rfc-editor.org/rfc/rfc4271",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 4271: A Border Gateway Protocol 4 (BGP-4) | RFC Editor"
   },
   "rfc7196": {
    "title": "RFC 7196 Making Route Flap Damping Usable",
    "url": "https://www.rfc-editor.org/rfc/rfc7196",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 7196: Making Route Flap Damping Usable | RFC Editor"
   },
   "rfc4787": {
    "title": "RFC 4787 NAT Behavioral Requirements for UDP",
    "url": "https://www.rfc-editor.org/rfc/rfc4787",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 4787: Network Address Translation (NAT) Behavioral Requirements fo"
   },
   "rfc6888": {
    "title": "RFC 6888 Requirements for CGNs",
    "url": "https://www.rfc-editor.org/rfc/rfc6888",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 6888: Common Requirements for Carrier-Grade NATs (CGNs) | RFC Edit"
   },
   "rfc6762": {
    "title": "RFC 6762 Multicast DNS",
    "url": "https://www.rfc-editor.org/rfc/rfc6762",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 6762: Multicast DNS | RFC Editor"
   },
   "rfc2863": {
    "title": "RFC 2863 The Interfaces Group MIB",
    "url": "https://www.rfc-editor.org/rfc/rfc2863",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 2863: The Interfaces Group MIB | RFC Editor"
   },
   "rfc4301": {
    "title": "RFC 4301 Security Architecture for IP (IPsec)",
    "url": "https://www.rfc-editor.org/rfc/rfc4301",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 4301: Security Architecture for the Internet Protocol | RFC Editor"
   },
   "rfc7011": {
    "title": "RFC 7011 IPFIX",
    "url": "https://www.rfc-editor.org/rfc/rfc7011",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RFC 7011: Specification of the IP Flow Information Export (IPFIX) Prot"
   },
   "ieee8021d": {
    "title": "IEEE 802.1D / 802.1Q (STP, RSTP, VLAN)",
    "url": "https://www.ieee802.org/1/pages/802.1D-2004.html",
-   "verified": false
+   "verified": false,
+   "verification": "nenacteno: HTTP Error 404: Not Found"
   },
   "ieee8023": {
    "title": "IEEE 802.3 (autonegotiace, duplex, FCS)",
    "url": "https://standards.ieee.org/ieee/802.3/7071/",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: IEEE SA - IEEE 802.3-2018"
   },
   "nist80061": {
    "title": "NIST SP 800-61 Computer Security Incident Handling Guide (Rev. 2, nahrazen Rev. 3)",
    "url": "https://csrc.nist.gov/pubs/sp/800/61/r3/final",
-   "verified": false,
-   "note": "načtení stránky vypršelo, neověřeno"
+   "verified": true,
+   "note": "načtení stránky vypršelo, neověřeno",
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: SP 800-61 Rev. 3, Incident Response Recommendations and Considerations"
   },
   "itil": {
    "title": "ITIL 4: incident management vs. problem management",
    "url": "https://www.axelos.com/certifications/itil-service-management",
-   "verified": false
+   "verified": false,
+   "verification": "nacteno HTTP 200, titulek: Powering Best Practice | ITIL®, PRINCE2® and MSP® | Axelos; obecna uvodni stranka, tvrzeni nepotvrzeno"
   },
   "danluu": {
    "title": "danluu/post-mortems (sbírka veřejných postmortemů)",
    "url": "https://github.com/danluu/post-mortems",
    "verified": true,
-   "note": "obsah načten 2026-11-15; kategorie Config Errors, Hardware/Power, Conflicts, Time, Database; licence na stránce neuvedena"
+   "note": "obsah načten 2026-11-15; kategorie Config Errors, Hardware/Power, Conflicts, Time, Database; licence na stránce neuvedena",
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: GitHub - danluu/post-mortems: A collection of postmortems. Sorry for t"
   },
   "sre": {
    "title": "Google SRE Book: Postmortem Culture",
    "url": "https://sre.google/sre-book/postmortem-culture/",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: Google SRE - Blameless Postmortem for System Resilience"
   },
   "cloudflare": {
    "title": "Cloudflare blog: post-mortemy",
    "url": "https://blog.cloudflare.com/tag/post-mortem/",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: Posts tagged &quot;Post Mortem&quot; — Cloudflare Blog"
   },
   "aws": {
    "title": "AWS Post-Event Summaries",
    "url": "https://aws.amazon.com/premiumsupport/technology/pes/",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: Post-Event Summaries"
   },
   "github": {
    "title": "GitHub Availability Reports",
    "url": "https://github.blog/tag/github-availability-report/",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: GitHub Availability Report Archives - The GitHub Blog"
   },
   "cisco": {
    "title": "Cisco: dokumentace Catalyst/IOS (STP, storm-control, DHCP snooping, DAI)",
    "url": "https://www.cisco.com/c/en/us/support/index.html",
-   "verified": false
+   "verified": false,
+   "verification": "nenacteno: HTTP Error 403: Forbidden"
   },
   "juniper": {
    "title": "Juniper Junos dokumentace",
-   "url": "https://www.juniper.net/documentation/",
-   "verified": false
+   "url": "https://networkingdocs.hpe.com/documentation/",
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: HPE Networking Documentation; dokumentace Juniper je na portalu HPE Networking (presmerovani)"
   },
   "mikrotik": {
    "title": "MikroTik RouterOS Manual",
    "url": "https://help.mikrotik.com/docs/",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: RouterOS - RouterOS - MikroTik Documentation"
   },
   "ubiquiti": {
    "title": "Ubiquiti UniFi Help Center",
    "url": "https://help.ui.com/",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: Ubiquiti Help Center"
   },
   "aruba": {
    "title": "Aruba/HPE Networking dokumentace",
    "url": "https://www.arubanetworks.com/techdocs/",
-   "verified": false
+   "verified": false,
+   "verification": "nenacteno: HTTP Error 403: Forbidden"
   },
   "microsoft": {
    "title": "Microsoft Learn: DHCP, DNS, AD CS, Windows Time, Kerberos",
    "url": "https://learn.microsoft.com/",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: Microsoft Learn: Build with answers in reach"
   },
   "linux": {
    "title": "Linux dokumentace: networking, conntrack, systemd, chrony",
    "url": "https://docs.kernel.org/networking/",
-   "verified": false
+   "verified": true,
+   "verified_on": "2026-11-15",
+   "verification": "nacteno HTTP 200, titulek: Networking &#8212; The Linux Kernel  documentation"
   },
   "nanog": {
    "title": "NANOG archiv (provozní incidenty, BGP, DNS)",
    "url": "https://www.nanog.org/",
-   "verified": false
+   "verified": false,
+   "verification": "nenacteno: HTTP Error 403: Forbidden"
   }
  },
  "incidents": [
@@ -1246,9 +1313,9 @@
     "rfc1034",
     "microsoft"
    ],
-   "sim_variant": null,
+   "sim_variant": "bad_client_resolver",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-029",
@@ -1274,9 +1341,9 @@
     "rfc2308",
     "danluu"
    ],
-   "sim_variant": null,
+   "sim_variant": "stale_dns_record",
    "basis": "partly-verified",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-030",
@@ -1301,9 +1368,9 @@
     "rfc1034",
     "microsoft"
    ],
-   "sim_variant": null,
+   "sim_variant": "split_horizon_dns_error",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-031",
@@ -1355,9 +1422,9 @@
     "rfc2308",
     "rfc8767"
    ],
-   "sim_variant": null,
+   "sim_variant": "dns_ttl_misconfig",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-033",
@@ -1382,9 +1449,9 @@
     "ieee8021d",
     "cisco"
    ],
-   "sim_variant": null,
+   "sim_variant": "native_vlan_mismatch",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-034",
@@ -1409,9 +1476,9 @@
     "ieee8021d",
     "cisco"
    ],
-   "sim_variant": null,
+   "sim_variant": "vlan_hop_or_misconfig",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-035",
@@ -1463,9 +1530,9 @@
     "rfc2131",
     "cisco"
    ],
-   "sim_variant": null,
+   "sim_variant": "rogue_dhcp_server",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-037",
@@ -1490,9 +1557,9 @@
     "rfc2131",
     "microsoft"
    ],
-   "sim_variant": null,
+   "sim_variant": "bad_dhcp_lease",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-038",
@@ -1543,9 +1610,9 @@
    "sources": [
     "rfc5280"
    ],
-   "sim_variant": null,
+   "sim_variant": "ca_change",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-040",
@@ -1598,9 +1665,9 @@
     "rfc4271",
     "cisco"
    ],
-   "sim_variant": null,
+   "sim_variant": "asymmetric_routing",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-042",
@@ -1624,9 +1691,9 @@
    "sources": [
     "rfc2131"
    ],
-   "sim_variant": null,
+   "sim_variant": "bad_default_route",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-043",
@@ -1707,9 +1774,9 @@
     "ieee8023",
     "rfc2863"
    ],
-   "sim_variant": null,
+   "sim_variant": "port_crc_errors",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-046",
@@ -1733,9 +1800,9 @@
    "sources": [
     "cisco"
    ],
-   "sim_variant": null,
+   "sim_variant": "qos_drops",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "CHG-013",
@@ -1760,9 +1827,9 @@
     "itil",
     "ubiquiti"
    ],
-   "sim_variant": null,
+   "sim_variant": "new_device_onboarding",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-048",
@@ -1787,9 +1854,9 @@
     "nist80061",
     "cisco"
    ],
-   "sim_variant": null,
+   "sim_variant": "rogue_device_in_network",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-049",
@@ -1813,9 +1880,9 @@
    "sources": [
     "ubiquiti"
    ],
-   "sim_variant": null,
+   "sim_variant": "device_restart_loop",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-050",
@@ -1840,9 +1907,9 @@
     "ubiquiti",
     "microsoft"
    ],
-   "sim_variant": null,
+   "sim_variant": "firmware_update_retry",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "CHG-014",
@@ -1866,9 +1933,9 @@
    "sources": [
     "microsoft"
    ],
-   "sim_variant": null,
+   "sim_variant": "update_pending_reboot",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-052",
@@ -1893,9 +1960,9 @@
     "sre",
     "danluu"
    ],
-   "sim_variant": null,
+   "sim_variant": "replication_lag",
    "basis": "partly-verified",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-053",
@@ -1972,9 +2039,9 @@
     "rfc4301",
     "cisco"
    ],
-   "sim_variant": null,
+   "sim_variant": "vpn_tunnel_flapping",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-056",
@@ -2053,9 +2120,9 @@
    "sources": [
     "itil"
    ],
-   "sim_variant": null,
+   "sim_variant": "service_reclassification",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-059",
@@ -2080,9 +2147,9 @@
     "cloudflare",
     "sre"
    ],
-   "sim_variant": null,
+   "sim_variant": "ddos_vs_flash_crowd",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-060",
@@ -2133,9 +2200,9 @@
    "sources": [
     "cisco"
    ],
-   "sim_variant": null,
+   "sim_variant": "icmp_blocked_by_firewall",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-062",
@@ -2160,9 +2227,9 @@
     "ieee8021d",
     "cisco"
    ],
-   "sim_variant": null,
+   "sim_variant": "stp_topology_change_loop",
    "basis": "assumption",
-   "sim_status": "chybi"
+   "sim_status": "generator"
   },
   {
    "id": "OPS-063",

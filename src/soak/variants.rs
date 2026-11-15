@@ -1990,6 +1990,313 @@ pub static SPECS: &[Spec] = &[
     )
     .rate(30.0)
     .len(4, 24),
+    sp(
+        "bad_client_resolver",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Dns,
+        "udp",
+        53,
+    )
+    .rate(20.0)
+    .len(4, 24),
+    sp(
+        "stale_dns_record",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Server,
+        "tcp",
+        443,
+    )
+    .rate(15.0)
+    .len(2, 8),
+    sp(
+        "split_horizon_dns_error",
+        "-",
+        OF,
+        P::Burst,
+        A::IntToExt,
+        N::Any,
+        "tcp",
+        443,
+    )
+    .rate(25.0)
+    .len(2, 8),
+    sp(
+        "dns_ttl_misconfig",
+        "-",
+        OF,
+        P::Flood,
+        A::IntToDns,
+        N::Dns,
+        "udp",
+        53,
+    )
+    .rate(90.0)
+    .len(6, 30),
+    sp(
+        "native_vlan_mismatch",
+        "-",
+        OF,
+        P::Burst,
+        A::IntToInt,
+        N::Server,
+        "tcp",
+        445,
+    )
+    .rate(25.0)
+    .len(3, 10),
+    sp(
+        "vlan_hop_or_misconfig",
+        "-",
+        OF,
+        P::Sweep,
+        A::IntToInt,
+        N::Server,
+        "tcp",
+        0,
+    )
+    .rate(60.0)
+    .len(1, 3)
+    .hard(),
+    sp(
+        "rogue_dhcp_server",
+        "-",
+        OF,
+        P::Burst,
+        A::IntToInt,
+        N::Gateway,
+        "udp",
+        67,
+    )
+    .rate(30.0)
+    .len(2, 8)
+    .hard(),
+    sp(
+        "bad_dhcp_lease",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Gateway,
+        "tcp",
+        443,
+    )
+    .rate(20.0)
+    .len(4, 20),
+    sp(
+        "ca_change",
+        "-",
+        BC,
+        P::Burst,
+        A::IntToExt,
+        N::Any,
+        "tcp",
+        443,
+    )
+    .rate(15.0)
+    .bytes(2000, 6000)
+    .len(2, 6)
+    .hard(),
+    sp(
+        "asymmetric_routing",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Gateway,
+        "tcp",
+        443,
+    )
+    .rate(25.0)
+    .len(6, 30),
+    sp(
+        "bad_default_route",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Gateway,
+        "tcp",
+        80,
+    )
+    .rate(35.0)
+    .len(8, 40),
+    sp(
+        "port_crc_errors",
+        "-",
+        OF,
+        P::Degrade,
+        A::Fault,
+        N::Server,
+        "tcp",
+        445,
+    )
+    .rate(30.0)
+    .dur(4.0)
+    .len(16, 80),
+    sp(
+        "qos_drops",
+        "-",
+        OF,
+        P::Degrade,
+        A::Fault,
+        N::Any,
+        "udp",
+        5060,
+    )
+    .rate(30.0)
+    .dur(3.0)
+    .len(12, 60),
+    sp(
+        "new_device_onboarding",
+        "-",
+        BC,
+        P::Burst,
+        A::IntToExt,
+        N::Any,
+        "tcp",
+        443,
+    )
+    .rate(20.0)
+    .bytes(1500, 40000)
+    .len(2, 8)
+    .hard(),
+    sp(
+        "rogue_device_in_network",
+        "-",
+        OF,
+        P::FanOut,
+        A::IntToInt,
+        N::Any,
+        "tcp",
+        445,
+    )
+    .rate(40.0)
+    .len(2, 6)
+    .hard(),
+    sp(
+        "device_restart_loop",
+        "-",
+        OF,
+        P::Flap,
+        A::Fault,
+        N::Any,
+        "udp",
+        67,
+    )
+    .rate(20.0)
+    .period(2.0)
+    .len(3, 12),
+    sp(
+        "firmware_update_retry",
+        "-",
+        OF,
+        P::BulkIn,
+        A::IntToExt,
+        N::Any,
+        "tcp",
+        443,
+    )
+    .rate(6.0)
+    .bytes(2000, 30000000)
+    .dur(120.0)
+    .len(2, 8),
+    sp(
+        "update_pending_reboot",
+        "-",
+        BC,
+        P::Trickle,
+        A::IntToExt,
+        N::Any,
+        "tcp",
+        443,
+    )
+    .rate(3.0)
+    .len(2, 6)
+    .hard(),
+    sp(
+        "replication_lag",
+        "-",
+        OF,
+        P::SlowConn,
+        A::IntToInt,
+        N::Server,
+        "tcp",
+        5432,
+    )
+    .rate(8.0)
+    .dur(600.0)
+    .len(2, 10),
+    sp(
+        "vpn_tunnel_flapping",
+        "-",
+        OF,
+        P::Flap,
+        A::Fault,
+        N::Vpn,
+        "udp",
+        500,
+    )
+    .rate(20.0)
+    .period(2.0)
+    .len(2, 10),
+    sp(
+        "service_reclassification",
+        "-",
+        BC,
+        P::Burst,
+        A::IntToInt,
+        N::Server,
+        "tcp",
+        8443,
+    )
+    .rate(20.0)
+    .len(2, 8)
+    .hard(),
+    sp(
+        "ddos_vs_flash_crowd",
+        "-",
+        OF,
+        P::Flood,
+        A::ExtToVictim,
+        N::Web,
+        "tcp",
+        443,
+    )
+    .rate(200.0)
+    .srcs(30)
+    .bytes(600, 15000)
+    .len(2, 10)
+    .hard(),
+    sp(
+        "icmp_blocked_by_firewall",
+        "-",
+        OF,
+        P::Outage,
+        A::Fault,
+        N::Gateway,
+        "icmp",
+        0,
+    )
+    .rate(20.0)
+    .len(4, 16),
+    sp(
+        "stp_topology_change_loop",
+        "-",
+        OF,
+        P::Storm,
+        A::Fault,
+        N::Any,
+        "udp",
+        0,
+    )
+    .rate(500.0)
+    .len(2, 8),
 ];
 
 /// Pocet variant (index do `SPECS`).
@@ -2371,6 +2678,52 @@ pub(crate) fn plan_variants(
             });
         }
     }
+    if mixes {
+        let n3 = (rng.poisson(0.8 * days * size_scale.sqrt()) as usize).clamp(1, 8);
+        let offset = rng.range(0, MIX_TRIPLES.len() as u64 - 1) as usize;
+        for k in 0..n3 {
+            let idx = (offset + k) % MIX_TRIPLES.len();
+            let (la, lb, lc, relation) = MIX_TRIPLES[idx];
+            let find = |l: &str| SPECS.iter().position(|x| x.label == l);
+            let (Some(ia), Some(ib), Some(ic)) = (find(la), find(lb), find(lc)) else {
+                continue;
+            };
+            let Some(ta) = plan(false, Some((ia, None)), &mut rng, truths) else {
+                continue;
+            };
+            let (a_start, a_end) = (truths[ta].start_cycle, truths[ta].end_cycle);
+            let span = a_end.saturating_sub(a_start);
+            let mut parts = vec![ta];
+            for ix in [ib, ic] {
+                let delta = match relation {
+                    2 => 1 + rng.range(0, span.min(3) as u64) as u32,
+                    _ => rng.range(0, span.min(4) as u64) as u32,
+                };
+                if let Some(t) = plan(false, Some((ix, Some(a_start + delta))), &mut rng, truths) {
+                    if relation != 1 {
+                        let shared = truths[ta].victim_devices.clone();
+                        if !shared.is_empty() && !truths[t].victim_devices.is_empty() {
+                            truths[t].victim_devices = shared;
+                        }
+                    }
+                    parts.push(t);
+                }
+            }
+            if parts.len() < 3 {
+                // neuplna trojice se neznaci (zustane jako samostatne udalosti)
+                continue;
+            }
+            let incident = truths[ta].id;
+            for (role, t) in parts.into_iter().enumerate() {
+                truths[t].cov.mix = Some(crate::soak::coverage::MixTag {
+                    incident,
+                    relation,
+                    role: role as u8,
+                    pair: 100 + idx as u8,
+                });
+            }
+        }
+    }
     for _ in 0..sec_n {
         plan(true, None, &mut rng, truths);
     }
@@ -2399,6 +2752,19 @@ pub const MIX_PAIRS: &[(&str, &str, u8)] = &[
     ("switch_outage_subnet", "dhcp_server_down", 0),
     ("broadcast_storm_loop", "mdns_ssdp_storm", 0),
     ("db_overload_degradation", "app_server_crash_cascade", 2),
+];
+
+/// Krok 13 (dodatek A): matice rizenych trojic (prvni, druha, treti, vztah druhe a treti k prvni).
+/// Druha i treti udalost zacinaji v okne prvni; `pair` ve stitku = 100 + index trojice.
+pub const MIX_TRIPLES: &[(&str, &str, &str, u8)] = &[
+    ("ddos_syn_flood_distributed", "uplink_saturation", "dns_slow_resolution", 2),
+    ("switch_outage_subnet", "dhcp_server_down", "dns_partial_failure", 0),
+    ("c2_slow_long_interval", "hn_nightly_cloud_backup_upload", "planned_patch_reboot_wave", 1),
+    ("ssh_spray_slow_distributed", "uplink_saturation", "hn_cdn_update_download", 1),
+    ("exfil_cloud_storage_upload", "broadcast_storm_loop", "vpn_tunnel_flapping", 1),
+    ("db_overload_degradation", "app_server_crash_cascade", "load_balancer_partial_outage", 2),
+    ("share_encryption_wave_slow", "backup_window_overrun", "disk_full_backup_failure", 1),
+    ("rdp_bruteforce", "lateral_rdp_hop", "lateral_smb_admin_shares", 2),
 ];
 
 /// Naplanuje rizene mixy dvojic (jen svet `--mix on`, vlastni proud nahodnosti).
@@ -3156,6 +3522,8 @@ mod tests {
         }
         let missing: Vec<&str> = (0..SPECS.len() as u8)
             .filter(|v| !emitted.contains(v))
+            // tvrde zaporne scenare se planuji jen ve svete k10, ne v k9
+            .filter(|v| !spec(*v).hard)
             .map(|v| spec(v).label)
             .collect();
         assert!(
@@ -3163,6 +3531,17 @@ mod tests {
             "nevyemitovane varianty: {missing:?} (planovano {})",
             planned.len()
         );
+    }
+
+    #[test]
+    fn mix_tables_reference_existing_variants() {
+        let has = |l: &str| SPECS.iter().any(|s| s.label == l);
+        for (a, b, _) in MIX_PAIRS {
+            assert!(has(a) && has(b), "{a} {b}");
+        }
+        for (a, b, c, _) in MIX_TRIPLES {
+            assert!(has(a) && has(b) && has(c), "{a} {b} {c}");
+        }
     }
 
     #[test]
