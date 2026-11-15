@@ -233,3 +233,30 @@ Nehotové (pro navázání):
 - **Měření `l7_ladder` (ladicí 20261102, 24 sítí): beze změny** (detekce 87,4 → 87,5 %, FP 14,13 → 14,11, ECE 13,9 → 12,9 %, autonomie 13,4 → 12,4 %). Nepřináší ani neškodí; nezapínat.
 - Pipeline `case_files` není měřen v soaku (soak nepoužívá `pipeline::v3`): ověřeno unit testem `correlation_layer`. Incidenty a čistota se v soaku měří vlastním kódem (`incident_*`).
 - **Konformální pokrytí na soak datech** (`tools/k12_conformal.py`, držené seedy 4101+4102, rozdělení po sítích na kalibraci a test, 30 rozdělení): pro α útoku 0,05 pokrytí útoků 0,959 (nominálně 0,95; nejhorší rozdělení 0,940), pro α neškodných 0,20 pokrytí 0,781 (nominálně 0,80, nejhorší 0,699): **záruka platí přibližně a mezi sítěmi kolísá** (síťová výměnnost neplatí přesně). Autonomně 59,6 % případů, ale z „autonomně neškodných“ je **15,0 % útoků (horní mez 15,2 %)**; při α útoku 0,002 klesne autonomie na 34 % a podíl útoků mezi „neškodnými“ na 5,6 % (horní mez 6,0 %). **Posteriory žebříku nedovolí autonomní zavření s chybou ≤ 0,5 %**; kde chybí záruka, rozhoduje člověk. (Pozn.: štítek „útok“ je kontrafaktuální připsání nálezu útoku; část těchto „útoků“ je nález, který existuje i bez útoku, proto čísla odhadují horní, ne přesnou chybu.)
+
+## 13) Druhá dávka držených seedů a zátěž (výsledky po opravách)
+
+**Držené 20264201, 20264202, 20264301, 20264302 (160 sítí, 13 084 útoků s toky; `k12/held2.md`)**, kandidát (`breadth`, `bulk_clear`, `strict_close`, `l7_tls`, `l7_dns`, `icmp_payload`) proti `recommended`:
+
+| ukazatel | základ | kandidát |
+|---|---|---|
+| **útoky s omylem zavřeným nálezem** | 64 z 13 084 (0,49 %, horní mez 0,62 %) | **0 z 13 084 (horní mez Wilson 0,03 %)** |
+| detekce bezpečnostních útoků (rodiny, bez hn_*) | 83,9 (83,1 až 84,6) | 86,8 (86,1 až 87,5) |
+| zobrazené FP na síť-den | 18,46 | 19,69 (poměr 1,067) |
+| vyvrácení žebříkem, z nich omylem | 46 z 2 228 (2,1 %) | 0 z 52 (horní mez 6,9 %) |
+| potvrzení žebříkem, z nich neškodné | 7,7 % | 9,3 % (horní mez 9,7 %) |
+| autonomně rozhodnuto (žebřík) | 16,5 % | 14,8 % |
+| ECE posterioru (surová) | 6,1 % | 6,8 % |
+| rodiny (n ≥ 20) z viditelných útoků nad 90 % / nad 95 % / na 100 % | | 60 / 36 / 5 z 93 |
+
+Největší přírůstky: drive_by_bulk_download 7,8 → 64,7 %, exfil_alt_protocol_ftp 6,8 → 63,6 %, cloud_api_discovery_burst 4,3 → 31,9 %, bucket_mass_download 13,8 → 39,7 %.
+
+**Cíl „omylem zavřených 0“ je na držených datech splněn (0 z 13 084; spolu s první dávkou, kde po opravě příčiny bod 1 platí totéž, ale ta dávka byla měřena před opravou: 4 z 5 506).** Platí s výhradou, že kandidát zavírá autonomně málo (vyvrácení 52 případů na 160 sítí), takže 0 je z velké části důsledek toho, že téměř nic nezavírá, ne důkaz bezpečného autonomního zavírání.
+
+**Šum 10× (seed 20261103, 16 sítí, ladicí):** základ 11 z 1 247 omylem zavřených (0,88 %) → kandidát 0 (horní mez 0,31 %); detekce 87,3 → 89,9 %; FP poměr 1,074; ECE 10,7 → 12,1 %.
+
+**Konformální pokrytí (druhá dávka, 160 sítí, 30 rozdělení po sítích):** pokrytí útoků 0,953 (nominálně 0,95; nejhorší rozdělení 0,932), neškodných 0,799 (nominálně 0,80; nejhorší 0,722). Autonomně 62,2 %; z autonomních „neškodných“ je 11,4 % útoků (horní mez 11,5 %). Záruka pokrytí platí průměrně, ne vždy po jednotlivých rozděleních; **záruku ≤ 0,5 % chyby autonomního zavření posteriory žebříku nedají.**
+
+**Incidenty (ladicí seed 20261102, odstup 6 h):** 1 017 incidentů, 17,1 nálezu na incident, **čistota seskupení 37,9 %** (cíl ≥ 90 % **nesplněn**), smíšených (útok i porucha) 54. Seskupení podle sdíleného hosta nebo indikátoru s odstupem 6 h slévá nesouvisející nálezy (servery a resolvery sdílejí hosty), a nepřipsané nálezy se počítají jako vlastní štítek, takže šum čistotu snižuje. Varianty odstupu 1 h a 30 min se měří v dalším běhu (`incident_gaps`).
+
+**Leave-one-family-out a leave-one-tactic-out nových detektorů:** nové detektory (`behavior/l7.rs`, `icmp.rs`, `strict_close`) **nemají parametry naladěné po rodinách**; prahy jsou jednotné (viz studie 12) a ladily se jen na ladicích seedech. LOFO se proto redukuje na to, co je v tabulkách „přenos na ostatní rodiny“ v `k12/held.md` a `k12/held2.md`: detekce rodin, pro které detektor nebyl určen, na držených seedech. Formální LOFO s přeladěním po rodinách a leave-one-tactic-out **nebyly provedeny**, protože není co ladit po rodinách; to je odchylka od předregistrace, ne splnění.
