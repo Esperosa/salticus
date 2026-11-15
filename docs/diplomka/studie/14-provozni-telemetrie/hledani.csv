@@ -1,0 +1,21 @@
+datum;zdroj;dotaz;pocet_vysledku;prohlizeno;poznamka
+2026-11-15;WebFetch;RFC 2863, 3635, 3418, 4188, 6933, 3433;6;6;čteno prvních 100 000 znaků u dlouhých RFC
+2026-11-15;WebFetch;RFC 5424, 7011, 7012, 5905 (2 ranges);5;5;
+2026-11-15;WebFetch;RFC 2131 (2 ranges), 4861 (2 ranges), 5227, 826, 4120;5;5;
+2026-11-15;WebFetch;chrony chronyc, check_ntp_time, w32tm (404), Kerberos MS doc (404);4;2;dva 404
+2026-11-15;WebFetch;Kea ARM stats (2 pokusy), ISC KB aa-00334 (neodpovídá), dhcpd.leases man;4;2;Kea statistics sekce nenalezena
+2026-11-15;WebFetch;node_exporter README, blackbox_exporter README, awesome-prometheus-alerts raw yml (2);4;4;
+2026-11-15;WebFetch;Zabbix integrations SNMP, Zabbix GitHub raw (404/403), Zabbix dependencies doc (404);4;1;
+2026-11-15;WebFetch;Nagios plugins guidelines, Nagios reachability, SRE book, Prometheus alerting;4;4;
+2026-11-15;WebFetch;Let's Encrypt 90 to 45, PostgreSQL monitoring-stats, MySQL show replica status;3;3;
+2026-11-15;WebFetch;Linux kernel sysctl, Cisco MAC flap 221722, Cisco community rootguard (403);3;2;
+2026-11-15;WebFetch;"Jung WWW 2002; Cloudflare 2025-11-18 postmortem";2;2;
+2026-11-15;WebSearch;Cisco %LINK-3-UPDOWN SPANTREE ROOTGUARD;17;0;V1 (neověřeno.md)
+2026-11-15;WebSearch;Windows event 41 6008 1074;16;0;jen komunitní Q&A, V1
+2026-11-15;WebSearch;dotaz proti: DDoS vs flash crowd Jung;10;1;
+2026-11-15;WebSearch;AIOps survey faults vs attacks;10;0;nenalezen přehled o rozlišení poruchy a útoku
+2026-11-15;WebSearch;dotaz proti: NOC SOC convergence misclassified incident;10;0;pouze vendor blogy, V1
+2026-11-15;WebSearch;ISC dhcpd no free leases DHCPNAK syslog;17;0;mailing list, V1
+2026-11-15;WebSearch;Zabbix SNMP template triggers IF.ERRORS.WARN;17;0;
+2026-11-15;WebSearch;"PostgreSQL replication lag; MySQL Seconds_Behind_Source";17;2;
+2026-11-15;WebSearch;Let's Encrypt expiration emails 20 10 1 days;14;1;e-maily skončily (V1), 20/10/1 nepotvrzeno

@@ -1,0 +1,50 @@
+datum;zdroj;dotaz;pocet_vysledku;prohlizeno;poznamka
+2026-11-15;Microsoft Learn (WebFetch);sysmon event IDs 1 3 7 11 13 22 dokumentace;1;1;přečteno
+2026-11-15;GitHub (WebFetch);SwiftOnSecurity sysmon-config README;1;1;pouze README
+2026-11-15;GitHub (WebFetch);olafhartong sysmon-modular README;1;1;
+2026-11-15;Microsoft Learn (WebFetch);DeviceNetworkEvents advanced hunting schema;1;1;
+2026-11-15;GitHub (WebFetch);corelight community-id-spec;1;1;
+2026-11-15;docs.securityonion.net (WebFetch);Security Onion Community ID;1;1;
+2026-11-15;osquery.io (WebFetch);osquery schema 5.12.1 process_open_sockets;0;0;404
+2026-11-15;elastic.co (WebFetch);Elastic Defend endpoint-data-collection;0;0;404
+2026-11-15;arXiv (WebFetch);Unicorn arXiv 2001.01525 plný text (pdftotext);1;1;PDF stažené WebFetch, text extrahován pdftotext
+2026-11-15;arXiv (WebFetch);SIGL arXiv 2008.11533 plný text;1;1;
+2026-11-15;arXiv (WebFetch);HOLMES arXiv 1810.01594 plný text;1;1;
+2026-11-15;arXiv HTML (WebFetch);CAPTAIN arXiv 2404.14720 html v1;1;1;prvních 100 000 znaků ze 134 919
+2026-11-15;arXiv HTML (WebFetch);průmyslové hodnocení PIDS arXiv 2603.22982;1;1;100 000 ze 111 006 znaků
+2026-11-15;arXiv (WebFetch);ATLASv2 2401.01341 ar5iv;1;1;
+2026-11-15;GitHub (WebFetch);darpa-i2o Transparent-Computing README;1;1;
+2026-11-15;GitHub (WebFetch);FiveDirections OpTC-data README;1;1;
+2026-11-15;WebSearch;SIGL USENIX 2021 false positive;10;2;V1 shrnutí, pak plný text
+2026-11-15;WebSearch;ATLAS USENIX 2021 precision recall;10;1;"pouze shrnutí; umass PDF 404"
+2026-11-15;WebSearch;CAPTAIN NDSS 2022 false alarms;10;1;zjištěno: NDSS 2025, ne 2022
+2026-11-15;WebSearch;HOLMES S&P 2019 pdf;10;1;
+2026-11-15;WebSearch;dotaz proti: provenance IDS evaluation flaws mimicry DARPA ground truth problems;10;3;"nalezeny arXiv 2603.22982, 2608.01454; mimicry nenalezeno"
+2026-11-15;arXiv abs (WebFetch);arXiv 2608.01454 abstrakt;1;1;V2
+2026-11-15;WebSearch;Wazuh agent status disconnected keepalive;18;1;Wazuh docs agent life cycle
+2026-11-15;WebSearch;Wazuh Sysmon integration eventchannel;17;3;pouze blog a fórum, V1 (neověřeno.md)
+2026-11-15;WebSearch;osquery process_open_sockets schema;20;2;"osquery.io/schema 404, GitHub raw spec 404; sloupce jen V1"
+2026-11-15;WebSearch;Velociraptor Windows.Network.Netstat ETW;15;2;
+2026-11-15;WebSearch;Elastic Defend network events tamper protection;14;2;
+2026-11-15;WebSearch;Tetragon process_connect tcp_connect;16;2;
+2026-11-15;WebSearch;Falco dropped events syscall;15;2;
+2026-11-15;WebSearch;Timesketch analyzers import;13;0;pouze neoficiální stránky, V1
+2026-11-15;WebSearch;dotaz proti: EDR silent failure agent stopped reporting;10;0;jen vendor/praktické blogy, V1
+2026-11-15;WebSearch;EDR evasion ETW patching Sysmon tampering research;10;2;arXiv 2108.10422
+2026-11-15;WebSearch;Article 29 WP Opinion 2/2017;15;0;"jen sekundární; plný text nezískán"
+2026-11-15;WebSearch;ÚOOÚ monitorování zaměstnanců § 316;17;0;sekundární komentáře
+2026-11-15;WebSearch;Bărbulescu v. Romania criteria;20;0;"sekundární; HUDOC nezískán"
+2026-11-15;WebSearch;high fidelity data reduction audit logs CCS 2016;10;1;
+2026-11-15;WebSearch;Sysmon event volume per endpoint per day;15;0;fóra/blogy, rozptyl o řád, V1
+2026-11-15;WebSearch;Zeek conn.log volume NetFlow sampling detection impact;10;1;nalezen Sci Rep 2023
+2026-11-15;WebFetch;Microsoft Learn tamper protection, fix unhealthy sensors;2;2;
+2026-11-15;WebFetch;zakonyprolidi § 316;3;1;tři pokusy kvůli offsetu
+2026-11-15;WebFetch;gdpr-info.eu čl. 5, 35, 88;3;3;
+2026-11-15;WebSearch;dotaz: correlating network flows with host process events attribution;10;1;nalezen zeek-osquery
+2026-11-15;WebFetch;ar5iv 2002.04547 zeek-osquery;1;1;
+2026-11-15;WebFetch;github elastic/detection-rules;1;1;
+2026-11-15;WebFetch;github OpenEDR;1;1;vendor
+2026-11-15;WebFetch;timesketch.org import json csv;1;1;
+2026-11-15;WebFetch;RFC 2663 NAT terminology;1;1;
+2026-11-15;WebSearch;CrowdStrike NetworkConnectIP4 fields;12;0;oficiální dokumentace nenalezena (vyžaduje přihlášení)
+2026-11-15;WebSearch;SentinelOne Deep Visibility IP connect process correlation;17;0;jen integrace třetích stran, V1
