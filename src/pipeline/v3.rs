@@ -872,6 +872,7 @@ impl V3Session {
         // provoz (zaznam v zivotnim cyklu), nic se nezavira
         if let (Some(flows), Some(window)) = (self.behavior_flows.as_ref(), ops_window.as_ref()) {
             let policy = ops_policy.clone();
+            let catalog = crate::incident_catalog::Catalog::shared();
             let mut marks: crate::ops_evidence::OpsMarks =
                 self.store.load("ops_marks")?.unwrap_or_default();
             let at = now.timestamp();
@@ -913,6 +914,7 @@ impl V3Session {
                 }
                 if record.displayed && self.engine.ops_annotate() {
                     record.ops_note = reason.map(str::to_string);
+                    record.catalog = Some(catalog.note(&finding.finding_type, reason));
                 }
             }
             marks.sweep(at);

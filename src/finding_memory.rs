@@ -991,6 +991,9 @@ pub struct LifecycleRecord {
     /// Krok 7 (B1): provozní příčina jen jako anotace (nález zůstává podezřením).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ops_note: Option<String>,
+    /// Krok 13 (B): zařazení podle katalogu provozních incidentů (třída, typ, příčina, kontrola).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog: Option<crate::incident_catalog::CatalogNote>,
 }
 
 impl LifecycleRecord {
@@ -1021,6 +1024,7 @@ impl LifecycleRecord {
             ops_reason: None,
             protection: None,
             ops_note: None,
+            catalog: None,
         }
     }
 }

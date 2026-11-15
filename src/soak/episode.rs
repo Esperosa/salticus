@@ -331,6 +331,8 @@ struct Ledger {
     cf_first: Option<u32>,
     /// Krok 7 (B1): pripsany nalez nese provozni anotaci.
     ops_annotated: bool,
+    /// Krok 13 (B): zarazeni zobrazenych nalezu podle katalogu, `trida|catalog_id` -> pocet.
+    cat: BTreeMap<String, u32>,
 }
 
 /// Zobrazeni nalezu v cyklu (legacy: vse, v3: podle pameti a kontextu).
@@ -356,6 +358,8 @@ struct Shown {
     protected: bool,
     /// Krok 7 (B1): diagnostika shody klice nalezu s dukazem E1 (jen svet pokryti).
     ops_diag: Option<String>,
+    /// Krok 13: text dukazu provozni priciny (pro zarazeni podle katalogu).
+    ops_reason: Option<String>,
 }
 
 /// Polozka zobrazeni podle dispozice pameti nalezu (pred zasahem zebriku).
@@ -390,6 +394,7 @@ fn shown_for(disposition: &Disposition, memory_on: bool, auto: Option<ContextKin
         ops_note: false,
         protected: false,
         ops_diag: None,
+        ops_reason: None,
     }
 }
 
@@ -403,7 +408,7 @@ fn update_ops_mark(
     fresh: Option<String>,
     service_key: Option<&str>,
     sources: &[String],
-) -> bool {
+) -> Option<String> {
     marks
         .update(
             finding_id,
@@ -413,7 +418,7 @@ fn update_ops_mark(
             sources,
             show.memory_contradicted,
         )
-        .is_some()
+        .map(str::to_string)
 }
 
 /// Vystup zebriku v cyklu (krok 2B): klice nalezu, otevrene pripady, rozhodnuti.
@@ -825,6 +830,7 @@ fn run_episode_inner(
             wrong_keys: BTreeSet::new(),
             cf_first: None,
             ops_annotated: false,
+            cat: BTreeMap::new(),
         })
         .collect();
     // krok 7: polozky ve fronte podezreni a provozni anotace po poruchach
@@ -1591,6 +1597,7 @@ fn run_episode_inner(
                     ops_note: false,
                     protected: false,
                     ops_diag: None,
+                    ops_reason: None,
                 })
                 .collect(),
             Some(runtime) => {
@@ -1918,6 +1925,7 @@ fn run_episode_inner(
                                             ops_note: false,
                                             protected: false,
                                             ops_diag: None,
+                                            ops_reason: None,
                                         },
                                     ));
                                 }
@@ -2003,7 +2011,7 @@ fn run_episode_inner(
                     &scope_nets,
                 );
                 // znacka plati jen pro epizodu sveho dukazu (review kola 1 a 3, S1)
-                let valid = update_ops_mark(
+                let ops_reason = update_ops_mark(
                     &mut runtime.ops_marks,
                     show,
                     &finding.finding_id,
@@ -2012,6 +2020,7 @@ fn run_episode_inner(
                     service_key,
                     sources,
                 );
+                let valid = ops_reason.is_some();
                 // krok 7 (A1): chraneny nalez fronta provoz nikdy neodkloni
                 let shielded = cfg.engine.protect() && show.protected;
                 if show.displayed && valid && cfg.engine.ops_class() && !shielded {
@@ -2021,6 +2030,7 @@ fn run_episode_inner(
                 // krok 7 (B1): provozni znacka jen jako anotace, nalez zustava podezrenim
                 if show.displayed && valid && cfg.engine.ops_annotate() {
                     show.ops_note = true;
+                    show.ops_reason = ops_reason.clone();
                     agg.output.k7_add("ops_annotated", 1);
                 }
                 if coverage_on && show.displayed && cfg.engine.ops_annotate() {
@@ -2285,6 +2295,16 @@ fn run_episode_inner(
                             ledger.typed |= typed;
                             ledger.ops_shown |= show.displayed && show.ops;
                             ledger.ops_annotated |= show.displayed && show.ops_note;
+                            if show.displayed && cfg.engine.ops_annotate() {
+                                let s = crate::incident_catalog::suggest(
+                                    &finding.finding_type,
+                                    show.ops_reason.as_deref(),
+                                );
+                                *ledger
+                                    .cat
+                                    .entry(format!("{}|{}", s.class, s.catalog_id.unwrap_or("-")))
+                                    .or_default() += 1;
+                            }
                             if suspect {
                                 ledger.displayed_detect.get_or_insert(cycle);
                                 ledger.typed_displayed |= typed;
@@ -3375,6 +3395,7 @@ fn run_episode_inner(
                         auto_closed: ledger.auto_closed,
                         auto_closed_first: ledger.auto_closed_first,
                         ops_shown: ledger.ops_shown,
+                        catalog: ledger.cat.clone(),
                         diag: Some(crate::soak::coverage::AttackDiag {
                             flows: truth.cov.diag.flows,
                             src_n: truth.cov.diag.src_ips.len() as u32,
@@ -4327,7 +4348,7 @@ mod ops_mark_tests {
                     show.reason = rewritten;
                 }
                 assert!(
-                    !update_ops_mark(&mut marks, &show, "f", 2800, None, svc, &[]),
+                    update_ops_mark(&mut marks, &show, "f", 2800, None, svc, &[]).is_none(),
                     "{disposition:?} -> {rewritten}: znacka prezila"
                 );
             }
@@ -4339,7 +4360,7 @@ mod ops_mark_tests {
             let mut show = shown_for(&disposition, true, None);
             show.reason = "ladder_escalated";
             assert!(
-                update_ops_mark(&mut marks, &show, "f", 2800, None, svc, &[]),
+                update_ops_mark(&mut marks, &show, "f", 2800, None, svc, &[]).is_some(),
                 "{disposition:?}"
             );
         }

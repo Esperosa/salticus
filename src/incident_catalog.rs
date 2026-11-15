@@ -60,6 +60,12 @@ impl Catalog {
         serde_json::from_str(EMBEDDED).expect("data/incident-catalog.json je platné")
     }
 
+    /// Jednou načtený katalog (engine ho čte při každém cyklu).
+    pub fn shared() -> &'static Catalog {
+        static CATALOG: std::sync::OnceLock<Catalog> = std::sync::OnceLock::new();
+        CATALOG.get_or_init(Catalog::embedded)
+    }
+
     pub fn get(&self, id: &str) -> Option<&Entry> {
         self.incidents.iter().find(|e| e.id == id)
     }
@@ -72,9 +78,93 @@ impl Catalog {
     }
 }
 
+/// Zařazení zobrazeného nálezu podle katalogu (krok 13, B2, B3, B6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Suggestion {
+    /// `utok` (bez provozní příčiny), `porucha` nebo `zmena`.
+    pub class: &'static str,
+    /// Nejpravděpodobnější typ z katalogu; u třídy `utok` žádný.
+    pub catalog_id: Option<&'static str>,
+}
+
+/// Pravidlová shoda nálezu s typem katalogu. Vstupem je typ nálezu a důvod fronty provoz
+/// (`ops_evidence`, E1 až E3), jiný signál tu zatím není: bez provozního důkazu je nález
+/// podezřením na útok a katalog mu nic nepřiřazuje (prázdný důkaz není důkaz poruchy).
+/// Mapování je hrubé a míra jeho správnosti se měří (`incident_catalog` v soaku), ne předpokládá.
+pub fn suggest(finding_type: &str, ops_reason: Option<&str>) -> Suggestion {
+    let Some(reason) = ops_reason else {
+        return Suggestion {
+            class: "utok",
+            catalog_id: None,
+        };
+    };
+    if reason.contains("E2") {
+        return Suggestion {
+            class: "porucha",
+            catalog_id: Some("OPS-013"),
+        };
+    }
+    if reason.contains("E3") {
+        // nárůst od dosavadních klientů bez dominantního zdroje: sezónní špička nebo záloha
+        return Suggestion {
+            class: "zmena",
+            catalog_id: Some("CHG-001"),
+        };
+    }
+    let id = match finding_type {
+        "connection_timeout_burst" | "service_unreachable" | "service_overload_risk" => "OPS-016",
+        _ => "OPS-016",
+    };
+    Suggestion {
+        class: "porucha",
+        catalog_id: Some(id),
+    }
+}
+
+/// Krátký záznam katalogu pro nález (UI: příčina a doporučená kontrola).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CatalogNote {
+    pub class: String,
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub cause: Option<String>,
+    pub check: Option<String>,
+}
+
+impl Catalog {
+    pub fn note(&self, finding_type: &str, ops_reason: Option<&str>) -> CatalogNote {
+        let s = suggest(finding_type, ops_reason);
+        let e = s.catalog_id.and_then(|id| self.get(id));
+        CatalogNote {
+            class: s.class.to_string(),
+            id: s.catalog_id.map(str::to_string),
+            name: e.map(|e| e.name.clone()),
+            cause: e.map(|e| e.cause.clone()),
+            check: e.map(|e| e.recommended_check.clone()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn suggestions_point_to_existing_entries_and_attacks_get_none() {
+        let c = Catalog::embedded();
+        assert!(suggest("web_exploit", None).catalog_id.is_none());
+        for (ty, reason) in [
+            ("broadcast_storm", "provoz E2: x"),
+            ("packet_rate_spike", "provoz E3: x"),
+            ("service_unreachable", "provoz E1: x"),
+        ] {
+            let s = suggest(ty, Some(reason));
+            assert!(c.get(s.catalog_id.unwrap()).is_some(), "{ty}");
+            assert_ne!(s.class, "utok");
+        }
+        let n = c.note("broadcast_storm", Some("provoz E2"));
+        assert!(n.cause.is_some() && n.check.is_some());
+    }
 
     #[test]
     fn catalog_is_complete_and_consistent_with_the_simulator() {

@@ -7,7 +7,7 @@
 //! ze stavajicich vzoru toku. Vse ma vlastni nahodny proud odvozeny ze seedu site, takze
 //! vychozi svet (`--coverage off`) zustava bit po bitu stejny.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -923,6 +923,9 @@ pub struct AttackRecord {
     /// Krok 6: nektery pripsany nalez se zobrazil ve fronte provoz.
     #[serde(default)]
     pub ops_shown: bool,
+    /// Krok 13 (B2, B3, B6): zarazeni zobrazenych nalezu podle katalogu (`trida|catalog_id` -> pocet).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub catalog: BTreeMap<String, u32>,
     /// Krok 7: tiche potlaceni, latence, omylem zavrene nalezy (jen v3 s pameti).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub k7: Option<AttackK7>,
