@@ -3452,12 +3452,21 @@ fn run_episode_inner(
                         })
                     })
                     .collect();
-                let _ = writeln!(f, "{}", serde_json::json!({"events": evs}));
+                let line = format!("{}
+", serde_json::json!({"events": evs}));
+                let _ = f.write_all(line.as_bytes());
             }
         }
         let out = &mut agg.output;
-        for (gap, tag) in [(6 * 3600, "6h"), (3600, "1h"), (1800, "30m")] {
-            for inc in inc_hist.incidents(gap) {
+        for (gap, tag, v2) in [
+            (6 * 3600, "6h", false),
+            (3600, "1h", false),
+            (1800, "30m", false),
+            (3600, "v2-1h", true),
+            (1800, "v2-30m", true),
+        ] {
+            let incidents = if v2 { inc_hist.incidents_v2(gap) } else { inc_hist.incidents(gap) };
+            for inc in incidents {
                 if inc.findings.len() < 2 {
                     continue;
                 }

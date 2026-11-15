@@ -116,6 +116,30 @@ impl History {
 
     /// Propojení do incidentů (sdílený host nebo indikátor, odstup nejvýš `max_gap_s`).
     pub fn incidents(&self, max_gap_s: i64) -> Vec<Incident> {
+        self.incidents_by(max_gap_s, |e| {
+            std::iter::once(format!("h:{}", e.host))
+                .chain(e.indicators.iter().map(|x| format!("i:{x}")))
+                .collect()
+        })
+    }
+
+    /// Krok 13, `incident_v2`: spojuje jen nálezy téhož cíle a téhož protějšku (dvojice)
+    /// nebo téhož cíle a téhož typu nálezu. Sdílený host sám (server, resolver) nespojuje,
+    /// protože slévá nesouvisející nálezy; cena je nižší úplnost (viz `k13/incidenty.md`).
+    pub fn incidents_v2(&self, max_gap_s: i64) -> Vec<Incident> {
+        self.incidents_by(max_gap_s, |e| {
+            let mut keys = vec![format!("hk:{}|{}", e.host, e.kind)];
+            keys.extend(
+                e.indicators
+                    .iter()
+                    .filter(|x| **x != e.host)
+                    .map(|x| format!("hp:{}|{x}", e.host)),
+            );
+            keys
+        })
+    }
+
+    fn incidents_by(&self, max_gap_s: i64, keys_of: impl Fn(&Event) -> Vec<String>) -> Vec<Incident> {
         let n = self.events.len();
         let mut parent: Vec<usize> = (0..n).collect();
         fn find(p: &mut Vec<usize>, x: usize) -> usize {
@@ -136,9 +160,7 @@ impl History {
         let mut last_by_key: BTreeMap<String, usize> = BTreeMap::new();
         for &i in &order {
             let e = &self.events[i];
-            let keys = std::iter::once(format!("h:{}", e.host))
-                .chain(e.indicators.iter().map(|x| format!("i:{x}")));
-            for key in keys {
+            for key in keys_of(e) {
                 if let Some(&j) = last_by_key.get(&key)
                     && e.ts - self.events[j].ts <= max_gap_s
                 {
@@ -209,6 +231,29 @@ mod tests {
             cause,
             kind: String::new(),
         }
+    }
+
+    #[test]
+    fn v2_does_not_link_through_a_shared_host_alone() {
+        let mut h = History::new(100);
+        for (ts, id, peer, kind) in [(0, "a", "9.9.9.9", "scan"), (60, "b", "8.8.8.8", "dos"), (120, "c", "9.9.9.9", "dos")] {
+            let mut e = ev(ts, "srv", id, &["srv", peer], None, Cause::Unknown);
+            e.kind = kind.into();
+            h.add(e);
+        }
+        assert_eq!(h.incidents(3600).len(), 1);
+        let v2 = h.incidents_v2(3600);
+        // a-c sdílejí dvojici (srv, 9.9.9.9), b-c sdílejí typ nálezu na srv
+        assert_eq!(v2.len(), 1);
+        let mut h = History::new(100);
+        let mut a = ev(0, "srv", "a", &["srv", "1.1.1.1"], None, Cause::Unknown);
+        a.kind = "scan".into();
+        let mut b = ev(60, "srv", "b", &["srv", "2.2.2.2"], None, Cause::Unknown);
+        b.kind = "dos".into();
+        h.add(a);
+        h.add(b);
+        assert_eq!(h.incidents(3600).len(), 1);
+        assert_eq!(h.incidents_v2(3600).len(), 2);
     }
 
     #[test]

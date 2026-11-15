@@ -208,8 +208,11 @@ fn tls_for(
             };
             if cal {
                 // krok 13: podíly z CTU-Normal-20 (bez SNI 1,5 %, self-signed 3,0 %)
-                let no_sni = rng.chance(0.015);
-                let selfsigned = rng.chance(0.03);
+                // jde o vlastnost cíle (adresy), ne náhodu každého spojení: self-signed
+                // certifikát má cíl, ne tok; jinak by dlouhá skupina spojení na jeden cíl
+                // skoro jistě obsahovala self-signed spojení
+                let no_sni = unit(derive(h, 77)) < 0.015;
+                let selfsigned = unit(derive(h, 78)) < 0.03;
                 let sni = if no_sni { None } else { Some(sni) };
                 if selfsigned {
                     let cn = format!("CN=dev{}.local", h % 997);
