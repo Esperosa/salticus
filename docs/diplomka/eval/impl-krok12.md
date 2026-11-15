@@ -150,3 +150,51 @@ Přírůstky po rodinách (ladicí seed, n = 10 až 20, intervaly široké): buc
 - Zbylé „nezobrazeno, suppressed“ (např. exploit_attempt 6, port_scan_vertical 3, port_scan_horizontal 2, credential_stuffing 3) jsou případy, kdy útok splynul s dřívějším nálezem stejného klíče. Nabídla by se politika „nález s novým důkazem se zobrazí znovu“; jednoduchá varianta přes objem (`redisplay`) nepomohla, a složitější by znamenala další zobrazené položky bez záruky.
 
 Tabulka zbytků po rodinách (nástroj `tools/k12_residual.py`) pro držené seedy je v `k12/held.md` po dokončení měření.
+
+## 10) Výsledky na držených seedech (jednou) proti předregistrovaným prahům
+
+Zdroj: `k12/held.md` (20264101 a 20264102, 80 sítí; dva ze šesti předregistrovaných seedů). Kandidát = `breadth`, `bulk_clear`, `strict_close`, `l7_tls`, `l7_dns`, `icmp_payload`.
+
+| práh | výsledek | stav |
+|---|---|---|
+| K12-1 omylem zavřené = 0, horní mez uvést | základ 34 z 5 506 (0,62 %, horní mez 0,86 %), kandidát **4 z 5 506 (0,07 %, horní mez 0,19 %)**; všechny čtyři v jedné síti (22 seedu 4102) s ~100 překrývajícími se neškodnými událostmi, ne přes `auto_closures` ani vyvrácení žebříkem (příčinu jsem nerozebral) | **nesplněno** (4, ne 0), ale 8,5× méně |
+| K12-2 detekce ≥ 90 % u každé rodiny | z útoků s viditelnými toky: ze 78 rodin (n ≥ 20) je **50 nad 90 %, 35 nad 95 %, 14 na 100 %**; 28 rodin pod 90 % (výčet v `k12/held.md`, oddíl C) | **nesplněno** |
+| K12-3 FP poměr ≤ 1,15 | 9,05 → 9,55, poměr **1,056** | splněno |
+| K12-4 hn_* držené ≤ +10 p. b. | backup +1,7, db replikace +1,6, snmp −0,8, heslo 0,0; ladicí cdn +0,9, mail +2,7 | splněno |
+| K12-5 paniky, invarianty, chráněná zavření | 0 | splněno |
+| K12-6 determinismus (`soak verify`) | **neověřeno** (viz oddíl 11) | nehotovo |
+| K12-7 fuzz parsery | `l7::tests::fuzz_parsers_never_panic`, 20 000 vstupů | splněno |
+| K12-8 `no_memory` | zelený (spuštěn s plnými testy, oddíl 11) | viz oddíl 11 |
+| K12-9 LOFO a leave-one-tactic-out nových detektorů | částečně: detektory nemají ladění po rodinách, přenos je viditelný u rodin, pro které nebyly určeny (viz tabulka přenosu v `k12/held.md`), ale **formální LOFO a LOTO vyhodnocení po taktikách jsem neprovedl** | nehotovo |
+| K12-10 žebřík: správně rozhodnuté, ECE | autonomně 16,0 % případů, z potvrzení 6,3 % neškodných (horní mez 6,9 %), ECE 9,5 % (> 0,10 splněno těsně); vyvrácení jen 6, z nich 0 omylem (horní mez 39 %, nelze tvrdit) | ECE splněno těsně; správnost nelze tvrdit z 6 případů |
+| K12-14, K12-15 záruky autonomního rozhodnutí | **nelze dát**: autonomních zavření je 6 vyvrácení žebříkem a 0 kontextem na 5 506 útoků, horní mez Wilson u 0 z 6 je 39 % | záruka nedosažena, rozhoduje člověk |
+| K12-17 konformální pokrytí | `conformal.rs` s testem na syntetických datech, **na soak datech neměřeno** (`ladder_log` se ukládá, vyhodnocovací tool nenapsán) | nehotovo |
+| K12-18 čas k rozhodnutí | medián (průměr) 1,66 → 1,68 cyklu | beze změny |
+| K12-19 incidenty (čistota, nálezů na incident, čas k prvnímu) | `retro.rs` je modul s testy; `incident_id` v generátoru a měření **nebylo provedeno** | nehotovo |
+| K12-20 oddělení útoku od poruchy | neměřeno | nehotovo |
+| K12-21 audit autonomních rozhodnutí | zavření kontextem se loguje (`salticus::audit`), `reassess.rs` má audit; zapojení do běhu a kontrola 100 % pokrytí neměřena | částečně |
+| K12-22 forenzní žádost bez schválení | `forensic.rs`, test | splněno (modul) |
+
+### Před a po po rodinách (držené seedy, základ → kandidát)
+
+| rodina | základ | kandidát | poznámka |
+|---|---:|---:|---|
+| exfil_alt_protocol_ftp | 12,5 | 79,2 | `bulk_clear` |
+| drive_by_bulk_download | 6,7 | 43,3 | `bulk_clear` |
+| bucket_mass_download | 13,8 | 34,5 | `l7_tls` |
+| cloud_api_discovery_burst | 17,2 | 41,4 | `l7_tls` |
+| clicks_to_rare_destination | 4,5 | 4,5 | bez změny |
+| port_scan_horizontal | 75,9 | 76,6 | |
+| c2_beacon | 85,1 | 87,8 | |
+| exploit_attempt, exfiltration, port_scan_vertical, credential_stuffing, cryptomining | beze změny | | |
+| celkem bezpečnostní rodiny | 84,1 | 87,2 | |
+
+Pozn.: detekce `dns_zone_enum_burst`, `exfil_icmp_payload`, `c2_dns_txt_beacon` na držených seedech je v `k12/held.md` v tabulce zbytků (75,0, ≥ 90 a 75,0 % z viditelných); na ladicím seedu byla 61,5, 95,0 a 76,2 %.
+
+### Co drží rodiny pod 100 % (zbytky, kandidát, držené seedy)
+
+Z `k12/held.md` oddíl C, hlavní příčiny v pořadí podle počtu zmeškaných viditelných útoků:
+1. **Nález byl, ale splynul s dřívějším nálezem téhož klíče a nezobrazil se (`suppressed`)**: port_scan_horizontal 18, smb_sweep_ext 6, mqtt_probe_ext 7, exploit_attempt 6, c2_beacon 4. Řešitelné jen politikou „nový důkaz = znovu zobrazit“; jednoduchý pokus přes objem (`redisplay`) nepomohl, další pokus by znamenal víc zobrazených položek bez změřené záruky.
+2. **Nepřipsáno / typ nálezu (c)**: exploit_attempt 77 a c2_beacon 40 útoků je zachyceno nálezem jiného typu, než se očekává; do detekce se počítají.
+3. **Útok bez signálu v tocích (a viditelné)**: clicks_to_rare_destination 17 z 22 (2 až 12 malých toků na nový cíl; obsahově nerozlišitelné od kliknutí v telemetrii toků; pomohla by webová a DNS pověst cíle), exfil_cloud_storage_upload 11, bucket_mass_download 15, drive_by 14 (šifrované stažení od cíle, který používá standardní otisk klienta: **podle návrhu simulace** je to útočník žijící z krajiny a L7 rysy ho nerozliší).
+4. **Slepé útoky (`visible_flows = 0`)**: nezapočítávají se do „z viditelných“; počty po rodinách jsou v tabulce zbytků.
