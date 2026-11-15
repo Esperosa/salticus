@@ -47,3 +47,34 @@ Platí pro zbytek kroku 13 a pro krok 14. Porovnání verzí se nedělá jedním
 - **Rozsah ladicí sady (plán):** 20261102 a 20261103 po 40 sítích, osm dalších seedů po 20 sítích = 240 sítí na rameno. Držená sada: 10 seedů po 20 sítích = 200 sítí na rameno (po částech).
 - **Dlouhé běhy** (soak 72 h) jen jako test stability a objemu, ne pro porovnání verzí.
 - **Nástroj:** `tools/k13_matrix.py --families TSV --base DIRS --cand DIRS` (párové srovnání po sítích, tabulky po konfiguracích, seedech a rodinách). Stav: viz „Stav matice“ níže.
+
+## Dodatek A a B (zadáno 2026-11-15): řízené mixy a katalog provozních incidentů. Předregistrace před kódem
+
+Platí protokol měření výše (matice seed x konfigurace, párově, bootstrap po sítích) a stejná omezení.
+
+**A. Řízené mixy.** Plánovač mixů umístí do jednoho okna s řízeným překryvem dvojice a trojice událostí (útok+útok, útok+porucha, útok+neškodná změna, porucha+porucha), s řízenou frekvencí po dvojicích (matice dvojic, každá dvojice stejně často, ne náhodný souběh). Každá událost nese `incident_id` a vztah k ostatním: `common_cause` (společná příčina), `concurrent` (souběh bez vazby), `consequence` (následek). Prahy:
+- A1 detekce složek: každá složka mixu je zobrazena (kontrafaktuálně jako dosud) nejméně v 90 % relativně k téže složce samotné (pokles ≤ 10 %), hlásí se po dvojicích a po složkách.
+- A2 omylem zavřené složky = 0 (horní mez Wilson se hlásí).
+- A3 čistota seskupení do incidentů na oknech mixů ≥ 80 % (stejná metrika jako dosud, vlastní štítek pro nepřipsané nálezy) a nálezů na incident ≥ 2; zvlášť se hlásí úplnost (podíl dvojic nálezů téže události ve stejném incidentu), aby čistotu nešlo získat roztříštěním.
+- A4 chybné spojení: podíl incidentů, které slučují události bez příčinné vazby (`concurrent`), ≤ 15 %; podíl incidentů se společnou příčinou rozdělených na víc incidentů se hlásí (cíl ≤ 30 %).
+- A5 oddělení útoku od poruchy v mixech: správná kategorie složky (útok / porucha / neškodná změna) u ≥ 90 % zobrazených složek na ladicích seedech, ≥ 85 % na držených; hlásí se po dvojicích.
+
+**B. Katalog provozních incidentů.** Katalog je strojově čitelný (`data/incident-catalog.json`, verzovaný, se zdroji) a obsahuje nejméně 60 typů se strukturou: id, název, kategorie (útok / porucha / neškodná změna / nejednoznačné), příčina, projev v tocích, DNS, TLS, DHCP, ARP, SNMP, syslog a endpointu, typická záměna s útokem, doporučená kontrola, závažnost, kdo řeší, zdroje a odkaz na generátor (`sim_variant`) nebo údaj, že generátor chybí. Každé tvrzení o projevu se opírá o zdroj (RFC, dokumentace výrobce, postmortem) nebo je označeno `assumption`. Prahy:
+- B1 pokrytí: katalog ≥ 60 typů; typů s generátorem v simulátoru a s ground truth ≥ 60 % katalogu v tomto kroku (ostatní zapsat jako mezeru, ne skrývat).
+- B2 správná kategorie (útok / porucha / neškodná změna) u zobrazených nálezů typů s generátorem ≥ 90 % na ladicích, ≥ 85 % na držených seedech, po typech.
+- B3 útok maskovaný jako porucha zařazený jako porucha ≤ 10 %; porucha maskovaná jako útok zařazená jako útok ≤ 10 % (po typech i celkem).
+- B4 porucha se nikdy nezavírá jen proto, že není útok: počet poruch zavřených automaticky z tohoto důvodu = 0.
+- B5 FP na síť-den ≤ 1,15 proti základu; omylem zavřené útoky = 0 (horní mez se hlásí).
+- B6 doporučení kontroly a pravděpodobná příčina: u typů s generátorem ≥ 80 % zobrazených nálezů nese správný `catalog_id` (kontrola shody podle ground truth).
+
+Odchylky od těchto prahů se zapíšou jako odchylka, ne jako splnění.
+
+### Stav dodatku (průběžně)
+
+| bod | stav |
+|---|---|
+| A plánovač mixů | nezačato (předregistrováno) |
+| B rešerše, studie 13 | nezačato |
+| B katalog `data/incident-catalog.json` | nezačato |
+| B generátory pro typy bez variant v `variants::SPECS` | nezačato |
+| B klasifikace a doporučení v engine | nezačato |
