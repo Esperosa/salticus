@@ -37,3 +37,22 @@ Stav 2026-11-15. **Žádná z hodnot níže není kalibrována na veřejných da
 | DNS útok | výčet zóny: jména po řadě, NXDOMAIN 55 %, 10 % ANY, 5 % AXFR; tunel: značka 20 až 40 znaků, TXT | ne |
 
 Důsledek: detekce nad `--l7` světem (bucket_mass_download, cloud_api_discovery_burst, dns_zone_enum_burst a další) ukazuje, že **logika detektorů funguje nad metadaty s těmito vlastnostmi**; nic neříká o skutečné četnosti útočníků s novým nástrojovým otiskem nebo čerstvým certifikátem. Zejména „75 % nástrojový otisk“ je přímo to, co detektor využívá, a je to moje volba.
+
+### Krok 12, první měření na reálném provozu (CTU-Normal-20, Zeek v dockeru)
+
+Zdroj: `CTU-Normal-20/2017-04-30_win-normal.pcap` (282 MB, jeden normálně používaný Windows hostitel 10.0.2.15, 3,1 h), stažen z `mcfp.felk.cvut.cz/publicDatasets`, zpracován `zeek -C -r` (docker zeek/zeek). Jde o **jednoho hostitele a tři hodiny**, takže čísla níže jsou první kvantitativní bod, ne kalibrace rozdělení.
+
+| veličina | reálně (CTU-Normal-20) | simulace | verdikt |
+|---|---|---|---|
+| DNS dotazy typu A / AAAA | 75,4 % / 24,5 % | A téměř vše, AAAA nemodelováno | rozdíl: sim nemá AAAA |
+| NXDOMAIN z odpovědí | 0,013 % | 5 % pozadí | **sim ~400× víc**; jeden host s čistou konfigurací, korporátní sítě mívají víc; potřebuje další zachycení |
+| TXT a NULL dotazy | 0 % | 2 % pozadí (pošta) | sim víc; reálný hostitel nemá poštu ani tunel |
+| jména s první značkou ≥ 24 znaků a entropií ≥ 3 bity | 4,1 % ze 1 142 různých jmen (CDN, hashovaná jména) | 4 % řádků | **sedí řádově**; proto tunelové pravidlo vyžaduje i typ TXT/NULL |
+| TLS bez SNI | 1,5 % spojení | nemodelováno u pozadí | detektor má bez SNI jako rys; na pozadí vzácné |
+| nové SNI po první hodině (podíl spojení) | **13,4 %** | pozadí: 55 % dlouhý chvost, ale cíl se hostu opakuje | reálný host se k novým jménům dostává často, samotná novost cíle proto nemůže být poplach (detektor dále vyžaduje objem nebo dávku a druhý rys) |
+| x509 vlastnoručně podepsané | 3,0 % | útok 1/3, pozadí 0 | pozadí v sim je čistší než realita |
+| x509 mladší než 30 dní | 100 % (nespolehlivé: časy zachycení u tohoto pcapu nejspíš neodpovídají datu certifikátu) | pozadí 0 % | **neověřeno**, pole `young` z tohoto zdroje nepoužít |
+
+**Zjištění o formátu:** aktuální Zeek (docker `latest`) v `ssl.log` neuvádí `cert_chain_fuids` jako dokumentace ověřená ve studii 12, ale `cert_chain_fps` a `x509.log` má `fingerprint` bez `id`; parser to dřív nespojil. Opraveno a pokryto testem nad skutečnými logy (`l7::tests::real_zeek_logs_parse_and_join_certificates`).
+
+**Co z toho plyne:** simulace nadhodnocuje NXDOMAIN a TXT na pozadí, podhodnocuje podíl self-signed certifikátů a nemodeluje AAAA. Změna těchto parametrů bez dalších zachycení (jiné sítě, servery, IoT) by byla ladění na jednom hostiteli, proto jsem ji **neprovedl**; výsledky `--l7` zůstávají s výhradou z úvodu této sekce. DoH, DNS tunel a škodlivé CTU/Stratosphere pcapy jsem nestahoval ani nezpracoval.
