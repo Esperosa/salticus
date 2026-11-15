@@ -3460,8 +3460,11 @@ fn run_episode_inner(
                         })
                     })
                     .collect();
-                let line = format!("{}
-", serde_json::json!({"events": evs}));
+                let line = format!(
+                    "{}
+",
+                    serde_json::json!({"net": cfg.network_id, "seed": cfg.run_seed, "events": evs})
+                );
                 let _ = f.write_all(line.as_bytes());
             }
         }
