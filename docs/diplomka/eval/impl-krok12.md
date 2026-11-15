@@ -198,3 +198,24 @@ Z `k12/held.md` oddíl C, hlavní příčiny v pořadí podle počtu zmeškanýc
 2. **Nepřipsáno / typ nálezu (c)**: exploit_attempt 77 a c2_beacon 40 útoků je zachyceno nálezem jiného typu, než se očekává; do detekce se počítají.
 3. **Útok bez signálu v tocích (a viditelné)**: clicks_to_rare_destination 17 z 22 (2 až 12 malých toků na nový cíl; obsahově nerozlišitelné od kliknutí v telemetrii toků; pomohla by webová a DNS pověst cíle), exfil_cloud_storage_upload 11, bucket_mass_download 15, drive_by 14 (šifrované stažení od cíle, který používá standardní otisk klienta: **podle návrhu simulace** je to útočník žijící z krajiny a L7 rysy ho nerozliší).
 4. **Slepé útoky (`visible_flows = 0`)**: nezapočítávají se do „z viditelných“; počty po rodinách jsou v tabulce zbytků.
+
+## 11) Testy, determinismus a co zůstává nehotové (stav na konci tohoto tahu, 2026-11-15)
+
+- `cargo test --lib` (celý, na pozadí, Idle): **588 prošlo, 5 selhalo**; selhání jsou jen `broker::*` (potřebují Redis, nesouvisí). `soak::no_memory::production_code_remembers_no_measurement_seed` zelený (K12-8 splněno). Nové testy: `l7` (parsery, fuzz 20 000 vstupů), `behavior::l7`, `behavior::icmp`, `soak::l7sim`, `context_gate` (strict_close), `verify_ladder` (strict_refute, competing), `competing`, `conformal`, `reassess`, `retro`, `case_file`, `forensic`, `coverage_status` (pokrytí senzorů).
+- **Determinismus (K12-6): `soak verify` na držených síťích kandidáta (`hcand-20264101`): 6 z 6 bloků bit po bitu shodných.**
+
+Nehotové (pro navázání):
+
+| úkol | stav |
+|---|---|
+| zbývající 4 držené seedy 20264201, 20264202, 20264301, 20264302 | nepuštěny (čas) |
+| K12-2 detekce ≥ 90 % u všech rodin | splněno pro 50 ze 78 rodin; 28 rodin v `k12/held.md` oddíl C |
+| K12-1 omylem zavřené 0 | 4 z 5 506 (horní mez 0,19 %); příčina čtyř případů v jedné síti nerozebrána |
+| část C: kalibrace simulátoru na veřejných datech, přehrání PCAP přes Zeek | nehotovo (na stroji není Zeek, PCAPy se nestahovaly); LUFlow rozebrán (`k12/prehrani-luflow.md`) |
+| K12-9 LOFO a leave-one-tactic-out | nehotovo |
+| K12-17 konformální pokrytí na soak datech | nehotovo (data v `ladder_log` jsou) |
+| K12-19, K12-20 incident_id, seskupení, oddělení útok/porucha | nehotovo |
+| zapojení `retro`, `reassess`, `case_file`, `forensic` do pipeline a API | nehotovo (moduly s testy) |
+| EVOI řazení plánu kontrol v žebříku, kontroly TLS a DNS v žebříku | nehotovo |
+| kombinace útok + porucha + šum 10× a XXXL | nepuštěno |
+| návrh pro `recommended()` | viz závěrečný souhrn |
