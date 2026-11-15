@@ -71,18 +71,21 @@ Ramena: `off` (stav kroku 13), `ops` (nové příjmy a klasifikace za přepína�
 
 Přepínač se navrhne do `recommended()` jen tehdy, když na držených seedech projdou prahy A2 až A4, A12, A16 (část A), resp. C1, C2, C6, C9, C13 (část C2) a LOFO neukáže prvek se zápornou hodnotou. Jinak zůstává volitelný. Dlouhý běh kroku 8 (endpoint on, 60 %) se porovná s předchozím megaběhem a zahrne do rozhodnutí.
 
-## Tabulka stavu (průběžně)
+## Tabulka stavu (průběžně, stav 2026-11-15 večer)
 
 | bod | stav |
 |---|---|
-| 1 rešerše (studie 14 a 14-provozni-telemetrie) | probíhá (rešeršní agent) |
-| 2 předregistrace | **hotovo (tento commit)** |
-| 3 implementace A: adaptéry, svázání s procesem, graf, pokrytí, pozitivní důkaz | nezačato |
-| 3 implementace C2: model, adaptéry, simulátor, klasifikace, katalog | nezačato |
-| 4 reálná data (EVTX, OTRF) | nezačato |
-| 5 měření ladicí | nezačato |
-| 5 měření držené | nezačato |
-| 6 souhrn a doporučení `recommended()` | nezačato |
+| 1 rešerše (studie 14 a 14-provozni-telemetrie) | hotovo, commit 634d383; nezávislá kontrola podle §9 protokolu neproběhla |
+| 2 předregistrace | hotovo, commit 72c8c76 (prahy A1 až A16, C1 až C13, nové držené seedy 20267xxx nepoužity) |
+| 3 implementace A: adaptéry (Sysmon hash, Falco, Tetragon, auditd, EVTX), svázání s procesem, redakce, pseudonymizace, graf, nesoulad síť x agent, seznam povolených, rozšířené indikátory | kód hotov, jednotkové testy a fuzz zelené; seznam povolených za `endpoint_allow` (rozpracováno, bez prokázaného přínosu) |
+| 3 implementace C2: model, sklad, adaptéry, katalog v1.1.0, diagnóza po vrstvách typů, simulátor, žebříček (`CheckId::Ops`), společná příčina, API a CLI | kód hotov a otestován; kandidáti typů (`candidates`) právě v úpravě, jeden test (`catalog_signals_are_valid...`) čeká na opravu |
+| dokumentace nasazení a soukromí | hotovo (`docs/ENDPOINT_NASAZENI_A_SOUKROMI.md`) |
+| 4 reálná data EVTX a OTRF | přehráno, zapsáno níže; OTRF empire_dcsync zablokoval antivirus (nezpracováno), licence zapsány do `dataset-registry.md` |
+| 5 měření ladicí | jeden seed (20261102, 8 sítí) všechna ramena; výsledky v deníku níže; 5 a 10 seedů zbývá |
+| 5 měření držené (20267xxx) | nespuštěno |
+| 5 dlouhý běh kroku 8 vs. megabeh | nespuštěno |
+| 6 souhrn, doporučení `recommended()` | nezačato; zatím žádné rameno neprošlo všemi prahy (C1, C2, C7 pod cílem) |
+| `cargo fmt`, clippy, celé `cargo test --lib`, golden snapshot | clippy bez růstu zatím neověřeno proti základu; celé testy neproběhly |
 
 ## Implementace (průběžně zapisováno)
 
@@ -146,3 +149,19 @@ Výsledek: **2 z 5 vzorků** vyústí v nález, a to jen díky pravidlům 4662 a
 `--extended` nezměnil výsledek žádného reálného souboru (indikátory kroku 14 míří na cloudové a DNS techniky, které tyto scénáře neobsahují). U covenant scénáře nelze rozhodnout, zda je okno s `lsass_access` útok nebo pozadí (OTRF nemá štítek času útoku); počet falešných poplachů z reálných dat se proto neodhaduje.
 
 **Rozdíl proti simulaci (kvalitativně):** reálné záznamy Sysmon 10 tvoří v covenant scénáři 96 % přeložených událostí (šum od systémových procesů), kdežto simulace generuje jen několik podepsaných procesů na host a cyklus; simulovaný endpoint je proto čistší než reálný a objem z A9 (viz tabulka měření) je podhodnocený. Reálné příkazové řádky jsou delší a obsahují kódované PowerShell příkazy (viz registr datasetů), což simulace nemá.
+
+### Implementace II (průběžně)
+
+| blok | soubory | co |
+|---|---|---|
+| adaptéry Linux | `endpoint/linux.rs` | Falco (JSON: pravidlo -> `Alert`, `connect` -> `NetConnect`), Tetragon (`process_exec`, `process_kprobe tcp_connect`), auditd (záznamy sdružené podle sériového čísla: `SYSCALL`, `EXECVE`, `SOCKADDR`); formáty `falco`, `tetragon`, `auditd` v `Format`; fuzz 30 000 vstupů |
+| EVTX | `endpoint/evtx.rs`, `sysmon.rs` | čtení `.evtx` (crate `evtx`), nová pravidla Windows Security: 4662 (DCSync), 5145 (administrativní sdílení + nástroj vzdáleného spuštění), 4698 (naplánovaná úloha), `TimeCreated/#attributes/SystemTime` |
+| přehrání | `main.rs` | `endpoint replay-evtx`, `endpoint replay-jsonl` (okna po hostu, `--graph-out`), `ops ingest` |
+| API | `server.rs` | `POST /api/ops/ingest`, `GET /api/endpoint/graph?hosts=..&window_s=..&format=json|dot` |
+| pipeline | `pipeline/v3.rs`, `finding_memory.rs` | `LifecycleRecord::ops_diagnosis`, `catalog` z diagnózy, zdroj telemetrie z `ops_signals` a `ops_sources` (heartbeat při každé dávce) |
+| žebříček a hypotézy | `verify_ladder.rs`, `verification_chain.rs`, `competing.rs` | `CheckId::Ops` (L1), `CheckKind::OpsTelemetry` (skupina Ops), `LrTable::ops_fault` 0,5; shoda s poruchou nebo změnou je důkaz, který sám nevyvrací (`benign_group` = žádná); chráněný nález: nedůkaz; chybějící telemetrie = nedostupné; tabulka věrohodnosti `OpsTelemetry` z ladicího běhu (P(neškodný | útok) 6,5 %, P(neškodný | porucha) 70 %) |
+| seznam povolených v žebříčku | `verify_ladder.rs` | `EndpointSignal::Allowed` přidává skupiny 4 (proces) a 1 (schválení vlastníkem): při `strict_refute` stačí na vyvrácení; u chráněného nálezu nikdy |
+| společná příčina | `ops_telemetry`, `retro.rs` | `OpsDiagnosis::root` (CIDR podsítě nejsilnějšího signálu), indikátor `ops:<podsíť>` spojuje nálezy různých hostů v `incidents_v2` |
+| nesoulad síť x agent | `endpoint/graph.rs`, `soak/episode.rs` | `agent_mismatch` (blind a silent, příznak živých ostatních agentů); počítadla A11 v soaku |
+| simulace | `soak/endpoint_sim.rs` | agent `mimic` (kompromitovaný agent hlásí nástroj ze seznamu povolených s jeho hashem), hn_* hlásí všichni zúčastnění hosté |
+| dokumentace | `docs/ENDPOINT_NASAZENI_A_SOUKROMI.md` | pole, redakce, pseudonymizace, retence, doporučení pro dokumentaci nasazení (bez právních závěrů) |
