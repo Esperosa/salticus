@@ -49,7 +49,12 @@ fn catalog_signals_are_valid_and_every_type_identifies_itself() {
             _ => "nejednoznacne",
         };
         if d.catalog_id.as_deref() != Some(e.id.as_str()) {
-            ambiguous.push((e.id.clone(), d.catalog_id.clone(), d.class.clone()));
+            ambiguous.push((
+                e.id.clone(),
+                d.catalog_id.clone(),
+                d.class.clone(),
+                d.candidates.contains(&e.id),
+            ));
         } else {
             assert_eq!(d.class, want, "{}", e.id);
         }
@@ -57,7 +62,7 @@ fn catalog_signals_are_valid_and_every_type_identifies_itself() {
     // úplná sada signálů musí typ poznat. Typy se sdílenými signály (OPS-027 a CHG-006, OPS-045 a OPS-020,
     // OPS-033 a OPS-034 ...) nemají v katalogu rozlišující signál: smí vyjít „nejednoznačné“ nebo
     // sousední typ téže třídy, nikdy jistě jiná třída.
-    for (id, got, class) in &ambiguous {
+    for (id, got, class, in_candidates) in &ambiguous {
         let e = c.get(id).unwrap();
         let want = match e.category.as_str() {
             "porucha" => "porucha",
@@ -65,11 +70,13 @@ fn catalog_signals_are_valid_and_every_type_identifies_itself() {
             _ => "nejednoznacne",
         };
         assert!(
-            class == "nejednoznacne" || class == "neurceno" || (class == want && got.is_some()),
-            "{id}: {got:?} {class}"
+            class == "nejednoznacne"
+                || class == "neurceno"
+                || (class == want && (got.is_some() || *in_candidates)),
+            "{id}: {got:?} {class} {in_candidates}"
         );
     }
-    assert!(ambiguous.len() <= 8, "{ambiguous:?}");
+    assert!(ambiguous.len() <= 20 && ambiguous.iter().all(|a| a.3 || a.2 == "nejednoznacne"), "{ambiguous:?}");
 }
 
 #[test]

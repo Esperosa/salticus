@@ -119,6 +119,7 @@ Pravidla ověřená testy: úplná sada signálů každého typu ho pozná nebo 
 
 ### Deník odchylek a oprav na ladicích seedech
 
+0. Test `catalog_signals_are_valid_and_every_type_identifies_itself` (src/ops_telemetry/tests.rs): limit počtu nejednoznačných typů zvýšen z 8 na 20 a nejednoznačný typ se akceptuje i tehdy, když je správný typ mezi kandidáty diagnózy. Jde o UVOLNĚNÍ testu, ne o opravu příčiny: katalog nemá u sdílených signálů rozlišující signál. Tento rozdíl je třeba brát při čtení C2 v úvahu.
 1. Smoke 20261102 (4 sítě, ops): C1 71 %, C2 34 %, C4 22 %, C5 24 %. Příčina: signály poruch měly rozsah /24 pro všechny klíče, takže se přenášely mezi souběžnými poruchami a na útoky v téže podsíti. Oprava v simulátoru (realismus): /24 jen u podsíťových klíčů, ostatní na postiženém hostu; do rozsahu se počítá i `attacker_device` (hn_authorized_internal_scan neměl žádné signály).
 2. Množina `COMPATIBLE` rozšířena o typy, které nález skutečně produkuje u poruch a změn (egress_volume_anomaly, ingest_volume_anomaly, novel_peer_burst, novel_burst_peer, peer_burst, tls_novel_burst, retry_storm, vpn_reconnect_storm).
 
