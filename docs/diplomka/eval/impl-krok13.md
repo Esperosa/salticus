@@ -293,4 +293,88 @@ Závěr bodu 4: rozbor ukazuje tři příčiny a žádná se v tomto kroku neods
 | příčina FP v large | `slow_egress` (breadth); oprava `slow_fanin` v kódu, měření běží (k13m3) |
 | bod 4 | rozbor hotov, bez změny detektorů (důvody výše) |
 | katalog: verified, 24 generátorů, trojice, `catalog_id` v enginu | hotovo v kódu; UI, testy, B2/B3/B6 měření: viz níže |
-| držené seedy a souhrn | nezačato |
+| držené seedy a souhrn | hotovo, viz sekce na konci |
+
+## Držené seedy, LOFO a souhrn (2026-11-15)
+
+Kandidát `final` = `breadth,bulk_clear,strict_close,l7_tls,l7_dns,icmp_payload,slow_fanin,ops_annotate` (binárka k13f). Držené seedy 20265101 až 20265502, 8 sítí na seed, 80 sítí na rameno, párově (`base` x `final`), spuštěno jednou, bez úprav po pohledu na výsledek. Surové tabulky: `F:\claude-tmp\k13\matrix-held.md`, `mix-held.md`, `catalog-held.md`.
+
+### LOFO na ladicích seedech (k13m3, 5 seedů, 80 sítí, `c2` = celý kandidát)
+
+| odebraný prvek | detekce | FP na síť-den | omylem zavřené |
+|---|---|---|---|
+| `l7_tls` | -0,8 p. b. (-1,0 až -0,5) | poměr 0,996 | 0 |
+| `l7_dns` | -0,6 p. b. (-0,9 až -0,4) | 0,999 | 0 |
+| `icmp_payload` | -0,3 p. b. (-0,4 až -0,1) | 1,000 | 0 |
+
+Každý ze tří prvků detekci zvyšuje a FP nezvyšuje, proto zůstávají všechny. Ostatní prvky (`breadth`, `bulk_clear`, `strict_close`, `slow_fanin`, `ops_annotate`) mají zatím jen společné měření, LOFO pro ně neproběhlo.
+
+### Matice, držené seedy (H3 a B5)
+
+| ukazatel | základ | kandidát | rozdíl |
+|---|---:|---:|---|
+| zobrazené FP na síť-den (poměr součtů) | 12,04 | 12,73 | **poměr 1,058 (1,026 až 1,077)**, práh 1,15 splněn i horní mezí |
+| detekce bezpečnostních útoků | 83,9 | 86,9 | **+3,1 p. b. (+2,4 až +3,8)**, zlepšení u 10 z 10 seedů (min +0,9, max +5,1) |
+| omylem zavřené útoky | 30 z 5475 (0,55 %) | **0 z 5475**, horní mez Wilson 95 % 0,07 % | splněno |
+| hn_* zobrazeno (všech 8 hn rodin) | 62,8 | 64,4 | +1,6 p. b. (+0,5 až +2,6) |
+
+Po konfiguracích (FP poměr / detekce): small 1,044 / +3,9; medium 1,079 / +3,0; large 1,027 / +2,0; XXL a větší 1,001 / +2,5. Odchylka z ladicí sady (large 1,263) se na držených seedech neopakuje (large 1,027); oprava `slow_fanin` tedy zabrala. Čtyři držené hn rodiny (zobrazeno z pohledu útoku, nižší je lepší): hn_nightly_cloud_backup_upload 50,7 -> 54,9; hn_db_replication_bulk 82,5 -> 82,5; hn_monitoring_snmp_sweep 89,7 -> 91,2; hn_password_sync_periodic 91,8 -> 91,8. Neškodné rodiny se tedy zobrazují o něco častěji (cena za detekci), nikdy méně.
+
+Mix běhy (`--mix on`, 80 sítí, 8255 útoků): omylem zavřeno 0, horní mez 0,05 %.
+
+### Detekce po rodinách a rodiny pod 100 %
+
+Z 74 bezpečnostních rodin s n >= 20 je po kandidátu na 100 % jen 10, pod 100 % 64. Cíl „posun k 100 %“ **splněn není**: celková detekce 86,9 %. Největší zisky (základ -> kandidát): exfil_alt_protocol_ftp 5,0 -> 70,0; exfil_icmp_payload 52,5 -> 95,0; dns_zone_enum_burst 9,4 -> 59,4; drive_by_bulk_download 6,1 -> 51,5; bucket_mass_download 16,7 -> 50,0; ddos_dns_amplification 55 -> 85; exfil_https_burst 54,2 -> 79,2; cloud_api_discovery_burst 9,5 -> 28,6; exfil_cloud_storage_upload 10,7 -> 28,6; c2_dns_txt_beacon 57,1 -> 71,4. Zhoršení bez významnosti (interval obsahuje 0): http_slow_connections_dos 70,8 -> 62,5, snmp_sweep_ext 95 -> 90.
+
+Nejníž zůstávají: clicks_to_rare_destination 9,4; cloud_api_discovery_burst 28,6; exfil_cloud_storage_upload 28,6; bucket_mass_download 50,0; drive_by_bulk_download 51,5; dns_zone_enum_burst 59,4; http_slow_connections_dos 62,5; c2_cloud_storage_dead_drop 65,2; telnet_iot_login 65,2; exfil_alt_protocol_ftp 70,0; smb_sweep_ext 70,0.
+
+Důvody (rozbor bodu 4, nebylo laděno): (1) zhruba 44 % nedetekcí je ztráta telemetrie senzoru nebo žádné viditelné toky, mimo dosah detektorů; (2) nálezy detekované, ale nezobrazené (slití s dříve zobrazeným nálezem téhož klíče); jejich odstranění (`redisplay`) bylo v kroku 12 zamítnuto kvůli FP x2,69; (3) rodiny bez vlastního signálu (clicks_to_rare_destination, bucket, cloud-api, drive-by), kde by nový detektor byl ladění na testovací rodinu. U rodin s 65 až 70 % (c2_cloud_storage_dead_drop, telnet_iot_login, smb_sweep_ext) se příčina nezkoumala, zapsáno jako otevřená mezera, ne jako vysvětlení.
+
+### Mixy (dodatek A), držené seedy
+
+Nástroj `k13_mix.py` padal na trojicích (KeyError, očekával právě dvě role); opraveno tak, že A3 a A4 berou jen dvojice (role 0 a 1), A1, A2, A5 počítají i trojice.
+
+| práh | výsledek | verdikt |
+|---|---|---|
+| A1 složka nejméně 90 % relativně k téže rodině samotné | agregovaně relativně 1,18 (společná příčina), 1,01 (souběh), 1,21 (následek); po složkách propady: exfil_https_burst -13,6 p. b., ddos_syn_flood_distributed -13,2 a -17,8, dns_partial_failure -19,8, switch_outage_subnet -10,5, broadcast_storm_loop (dvojice 104) -22,5 | splněno po agregaci, **po složkách ne** (několik složek pokles > 10 p. b., část při malém n samostatně) |
+| A2 omylem zavřené = 0 | 0 z 2750 složek, zobrazeno 80,5 % (79,0 až 82,0) | splněno |
+| A3 čistota >= 80 % a >= 2 nálezy na incident | původní seskupení 45,0 % (24,8 nálezu na incident, tj. mega-skupiny); `incident_v2` 88,9 %, 2,86 nálezu na incident | splněno pro v2 (H2 na držených >= 70 % také) |
+| A4 chybné spojení <= 15 % | původní 21,2 %; v2 1,2 % | splněno pro v2 |
+| A4 rozdělení společné příčiny <= 30 % | původní 64,5 %; v2 83,9 % (26 z 31) | **nesplněno**: v2 správně neslučuje souběh, ale společnou příčinu a následek rozděluje; čistota 88,9 % je zčásti dosažena roztříštěním |
+| A5 správná kategorie >= 85 % (držené) | 54,0 % (51,9 až 56,0) | **nesplněno**. Útoky 74 až 100 %, poruchy a neškodné změny 0 až 30 % (např. hn_cdn_update_download 0,0, planned_maintenance_window 3,2, dns_partial_failure 29,0) |
+
+### Katalog (dodatek B), mix běhy
+
+| práh | výsledek | verdikt |
+|---|---|---|
+| B1 pokrytí | 75 typů, všech 75 s generátorem | splněno (dříve) |
+| B2 správná kategorie >= 85 % | útok 97,5 % z 91 171 nálezů; porucha 5,0 % (21 530), neškodná změna 0,4 % (6 941), nejednoznačné 1,7 % (2 697) | **nesplněno u všeho kromě útoků** |
+| B3 maskovaná porucha zařazená jako útok <= 10 % | poruchy a změny jsou zařazeny jako útok v 94,7 % a 96,8 % | **nesplněno** (opačný směr, útok maskovaný jako porucha, tento nástroj neměří) |
+| B4 žádná porucha zavřená jen proto, že není útok | samostatně neměřeno; omylem zavřené = 0 platí pro útoky | nedoloženo |
+| B5 FP <= 1,15 a omylem zavřené = 0 | 1,058; 0 (horní mez 0,07 %) | splněno |
+| B6 správný catalog_id u typů s generátorem >= 80 % | 0,7 % z 31 168 nálezů (běh final 0,0 %) | **nesplněno** |
+
+Příčina: `incident_catalog::suggest` dává `porucha` jen tehdy, když nález nese provozní důkaz (E1 až E3). Simulované poruchy ho nesou v asi 5 % případů, ostatní jdou jako `utok|-`. Mapování je dle zadání hrubé; výsledek ukazuje, že pro poruchy a změny nefunguje a UI údaj „pravděpodobná příčina“ by tam byl chybně útokový. Katalog proto zatím slouží jako dokumentace a pro útoky (97,5 %), ne jako klasifikátor provozních incidentů. Oprava vyžaduje další provozní důkazy v enginu (DHCP, ARP, SNMP, syslog) a je mimo tento krok.
+
+### Determinismus
+
+`soak verify --samples 5` na bloku kandidáta (k13f, běh final-20265101): 4/4 bloky bit po bitu shodné.
+
+### Návrh `recommended()` (neprovedeno, ke schválení)
+
+Návrh: přidat do `EngineConfig::recommended()` přepínače `breadth, bulk_clear, strict_close, l7_tls, l7_dns, icmp_payload, slow_fanin` a rozhodnout o `ops_annotate`. Důkaz pro celou měřenou sadu osmi: držené seedy, 80 sítí, detekce +3,1 p. b. (+2,4 až +3,8), 10 z 10 seedů; FP poměr 1,058 (horní mez 1,077 < 1,15); omylem zavřené 0 z 5475 (horní mez 0,07 %), základ 0,55 %; LOFO potvrzuje l7_tls, l7_dns, icmp_payload. Výhrady: (a) `ops_annotate` nemá doložený přínos pro detekci a jeho klasifikace nesplnila B2 ani B6; (b) LOFO pro `breadth`, `bulk_clear`, `strict_close`, `slow_fanin` neproběhlo, příspěvek je změřen jen společně. Přesně měřená varianta je všech osm přepínačů; sedm bez `ops_annotate` je neměřená kombinace a před přijetím vyžaduje jeden párový běh na ladicích seedech. Do kódu se nic nemění, dokud to uživatel neschválí.
+
+## Souhrn kroku 13 podle předregistrace
+
+| práh | verdikt |
+|---|---|
+| H1 kalibrace | částečně (bod 1; nepokryté veličiny zapsány jako nekalibrované) |
+| H2 čistota seskupení >= 80 % ladicí, >= 70 % držené | splněno (88,9 % na držených mixech); cíl 90 % ze zadání ne |
+| H3 stráže (0 zavřených, FP <= 1,15, hn_* zvlášť) | splněno na držených; ladicí large 1,263 opraveno (držené 1,027) |
+| H4 reálné přehrání | splněno kvalitativně (bod 2) |
+| posun k 100 % | **nesplněno** (86,9 %, 64 z 74 rodin pod 100 %) |
+| A1 (agregát), A2, A3, A4 (spojení) | splněno (A1 po složkách s propady) |
+| A4 rozdělení, A5 | **nesplněno** (83,9 % a 54,0 %) |
+| B1, B5 | splněno |
+| B2, B3, B6 | **nesplněno** (poruchy 5 %, catalog_id 0,7 %) |
+| B4 | nedoloženo |

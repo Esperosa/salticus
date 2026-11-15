@@ -216,7 +216,7 @@ def main():
                         for l, m in lab_mix.items():
                             by_inc[m["incident"]][m["role"]] = (l, m["relation"])
                         for inc, roles in by_inc.items():
-                            if len(roles) != 2:
+                            if set(roles) != {0, 1}:
                                 continue
                             (la, rel), (lb, _) = roles[0], roles[1]
                             ia = [i for i, e in enumerate(ev) if e["label"] == la]
