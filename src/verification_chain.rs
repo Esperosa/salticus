@@ -37,6 +37,8 @@ pub enum CheckKind {
     ConfigContext,
     RepeatMeasure,
     ActiveReadOnly,
+    /// Krok 14: provozní telemetrie (SNMP, syslog, DHCP, DNS, NTP, probes): důkaz hypotézy „porucha“.
+    OpsTelemetry,
 }
 
 /// Zdroj dat kontroly: důkazy ze stejné skupiny nejsou nezávislé.
@@ -55,10 +57,12 @@ pub enum Group {
     Context,
     /// Aktivní čtecí ověření.
     Active,
+    /// Provozní telemetrie (krok 14).
+    Ops,
 }
 
 impl CheckKind {
-    pub const ALL: [CheckKind; 12] = [
+    pub const ALL: [CheckKind; 13] = [
         CheckKind::DnsPivot,
         CheckKind::TlsFingerprint,
         CheckKind::Timing,
@@ -71,6 +75,7 @@ impl CheckKind {
         CheckKind::ConfigContext,
         CheckKind::RepeatMeasure,
         CheckKind::ActiveReadOnly,
+        CheckKind::OpsTelemetry,
     ];
 
     pub fn group(self) -> Group {
@@ -86,6 +91,7 @@ impl CheckKind {
             CheckKind::EndpointTelemetry => Group::Endpoint,
             CheckKind::ConfigContext => Group::Context,
             CheckKind::ActiveReadOnly => Group::Active,
+            CheckKind::OpsTelemetry => Group::Ops,
         }
     }
 
@@ -99,6 +105,7 @@ impl CheckKind {
             CheckKind::EndpointTelemetry => (0.15, false),
             CheckKind::RepeatMeasure => (0.3, false),
             CheckKind::ActiveReadOnly => (0.6, true),
+            CheckKind::OpsTelemetry => (0.1, false),
         }
     }
 
@@ -114,6 +121,7 @@ impl CheckKind {
             CheckKind::ConfigContext => 1.3,
             CheckKind::RepeatMeasure => 1.1,
             CheckKind::ActiveReadOnly => 2.0,
+            CheckKind::OpsTelemetry => 1.5,
         }
     }
 }
@@ -311,7 +319,7 @@ mod tests {
         let a = assess(&obs, &policy);
         assert!((a.posterior - policy.prior).abs() < 1e-9);
         assert!(matches!(a.verdict, Verdict::Undetermined(_)));
-        assert_eq!(a.no_data, 12);
+        assert_eq!(a.no_data, 13);
     }
 
     #[test]

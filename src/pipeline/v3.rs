@@ -63,6 +63,8 @@ struct ProdEvidence<'a> {
     )>,
     /// Koncová telemetrie běhu (krok 8); `None` = vypnuto.
     endpoint: Option<&'a crate::endpoint::correlate::EndpointView>,
+    /// Provozní telemetrie běhu (krok 14, C2); `None` = vypnuto.
+    ops: Option<&'a crate::ops_telemetry::OpsStore>,
 }
 
 impl crate::verify_ladder::LadderEvidence for ProdEvidence<'_> {
@@ -192,6 +194,21 @@ impl crate::verify_ladder::LadderEvidence for ProdEvidence<'_> {
                 .copied()
         });
         case_verdict(profiles, policy, case, group, self.now.timestamp())
+    }
+
+    fn ops(&self, case: &crate::verify_ladder::CaseInput) -> Option<crate::ops_telemetry::OpsDiagnosis> {
+        let store = self.ops?;
+        let mut ips: Vec<String> = vec![case.host_ip.clone()];
+        ips.extend(case.sources.iter().take(8).cloned());
+        Some(crate::ops_telemetry::diagnose(
+            crate::ops_telemetry::Index::shared(),
+            store,
+            &case.finding_type,
+            &ips,
+            false,
+            self.now.timestamp(),
+            &crate::ops_telemetry::DiagPolicy::default(),
+        ))
     }
 
     fn endpoint(
@@ -420,6 +437,12 @@ impl V3Session {
         } else {
             None
         };
+        // krok 14 (C2): provozni telemetrie pro zebricek (sklad z ulozeni)
+        let ops_ladder_store = if self.engine.ops_telemetry() {
+            Some(crate::ops_telemetry::persist::load_store(self.store.conn(), now)?)
+        } else {
+            None
+        };
         if !self.engine.memory() {
             report.coverage_status = Some(self.coverage(report, &mut behavior_state, false, now));
             if self.engine.behavior() {
@@ -507,6 +530,7 @@ impl V3Session {
                         strict_refute: self.engine.strict_close(),
                         competing: self.engine.hypotheses(),
                         l7: self.engine.l7_ladder(),
+                        ops: self.engine.ops_telemetry(),
                         ..Default::default()
                     },
                     u64::from_le_bytes(
@@ -535,6 +559,7 @@ impl V3Session {
         // krok 7 (A1): chranene pripady se nevyvraci (plati i pro ulozeny zebrik)
         ladder.policy.protect = self.engine.protect();
         ladder.policy.endpoint = self.engine.endpoint();
+        ladder.policy.ops = self.engine.ops_telemetry();
         if self.engine.protect() {
             let reset = ladder.reset_forbidden_novelty_evidence();
             if reset > 0 {
@@ -758,6 +783,7 @@ impl V3Session {
                     .profile()
                     .then_some((&behavior_state.profile, &profile_policy)),
                 endpoint: endpoint_view.as_ref(),
+                ops: ops_ladder_store.as_ref(),
             };
             let decisions = ladder.step(cycle, &mut env);
             for decision in &decisions {

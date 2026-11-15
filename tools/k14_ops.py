@@ -58,6 +58,7 @@ def main():
     c1 = [0, 0]
     c2_tel = [0, 0]
     c2_all = [0, 0]
+    c2b = [0, 0]  # správný typ je mezi kandidáty (dvojice nerozlišitelných typů), telemetrie doručena
     c3 = collections.Counter()  # nálezy bez doručené telemetrie
     c4 = collections.Counter()  # útoky: třída nálezů
     c4_ev = [0, 0]
@@ -86,13 +87,16 @@ def main():
                         continue
                     classes = collections.Counter()
                     for key, n in cm.items():
-                        cls, cid = key.split("|")
+                        parts = key.split("|")
+                        cls, cid = parts[0], parts[1]
+                        cands = parts[2].split("+") if len(parts) > 2 and parts[2] else []
                         classes[cls] += n
                         if want in ("porucha", "zmena", "nejednoznacne"):
                             t = by_type[fam]
                             t["n"] += n
                             t["cls_ok"] += n if cls == want else 0
                             t["id_ok"] += n if cid == wid else 0
+                            t["cand_ok"] += n if (cid == wid or wid in cands) else 0
                             t["neurceno"] += n if cls == "neurceno" else 0
                             t["sig"] += n if sig > 0 else 0
                     ntot = sum(classes.values())
@@ -106,6 +110,8 @@ def main():
                         if sig > 0:
                             c2_tel[1] += ntot
                             c2_tel[0] += sum(n for k, n in cm.items() if k.split("|")[1] == wid)
+                            c2b[1] += ntot
+                            c2b[0] += sum(n for k, n in cm.items() if k.split("|")[1] == wid or wid in (k.split("|")[2].split("+") if len(k.split("|")) > 2 else []))
                             unk["tel_n"] += ntot
                             unk["tel_neurceno"] += classes["neurceno"]
                         else:
@@ -128,7 +134,7 @@ def main():
                         c4_ev[0] += int((classes["porucha"] + classes["zmena"]) * 2 > ntot)
     lines = ["## Krok 14, část C2: klasifikace podle provozní telemetrie", ""]
     lines.append(f"- C1 správná třída `porucha` u nálezů z poruch: {pct(*c1)} (cíl >= 85 %)")
-    lines.append(f"- C2 správné `catalog_id`, telemetrie doručena: {pct(*c2_tel)} (cíl >= 80 %); všechny nálezy poruch: {pct(*c2_all)}")
+    lines.append(f"- C2 správné `catalog_id`, telemetrie doručena: {pct(*c2_tel)} (cíl >= 80 %); všechny nálezy poruch: {pct(*c2_all)}; správný typ mezi kandidáty (typy bez rozlišujícího signálu): {pct(*c2b)}")
     n = c3["n"]
     lines.append(
         f"- C3 nálezy poruch bez doručené telemetrie: {n}; hlášeno „nelze určit“ {pct(c3['neurceno'], n)} (cíl >= 90 %), "

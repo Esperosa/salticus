@@ -141,6 +141,9 @@ impl Likelihoods {
         tables.insert(CheckKind::EndpointTelemetry, t(0.117, 0.000, 0.072, 0.006));
         tables.insert(CheckKind::RepeatMeasure, t(0.259, 0.000, 0.247, 0.000));
         tables.insert(CheckKind::ActiveReadOnly, t(0.499, 0.008, 0.051, 0.128));
+        // krok 14: provozní telemetrie dává výsledek „neškodný“ jen jako shodu s typem poruchy nebo
+        // změny v katalogu (nikdy „podezřelý"); četnosti z ladicího běhu k14 (impl-krok14.md)
+        tables.insert(CheckKind::OpsTelemetry, t(0.0, 0.065, 0.0, 0.70));
         // kontroly bez měření v kroku 12: neutrální tabulka (poměr 1), váha 0
         for kind in CheckKind::ALL {
             tables.entry(kind).or_insert_with(|| t(0.1, 0.1, 0.1, 0.1));

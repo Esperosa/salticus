@@ -133,6 +133,12 @@ pub struct SoakEvidence<'a> {
     pub endpoint: Option<&'a crate::endpoint::correlate::EndpointView>,
     /// Krok 12: pohled na TLS a DNS metadata okna; `None` = vypnuto.
     pub l7: Option<&'a crate::behavior::l7::View>,
+    /// Krok 14 (C2): provozní telemetrie (sklad, prahy, čas); `None` = vypnuto.
+    pub ops: Option<(
+        &'a crate::ops_telemetry::OpsStore,
+        &'a crate::ops_telemetry::DiagPolicy,
+        i64,
+    )>,
 }
 
 impl LadderEvidence for SoakEvidence<'_> {
@@ -267,6 +273,21 @@ impl LadderEvidence for SoakEvidence<'_> {
             Some(view) => view.signal(&case.host_ip),
             None => crate::behavior::l7::L7Signal::NoCoverage("metadata vypnuta".into()),
         }
+    }
+
+    fn ops(&self, case: &CaseInput) -> Option<crate::ops_telemetry::OpsDiagnosis> {
+        let (store, policy, now) = self.ops?;
+        let mut ips: Vec<String> = vec![case.host_ip.clone()];
+        ips.extend(case.sources.iter().take(8).cloned());
+        Some(crate::ops_telemetry::diagnose(
+            crate::ops_telemetry::Index::shared(),
+            store,
+            &case.finding_type,
+            &ips,
+            false,
+            now,
+            policy,
+        ))
     }
 
     fn endpoint(&self, case: &CaseInput) -> crate::endpoint::correlate::EndpointSignal {

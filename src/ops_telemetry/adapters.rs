@@ -11,15 +11,21 @@ use super::OpsSignal;
 
 pub const MAX_LINE: usize = 8 * 1024;
 
-/// Prahy převodu veličiny na signál (z dokumentace nástrojů; viz studie 14-provozni-telemetrie).
+/// Prahy převodu veličiny na signál. Zdroje (studie 14-provozni-telemetrie, řádky extrakce P14-xxx):
+/// Zabbix šablony `{$IF.ERRORS.WARN}` = 2 a `{$IF.UTIL.MAX}` = 95 (P14-031), komunitní pravidla
+/// Prometheus: chyby rozhraní > 1 % paketů, využití > 80 % (P14-023, komunitní výchozí hodnoty, ne
+/// norma); NTP STEPT 125 ms (RFC 5905, P14-011); Kerberos toleruje typicky 5 minut (P14-014).
+/// Prahy jsou volba autora podložená těmito zdroji a měří se citlivostní analýzou, ne předpokládají.
 pub mod thresholds {
     /// Zaplnění CPU, paměti, disku v procentech (Zabbix triggery a node_exporter pravidla: 90 %).
     pub const UTIL_PCT: f64 = 90.0;
-    /// Využití DHCP poolu v procentech (ISC dhcpd, Kea statistiky: 95 %).
+    /// Využití linky v procentech: komunitní Prometheus 80 % (Zabbix 95 %).
+    pub const IF_UTIL_PCT: f64 = 80.0;
+    /// Využití DHCP poolu v procentech (volba autora; ISC dhcpd a Kea mají čítače, ne práh).
     pub const DHCP_POOL_PCT: f64 = 95.0;
-    /// Offset hodin v sekundách, od kterého Kerberos selhává (výchozí tolerance 300 s).
-    pub const NTP_OFFSET_S: f64 = 0.128;
-    /// Chyby rozhraní za sekundu (EtherLike-MIB / IF-MIB, jakákoli trvalá nenula je porucha média).
+    /// Offset hodin v sekundách: NTP STEPT 125 ms (RFC 5905).
+    pub const NTP_OFFSET_S: f64 = 0.125;
+    /// Chyby rozhraní za sekundu (jakákoli trvalá nenula u média je porucha; Zabbix WARN = 2).
     pub const IF_ERR_RATE: f64 = 0.1;
 }
 
@@ -180,7 +186,7 @@ pub fn metric_signal(name: &str, value: f64, at: i64, scope: &str) -> Option<Ops
     } else if n.contains("ifoutdiscards") {
         (value >= thresholds::IF_ERR_RATE).then_some("if_out_discards")
     } else if n.contains("util") && n.contains("if") {
-        (value >= 80.0).then_some("if_util_high")
+        (value >= thresholds::IF_UTIL_PCT).then_some("if_util_high")
     } else if n.contains("cpu") {
         (value >= t).then_some("cpu_high")
     } else if n.contains("iowait") || n.contains("io_wait") {

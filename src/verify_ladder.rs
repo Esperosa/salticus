@@ -95,6 +95,9 @@ pub enum CheckId {
     Endpoint,
     /// Krok 12: TLS a DNS metadata hosta (novy cil, otisk klienta, certifikat).
     L7,
+    /// Krok 14: provozní telemetrie (SNMP, syslog, DHCP, DNS, NTP, probes): shoda s typem poruchy
+    /// nebo změny z katalogu je důkaz hypotézy „porucha“, nikdy sama nezavře nález.
+    Ops,
 }
 
 impl CheckId {
@@ -106,7 +109,8 @@ impl CheckId {
             | CheckId::Intel
             | CheckId::DeviceProfile
             | CheckId::Endpoint
-            | CheckId::L7 => Level::L1,
+            | CheckId::L7
+            | CheckId::Ops => Level::L1,
             CheckId::Peers | CheckId::Persistence => Level::L2,
             CheckId::Liveness => Level::L3,
             CheckId::Pivot => Level::L4,
@@ -127,6 +131,7 @@ impl CheckId {
             CheckId::Profile => "profile",
             CheckId::Endpoint => "endpoint",
             CheckId::L7 => "l7",
+            CheckId::Ops => "ops",
         }
     }
 }
@@ -402,6 +407,8 @@ pub struct LrTable {
     /// Krok 12: TLS a DNS metadata: novy cil s druhym rysem, znamy cil a otisk.
     pub l7_suspicious: f64,
     pub l7_benign: f64,
+    /// Krok 14: shoda signálů s typem poruchy nebo změny z katalogu (slabý důkaz, sám nevyvrací).
+    pub ops_fault: f64,
 }
 
 impl Default for LrTable {
@@ -430,6 +437,7 @@ impl Default for LrTable {
             endpoint_allow: 0.05,
             l7_suspicious: 3.0,
             l7_benign: 0.6,
+            ops_fault: 0.5,
         }
     }
 }
@@ -473,6 +481,8 @@ pub struct LadderPolicy {
     pub competing: bool,
     /// Krok 12: kontrola TLS a DNS metadat v planu.
     pub l7: bool,
+    /// Krok 14: kontrola provozní telemetrie v plánu.
+    pub ops: bool,
     pub costs: crate::competing::Costs,
 }
 
@@ -497,6 +507,7 @@ impl Default for LadderPolicy {
             strict_refute: false,
             competing: false,
             l7: false,
+            ops: false,
             costs: crate::competing::Costs::default(),
             protect: false,
             endpoint: false,
@@ -537,6 +548,11 @@ pub trait LadderEvidence {
         crate::endpoint::correlate::EndpointSignal::NoCoverage("koncova telemetrie neni".into())
     }
     /// Krok 12: signal z TLS a DNS metadat; vychozi = bez pokryti.
+    /// Krok 14: diagnóza případu podle provozní telemetrie (`None` = telemetrie není připojena).
+    fn ops(&self, _case: &CaseInput) -> Option<crate::ops_telemetry::OpsDiagnosis> {
+        None
+    }
+
     fn l7(&self, _case: &CaseInput) -> crate::behavior::l7::L7Signal {
         crate::behavior::l7::L7Signal::NoCoverage("metadata TLS a DNS nejsou".into())
     }
@@ -605,6 +621,9 @@ fn checks_for(input: &CaseInput, policy: &LadderPolicy) -> Vec<CheckId> {
     }
     if policy.l7 {
         checks.push(CheckId::L7);
+    }
+    if policy.ops {
+        checks.push(CheckId::Ops);
     }
     if !input.sources.is_empty() {
         checks.push(CheckId::Reputation);
@@ -737,6 +756,7 @@ pub fn competing_kind(check: CheckId) -> Option<crate::verification_chain::Check
         CheckId::Reputation => Some(K::Reputation),
         CheckId::Endpoint => Some(K::EndpointTelemetry),
         CheckId::L7 => Some(K::TlsFingerprint),
+        CheckId::Ops => Some(K::OpsTelemetry),
         CheckId::Persistence => Some(K::RepeatMeasure),
         CheckId::Liveness => Some(K::ActiveReadOnly),
         _ => None,
@@ -1185,7 +1205,7 @@ impl Ladder {
                 case.wait_until = Some(*until);
                 return None; // kontrola zustava v planu, vrati se po cekani
             }
-            Outcome::Evidence { lr, .. } => {
+            Outcome::Evidence { lr, detail } => {
                 let lr = match &self.learner {
                     Some(learner) => learner.lr(check, tag, *lr),
                     None => *lr,
@@ -1212,6 +1232,11 @@ impl Ladder {
                     case.benign_evidence = true;
                     if let Some(group) = benign_group(check) {
                         case.benign_groups.insert(group);
+                    }
+                    // krok 14: seznam povolenych je schvaleni vlastnikem (kontext, skupina 1)
+                    // potvrzene pozorovanym procesem (koncova telemetrie, skupina 4): dve skupiny
+                    if check == CheckId::Endpoint && detail.starts_with("seznam povolenych") {
+                        case.benign_groups.insert(1);
                     }
                 }
             }
@@ -1244,7 +1269,7 @@ impl Ladder {
             // vytlacila posledni kontrolu planu a zmenila rozhodnuti i bez dukazu)
             .filter(|s| {
                 !matches!(s.outcome, Outcome::Unavailable(_))
-                    && !(s.check == CheckId::Endpoint
+                    && !(matches!(s.check, CheckId::Endpoint | CheckId::Ops)
                         && matches!(s.outcome, Outcome::Undetermined(_)))
             })
             .count();
@@ -1444,6 +1469,28 @@ fn evaluate(
                 EndpointSignal::NoCoverage(why) => Outcome::Unavailable(why),
             }
         }
+        CheckId::Ops => match env.ops(input) {
+            // chráněný nález: provozní vysvětlení není důkaz neškodnosti
+            Some(d) if policy.protect && input.is_protected() => {
+                let _ = d;
+                Outcome::Undetermined("chraneny nalez: provozni telemetrie neni dukaz neskodnosti".into())
+            }
+            Some(d) if matches!(d.class.as_str(), "porucha" | "zmena") && d.catalog_id.is_some() => {
+                Outcome::Evidence {
+                    lr: lr.ops_fault,
+                    detail: format!(
+                        "provozni telemetrie: {} ({}), signaly {}",
+                        d.catalog_id.as_deref().unwrap_or("-"),
+                        d.class,
+                        d.evidence.join(", ")
+                    ),
+                }
+            }
+            // chybí telemetrie, o které by šlo rozhodnout: nedostupné, ne neškodné
+            Some(d) if d.class == "neurceno" => Outcome::Unavailable(d.reason),
+            Some(_) => Outcome::Undetermined("bez provozniho dukazu".into()),
+            None => Outcome::Unavailable("provozni telemetrie neni".into()),
+        },
         CheckId::L7 => {
             use crate::behavior::l7::L7Signal;
             match env.l7(input) {
@@ -1716,6 +1763,7 @@ mod tests {
         kev: bool,
         profile: Option<crate::behavior::profile::ProfileVerdict>,
         endpoint: Option<crate::endpoint::correlate::EndpointSignal>,
+        ops: Option<crate::ops_telemetry::OpsDiagnosis>,
     }
 
     impl LadderEvidence for Env {
@@ -1765,6 +1813,9 @@ mod tests {
                 .unwrap_or(crate::behavior::profile::ProfileVerdict::Unknown(
                     "test".into(),
                 ))
+        }
+        fn ops(&self, _: &CaseInput) -> Option<crate::ops_telemetry::OpsDiagnosis> {
+            self.ops.clone()
         }
         fn endpoint(&self, _: &CaseInput) -> crate::endpoint::correlate::EndpointSignal {
             self.endpoint
@@ -2389,5 +2440,109 @@ mod tests {
         assert!(learner.lr(CheckId::History, "benign", 0.25) <= 1.0);
         learner.exclude("operator:mallory");
         assert!((learner.lr(CheckId::History, "benign", 0.25) - lr).abs() < 1e-12);
+    }
+
+    fn ops_diag(class: &str, id: Option<&str>) -> crate::ops_telemetry::OpsDiagnosis {
+        crate::ops_telemetry::OpsDiagnosis {
+            class: class.into(),
+            catalog_id: id.map(str::to_string),
+            score: 0.9,
+            margin: 0.5,
+            evidence: vec!["if_oper_down".into()],
+            alternatives: vec![],
+            missing: vec!["snmp".into()],
+            reason: "nelze urcit, chybi telemetrie: snmp".into(),
+            explains_partly: false,
+            root: None,
+            candidates: vec![],
+        }
+    }
+
+    fn ops_policy() -> LadderPolicy {
+        LadderPolicy {
+            ops: true,
+            protect: true,
+            ..Default::default()
+        }
+    }
+
+    /// Krok 14 (C2): shoda s poruchou je dukaz, ale sama nikdy nezavre nalez
+    /// (porucha se nezavira jen proto, ze neni utok; dokaz vyvraceni potrebuje dalsi skupiny).
+    #[test]
+    fn ops_fault_evidence_is_recorded_but_never_refutes_alone() {
+        let mut env = Env {
+            ops: Some(ops_diag("porucha", Some("OPS-001"))),
+            ..Env::default()
+        };
+        let d = decide(ops_policy(), "service_unreachable", &mut env);
+        assert_ne!(d.status, Status::Refuted, "{}", d.reason);
+        assert!(d.steps.iter().any(|(c, t)| *c == CheckId::Ops && *t == "benign"), "{:?}", d.steps);
+    }
+
+    /// Chybejici telemetrie je nedostupna (nic neznamena), neurceny nebo bez dukazu se neuzna.
+    #[test]
+    fn ops_missing_telemetry_is_unavailable_not_benign() {
+        for diag in [Some(ops_diag("neurceno", None)), None] {
+            let mut env = Env {
+                ops: diag,
+                ..Env::default()
+            };
+            let d = decide(ops_policy(), "service_unreachable", &mut env);
+            assert_ne!(d.status, Status::Refuted, "{}", d.reason);
+            assert!(
+                d.steps.iter().any(|(c, t)| *c == CheckId::Ops && *t == "unavailable"),
+                "{:?}",
+                d.steps
+            );
+        }
+        // vypnuta kontrola v planu neni
+        let mut env = Env::default();
+        let d = decide(LadderPolicy::default(), "service_unreachable", &mut env);
+        assert!(!d.steps.iter().any(|(c, _)| *c == CheckId::Ops));
+    }
+
+    /// Chraneny nalez: provozni vysvetleni neni dukaz neskodnosti.
+    #[test]
+    fn ops_evidence_never_helps_protected_case() {
+        let mut env = Env {
+            ops: Some(ops_diag("porucha", Some("OPS-001"))),
+            recurrence: Some(Recurrence::Seen { days: 9 }),
+            peers: Some((5, 6)),
+            ..Env::default()
+        };
+        let d = decide(ops_policy(), "suricata_alert", &mut env);
+        assert_ne!(d.status, Status::Refuted, "{}", d.reason);
+        assert!(!d.steps.iter().any(|(c, t)| *c == CheckId::Ops && *t == "benign"));
+    }
+
+    /// Krok 14: proces ze seznamu povolenych (schvaleni vlastnikem + potvrzeni procesem) jsou dve
+    /// nezavisle skupiny, stoji za vyvracenim i pri `strict_refute`; u chraneneho nalezu nikdy.
+    #[test]
+    fn allowlisted_process_refutes_under_strict_close_but_never_protected() {
+        use crate::endpoint::correlate::EndpointSignal;
+        let strict = LadderPolicy {
+            endpoint: true,
+            protect: true,
+            strict_refute: true,
+            ..Default::default()
+        };
+        let mk = || Env {
+            endpoint: Some(EndpointSignal::Allowed("a: veeamagent.exe (vlastnik sprava-it, do 1)".into())),
+            ..Env::default()
+        };
+        let d = decide(strict.clone(), "inductive_volume_anomaly", &mut mk());
+        assert_eq!(d.status, Status::Refuted, "{}", d.reason);
+        // totez s bezny neskodnym vzorem (bez seznamu) jedna skupina nestaci
+        let benign = Env {
+            endpoint: Some(EndpointSignal::Benign("podepsany updater".into())),
+            ..Env::default()
+        };
+        let mut benign = benign;
+        let d2 = decide(strict.clone(), "inductive_volume_anomaly", &mut benign);
+        assert_ne!(d2.status, Status::Refuted, "{}", d2.reason);
+        for kind in ["suricata_alert", "novel_persistent_peer", "endpoint_alert"] {
+            let d3 = decide(strict.clone(), kind, &mut mk());
+            assert_ne!(d3.status, Status::Refuted, "{kind}: {}", d3.reason);
+        }
     }
 }

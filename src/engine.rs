@@ -182,6 +182,11 @@ pub struct V3Features {
     /// a seznam povolených s vlastníkem a expirací jako pozitivní důkaz neškodnosti. Vyžaduje `endpoint`.
     #[serde(default)]
     pub endpoint_ext: bool,
+    /// Krok 14 (A): seznam povolených (hash, podpis, výrobce, protistrana, vlastník, expirace) jako
+    /// pozitivní důkaz neškodnosti v žebříčku. Vyžaduje `endpoint_ext`. Měření: bez prokázaného
+    /// přínosu a s rizikem při lhoucím agentu, proto jen volitelně.
+    #[serde(default)]
+    pub endpoint_allow: bool,
     /// Krok 11: sken vnejsiho zdroje s mene cili, ale bez jedineho uspechu (`scan_attempts`).
     #[serde(default)]
     pub scan_fresh: bool,
@@ -194,7 +199,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 46] = [
+    pub const NAMES: [&'static str; 47] = [
         "memory",
         "rate",
         "volume",
@@ -241,6 +246,7 @@ impl V3Features {
         "redisplay_age",
         "ops_telemetry",
         "endpoint_ext",
+        "endpoint_allow",
     ];
 
     pub fn all() -> Self {
@@ -291,6 +297,7 @@ impl V3Features {
             redisplay_age: true,
             ops_telemetry: true,
             endpoint_ext: true,
+            endpoint_allow: true,
         }
     }
 
@@ -349,6 +356,7 @@ impl V3Features {
             redisplay_age: false,
             ops_telemetry: false,
             endpoint_ext: false,
+            endpoint_allow: false,
             ..Self::all()
         }
     }
@@ -410,6 +418,7 @@ impl V3Features {
             redisplay_age: false,
             ops_telemetry: false,
             endpoint_ext: false,
+            endpoint_allow: false,
         }
     }
 
@@ -485,6 +494,7 @@ impl V3Features {
             "redisplay_age" => &mut self.redisplay_age,
             "ops_telemetry" => &mut self.ops_telemetry,
             "endpoint_ext" => &mut self.endpoint_ext,
+            "endpoint_allow" => &mut self.endpoint_allow,
             _ => return None,
         })
     }
@@ -666,6 +676,9 @@ impl EngineConfig {
     pub fn strict_close(&self) -> bool {
         self.on(|f| f.strict_close)
     }
+    pub fn endpoint_allow(&self) -> bool {
+        self.endpoint_ext() && self.on(|f| f.endpoint_allow)
+    }
     pub fn endpoint_ext(&self) -> bool {
         self.on(|f| f.endpoint_ext && f.endpoint && f.protect && f.memory)
     }
@@ -772,7 +785,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext+endpoint_allow]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,

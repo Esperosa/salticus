@@ -324,6 +324,9 @@ pub struct OpsDiagnosis {
     /// ve stejném okně mají společný kořen (seskupení incidentů).
     #[serde(default)]
     pub root: Option<String>,
+    /// Typy katalogu, mezi kterými signály nerozliší (nejvýš 3; při jasné shodě jen `catalog_id`).
+    #[serde(default)]
+    pub candidates: Vec<String>,
 }
 
 impl OpsDiagnosis {
@@ -339,6 +342,7 @@ impl OpsDiagnosis {
             reason: reason.to_string(),
             explains_partly: false,
             root: None,
+            candidates: Vec::new(),
         }
     }
 }
@@ -549,11 +553,18 @@ pub fn diagnose(
     if d.margin < policy.min_margin {
         // dva typy se signály téměř neliší: třída zůstává, přesný typ ne
         d.reason = "více typů s podobnou shodou".into();
+        d.candidates = ranked
+            .iter()
+            .take(3)
+            .filter(|r| best.0 - r.0 < policy.min_margin)
+            .map(|r| r.1.to_string())
+            .collect();
         let same = ranked.iter().take(2).all(|r| r.2 == best.2);
         if !same {
             d.class = "nejednoznacne".into();
         }
-        d.catalog_id = if same { d.catalog_id } else { None };
+        // dva typy bez rozlišujícího signálu: typ se neurčuje, kandidáti jsou v `candidates`
+        d.catalog_id = None;
         return d;
     }
     d.reason = "shoda signálů s typem katalogu".into();

@@ -89,6 +89,7 @@ impl V3Runtime {
                     strict_refute: engine.strict_close(),
                     competing: engine.hypotheses(),
                     l7: engine.l7_ladder(),
+                    ops: engine.ops_telemetry(),
                     ..Default::default()
                 },
                 secret,

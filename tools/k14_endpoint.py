@@ -49,6 +49,10 @@ def extra_stats(row):
         "ep_events": k7.get("endpoint_events_total", 0),
         "ep_bytes": k7.get("endpoint_bytes_total", 0),
         "ep_hosts": row.get("devices", 0) or 0,
+        "refuted": o.get("ladder_refuted", 0),
+        "refuted_wrong": o.get("ladder_refuted_wrong_cf", 0),
+        "closures": o.get("auto_closures", 0),
+        "closures_wrong": o.get("auto_closures_wrong_cf", 0),
         "lat_sum": o.get("ladder_latency_sum", 0),
         "lat_n": o.get("ladder_cases", 0),
         "shown": o.get("displayed", 0),
@@ -122,6 +126,12 @@ def main():
     events_total = sum(e["ep_events"] for e in eb)
     per = bytes_total / host_days if host_days else float("nan")
     out.append(f"| A9 objem endpointových dat na host a den | - | {km.fmt(per / 1024, d=1)} KiB ({events_total} událostí) | - | <= 5 MiB |")
+    # A6: podíl případů žebříku rozhodnutých autonomně (vyvráceno) a horní mez chyby (kontrafaktuální pravda)
+    for lab, es in (("základ", ea), ("rameno", eb)):
+        cases = sum(e["lat_n"] for e in es)
+        ref = sum(e["refuted"] for e in es)
+        wrong = sum(e["refuted_wrong"] for e in es)
+        out.append(f"| A6 autonomně vyvráceno ({lab}) | - | {ref} z {cases} případů ({100*ref/max(cases,1):.1f} %) | omylem {wrong}, horní mez Wilson {100*wilson_hi(wrong, max(ref,1)):.2f} % | chyba <= 1 % |".replace(".", ","))
     la = sum(e["lat_sum"] for e in ea) / max(sum(e["lat_n"] for e in ea), 1)
     lb = sum(e["lat_sum"] for e in eb) / max(sum(e["lat_n"] for e in eb), 1)
     out.append(f"| A8 průměrná latence rozhodnutí žebříku (cykly na případ) | {km.fmt(la, d=2)} | {km.fmt(lb, d=2)} | - | rameno <= základ |")

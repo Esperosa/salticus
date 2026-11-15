@@ -35,6 +35,9 @@ pub enum AgentMode {
     Silent,
     /// Kompromitovaný agent hlásí jen „vše v pořádku“ (podepsaný pravidelný vzor).
     Ok,
+    /// Kompromitovaný agent hlásí nástroj ze seznamu povolených (jeho hash, podpis, výrobce):
+    /// nejhorší případ pro pozitivní důkaz neškodnosti (krok 14).
+    Mimic,
 }
 
 impl std::str::FromStr for AgentMode {
@@ -44,6 +47,7 @@ impl std::str::FromStr for AgentMode {
             "honest" => Ok(AgentMode::Honest),
             "silent" => Ok(AgentMode::Silent),
             "ok" => Ok(AgentMode::Ok),
+            "mimic" => Ok(AgentMode::Mimic),
             other => Err(format!(
                 "neznamy rezim agenta {other} (honest | silent | ok)"
             )),
@@ -933,7 +937,9 @@ impl EndpointSim {
             }
         }
         // `ok`: kryci vzor ve VSECH cyklech (i pred utokem a bez ohledu na masku sveta)
-        if self.world.agent == AgentMode::Ok {
+        if matches!(self.world.agent, AgentMode::Ok | AgentMode::Mimic) {
+            let mimic = self.world.agent == AgentMode::Mimic;
+            let (m_image, m_vendor) = hn_tool("hn_nightly_cloud_backup_upload").unwrap_or(("", ""));
             for t in truths.iter().filter(|t| matches!(t.kind, Kind::Attack(_))) {
                 let ext = t
                     .target_external
@@ -952,13 +958,32 @@ impl EndpointSim {
                         ));
                         let host = self.host(d, ips, &mut r3, model);
                         let ts = t0 + 700 + r3.range(0, 20) as i64 + self.skew[d as usize];
+                        if mimic {
+                            out.push(mk(
+                                host.clone(),
+                                ts - 5,
+                                EventKind::ProcessCreate(Process {
+                                    image: m_image.to_string(),
+                                    parent_image: Some(
+                                        "C:\\Windows\\System32\\services.exe".into(),
+                                    ),
+                                    cmdline: String::new(),
+                                    user: Some("SYSTEM".into()),
+                                    signed: Some(true),
+                                    vendor: Some(m_vendor.to_string()),
+                                    hash: Some(sim_hash(m_image)),
+                                }),
+                            ));
+                        }
                         out.push(mk(
                             host,
                             ts,
                             EventKind::NetConnect(Conn {
-                                image: Some(
-                                    "C:\\Program Files\\Microsoft\\Edge\\msedge.exe".into(),
-                                ),
+                                image: Some(if mimic {
+                                    m_image.to_string()
+                                } else {
+                                    "C:\\Program Files\\Microsoft\\Edge\\msedge.exe".into()
+                                }),
                                 proto: "tcp".into(),
                                 src_ip: Some(ips[d as usize].clone()),
                                 src_port: None,

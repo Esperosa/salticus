@@ -962,11 +962,13 @@ fn run_episode_inner(
                 let mut p = crate::endpoint::correlate::Policy::default();
                 if cfg.engine.endpoint_ext() {
                     p.extended = true;
-                    p.allow = crate::soak::endpoint_sim::sim_allowlist(
-                        crate::soak::traffic::EPOCH0,
-                        model.seed,
-                        cfg.world.endpoint.allow_pct as u64,
-                    );
+                    if cfg.engine.endpoint_allow() {
+                        p.allow = crate::soak::endpoint_sim::sim_allowlist(
+                            crate::soak::traffic::EPOCH0,
+                            model.seed,
+                            cfg.world.endpoint.allow_pct as u64,
+                        );
+                    }
                     p.now_for_allow = 0;
                 }
                 p
@@ -1925,6 +1927,9 @@ fn run_episode_inner(
                             .then_some((&runtime.behavior.profile, &runtime.profile_policy)),
                         endpoint: endpoint_view.as_ref(),
                         l7: l7_view.as_ref(),
+                        ops: ops_rt
+                            .as_ref()
+                            .map(|r| (&r.store, &r.policy, t0 + crate::soak::traffic::CYCLE_SECS)),
                     };
                     let decisions = runtime.ladder.step(cycle as u64, &mut env);
                     agg.output.ladder_liveness_runs += env.liveness_runs;
@@ -2410,11 +2415,20 @@ fn run_episode_inner(
                                         t0 + crate::soak::traffic::CYCLE_SECS,
                                         &rt.policy,
                                     );
-                                    let key = format!(
-                                        "{}|{}",
-                                        d.class,
-                                        d.catalog_id.as_deref().unwrap_or("-")
-                                    );
+                                    let key = if d.candidates.is_empty() {
+                                        format!(
+                                            "{}|{}",
+                                            d.class,
+                                            d.catalog_id.as_deref().unwrap_or("-")
+                                        )
+                                    } else {
+                                        format!(
+                                            "{}|{}|{}",
+                                            d.class,
+                                            d.catalog_id.as_deref().unwrap_or("-"),
+                                            d.candidates.join("+")
+                                        )
+                                    };
                                     if let Some(root) = &d.root {
                                         ops_roots.insert(finding.finding_id.clone(), format!("ops:{root}"));
                                     }
