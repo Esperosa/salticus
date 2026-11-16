@@ -72,6 +72,9 @@ struct HostUpload {
     /// klouzavý horizont pro `detect_horizon`.
     #[serde(default)]
     recent: Vec<f32>,
+    /// Krok 15 (P2): hlavní cíl (adresa, port, bajty) každého okna v `recent`.
+    #[serde(default)]
+    recent_top: Vec<(String, u16, f32)>,
     /// Čas posledního poplachu horizontu (jednou na horizont).
     #[serde(default)]
     horizon_alarmed: i64,
@@ -124,9 +127,26 @@ pub fn detect(
         let entry = state.hosts.entry(host.to_string()).or_default();
         entry.last = now;
         entry.recent.push(bytes as f32);
+        {
+            let (top, top_bytes) = by_dst
+                .iter()
+                .max_by(|a, b| a.1.total_cmp(b.1).then(b.0.cmp(a.0)))
+                .map(|(d, b)| (d.to_string(), *b))
+                .unwrap_or_default();
+            let port = outbound
+                .iter()
+                .find(|f| f.src_ip.as_deref() == Some(host) && f.dst_ip == top)
+                .and_then(|f| f.dst_port)
+                .unwrap_or(0);
+            entry.recent_top.push((top, port, top_bytes as f32));
+        }
         if entry.recent.len() > HORIZON {
             let drop = entry.recent.len() - HORIZON;
             entry.recent.drain(..drop);
+        }
+        if entry.recent_top.len() > HORIZON {
+            let drop = entry.recent_top.len() - HORIZON;
+            entry.recent_top.drain(..drop);
         }
         entry.since_horizon_alarm = entry.since_horizon_alarm.saturating_add(1);
         let x = bytes.ln_1p();
@@ -262,6 +282,17 @@ pub fn detect_horizon(
         } else {
             Severity::Medium
         };
+        // hlavni cil horizontu: adresa s nejvetsim souctem bajtu z hlavnich cilu oken
+        let mut by_dst: BTreeMap<(&str, u16), f64> = BTreeMap::new();
+        for (d, p, b) in &entry.recent_top {
+            *by_dst.entry((d.as_str(), *p)).or_default() += *b as f64;
+        }
+        let ((top, port), top_bytes) = by_dst
+            .iter()
+            .max_by(|a, b| a.1.total_cmp(b.1).then(b.0.cmp(a.0)))
+            .map(|(k, v)| (*k, *v))
+            .unwrap_or((("", 0), 0.0));
+        let top = top.to_string();
         let mut f = finding(
             "egress_volume_anomaly",
             host,
@@ -269,15 +300,16 @@ pub fn detect_horizon(
             severity,
             Confidence::Medium,
             format!(
-                "Host {host} odeslal ven {:.0} MB za {} oken",
+                "Host {host} odeslal ven {:.0} MB za {} oken, hlavne na {top}",
                 sum / 1e6,
                 entry.recent.len()
             ),
             format!(
-                "Nahrany objem klouzaveho horizontu vybocuje z historie hostu ({basis}); jednotliva okna pod prahem."
+                "Nahrany objem klouzaveho horizontu vybocuje z historie hostu ({basis}); jednotliva okna pod prahem; {:.0} % na {top}:{port}.",
+                top_bytes * 100.0 / sum.max(1.0)
             ),
             vec![format!(
-                "{host}: {} MB za posledni okna",
+                "{host} -> {top}: {} MB za posledni okna",
                 entry
                     .recent
                     .iter()
@@ -291,8 +323,8 @@ pub fn detect_horizon(
             .push_str(" Pravidlo heuristika-behavior:egress_volume_horizon@v1.");
         out.push(BehaviorFinding {
             finding: f,
-            sources: Vec::new(),
-            targets: Vec::new(),
+            sources: if top.is_empty() { Vec::new() } else { vec![top.clone()] },
+            targets: if top.is_empty() { Vec::new() } else { vec![(top, port)] },
             count: (sum / 1e6).min(u32::MAX as f64) as u32,
             actor: host.clone(),
         });
@@ -410,6 +442,8 @@ mod tests {
                 assert_eq!(found[0].finding.finding_type, "egress_volume_anomaly");
                 assert_eq!(found[0].actor, "10.0.0.5");
                 assert!(found[0].finding.rationale.contains("horizon"));
+                assert_eq!(found[0].sources, vec!["203.0.113.9".to_string()]);
+                assert!(found[0].finding.title.contains("203.0.113.9"));
             } else {
                 assert!(found.is_empty());
             }
