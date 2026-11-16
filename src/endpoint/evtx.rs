@@ -168,10 +168,12 @@ pub fn replay(files: &[std::path::PathBuf], extended: bool) -> Vec<Result<Replay
                 };
                 store.ingest(e, &res, now);
             }
-            let mut policy = Policy::default();
-            policy.extended = extended;
-            policy.lookback_s = 10 * 365 * 86_400;
-            policy.alive_s = 10 * 365 * 86_400;
+            let policy = Policy {
+                extended,
+                lookback_s: 10 * 365 * 86_400,
+                alive_s: 10 * 365 * 86_400,
+                ..Policy::default()
+            };
             let view = EndpointView::build(&store, &dir, now, &policy);
             let best = hosts
                 .iter()
@@ -274,9 +276,11 @@ pub fn replay_jsonl(
             Err(_) => out.errors += 1,
         }
     }
-    let mut policy = Policy::default();
-    policy.extended = extended;
-    policy.lookback_s = window_s;
+    let policy = Policy {
+        extended,
+        lookback_s: window_s,
+        ..Policy::default()
+    };
     out.hosts = by_host.keys().cloned().collect();
     out.first_event = by_host
         .values()

@@ -108,7 +108,7 @@ pub fn parse_tetragon(map: &Map<String, Value>) -> ParseResult {
             ts,
             kind: EventKind::ProcessCreate(Process {
                 parent_image: child(exec, "parent").and_then(|p| field(p, &["binary"])),
-                cmdline: clip(&format!("{binary} {args}").trim().to_string()),
+                cmdline: clip(format!("{binary} {args}").trim()),
                 image: binary,
                 user: field(process, &["uid"]).map(|u| format!("uid:{u}")),
                 signed: None,

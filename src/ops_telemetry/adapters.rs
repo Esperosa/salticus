@@ -112,12 +112,13 @@ fn lower_clip(line: &str) -> Option<String> {
 fn syslog_time(line: &str, fallback: i64) -> i64 {
     let mut it = line.split_whitespace();
     let first = it.next().unwrap_or("");
-    if first.starts_with('<') && first.contains('>') && first.ends_with('1') {
-        if let Some(ts) = it.next() {
-            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
-                return dt.timestamp();
-            }
-        }
+    if first.starts_with('<')
+        && first.contains('>')
+        && first.ends_with('1')
+        && let Some(ts) = it.next()
+        && let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts)
+    {
+        return dt.timestamp();
     }
     fallback
 }
@@ -279,9 +280,9 @@ pub fn parse_nagios(line: &str, now: i64) -> Option<OpsSignal> {
         .and_then(|s| s.split(']').next())
         .and_then(|s| s.parse::<i64>().ok())
         .unwrap_or(now);
-    let (kind, rest) = line.split_once(": ").and_then(|(a, b)| {
+    let (kind, rest) = line.split_once(": ").map(|(a, b)| {
         let k = a.rsplit(']').next().unwrap_or(a).trim();
-        Some((k, b))
+        (k, b)
     })?;
     let f: Vec<&str> = rest.split(';').collect();
     let host = f.first()?.trim();

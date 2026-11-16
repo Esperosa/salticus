@@ -2530,7 +2530,7 @@ mod tests {
             endpoint: Some(EndpointSignal::Allowed("a: veeamagent.exe (vlastnik sprava-it, do 1)".into())),
             ..Env::default()
         };
-        let d = decide(strict.clone(), "inductive_volume_anomaly", &mut mk());
+        let d = decide(strict, "inductive_volume_anomaly", &mut mk());
         assert_eq!(d.status, Status::Refuted, "{}", d.reason);
         // totez s bezny neskodnym vzorem (bez seznamu) jedna skupina nestaci
         let benign = Env {
@@ -2538,10 +2538,10 @@ mod tests {
             ..Env::default()
         };
         let mut benign = benign;
-        let d2 = decide(strict.clone(), "inductive_volume_anomaly", &mut benign);
+        let d2 = decide(strict, "inductive_volume_anomaly", &mut benign);
         assert_ne!(d2.status, Status::Refuted, "{}", d2.reason);
         for kind in ["suricata_alert", "novel_persistent_peer", "endpoint_alert"] {
-            let d3 = decide(strict.clone(), kind, &mut mk());
+            let d3 = decide(strict, kind, &mut mk());
             assert_ne!(d3.status, Status::Refuted, "{kind}: {}", d3.reason);
         }
     }

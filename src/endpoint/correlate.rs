@@ -205,10 +205,10 @@ impl EndpointStore {
             Resolution::Unique(key) => key,
             Resolution::Ambiguous(_) => {
                 self.stats.ambiguous += 1;
-                if let Some(name) = &event.host.hostname {
-                    if self.ambiguous_hosts.len() < 1024 {
-                        self.ambiguous_hosts.insert(name.clone());
-                    }
+                if let Some(name) = &event.host.hostname
+                    && self.ambiguous_hosts.len() < 1024
+                {
+                    self.ambiguous_hosts.insert(name.clone());
                 }
                 return Outcome::Ambiguous;
             }
@@ -631,8 +631,8 @@ pub fn assess(
     let mut cloud_cmds: HashSet<String> = HashSet::new();
     let mut dropped: HashSet<String> = HashSet::new();
     let mut proc_images: HashSet<String> = HashSet::new();
-    let mut proc_info: HashMap<String, (Option<String>, Option<bool>, Option<String>)> =
-        HashMap::new();
+    type ProcInfo = (Option<String>, Option<bool>, Option<String>);
+    let mut proc_info: HashMap<String, ProcInfo> = HashMap::new();
     let mut allow_conns: Vec<(String, String, u16)> = Vec::new();
     for event in events {
         let event = event.borrow();
@@ -1048,32 +1048,33 @@ impl EndpointView {
             ));
         }
         // krok 14: proces ze seznamu povolených vysvětluje každý zdroj (bez požadavku na pravidelnost)
-        if self.policy.extended && !sources.is_empty() {
-            if let Some(port) = port {
-                let target = self
+        if self.policy.extended
+            && !sources.is_empty()
+            && let Some(port) = port
+        {
+            let target = self
+                .assessments
+                .get(host_ip)
+                .filter(|_| self.covered.contains(host_ip));
+            let mut reasons = Vec::new();
+            for s in sources {
+                let own = self
                     .assessments
-                    .get(host_ip)
-                    .filter(|_| self.covered.contains(host_ip));
-                let mut reasons = Vec::new();
-                for s in sources {
-                    let own = self
-                        .assessments
-                        .get(s)
-                        .filter(|_| self.covered.contains(s))
-                        .and_then(|a| a.allowed_peers.get(&(host_ip.to_string(), port)));
-                    let via_target = target.and_then(|a| a.allowed_peers.get(&(s.clone(), port)));
-                    match own.or(via_target) {
-                        Some(reason) => reasons.push(format!("{s}: {reason}")),
-                        None => {
-                            reasons.clear();
-                            break;
-                        }
+                    .get(s)
+                    .filter(|_| self.covered.contains(s))
+                    .and_then(|a| a.allowed_peers.get(&(host_ip.to_string(), port)));
+                let via_target = target.and_then(|a| a.allowed_peers.get(&(s.clone(), port)));
+                match own.or(via_target) {
+                    Some(reason) => reasons.push(format!("{s}: {reason}")),
+                    None => {
+                        reasons.clear();
+                        break;
                     }
                 }
-                if !reasons.is_empty() {
-                    reasons.truncate(3);
-                    return EndpointSignal::Allowed(reasons.join("; "));
-                }
+            }
+            if !reasons.is_empty() {
+                reasons.truncate(3);
+                return EndpointSignal::Allowed(reasons.join("; "));
             }
         }
         // neškodné: každý zdroj má vysvětlení (vlastní agent nebo agent cíle)

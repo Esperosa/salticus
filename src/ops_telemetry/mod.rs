@@ -386,9 +386,11 @@ impl Default for DiagPolicy {
     }
 }
 
+type IndexEntry = (String, String, Vec<(String, f64)>, f64);
+
 /// Předpočítaný index katalogu: klíč -> (typ, váha) a idf klíče.
 pub struct Index {
-    by_entry: Vec<(String, String, Vec<(String, f64)>, f64)>, // id, kategorie, (klíč, w*idf), součet
+    by_entry: Vec<IndexEntry>, // id, kategorie, (klíč, w*idf), součet
     idf: HashMap<String, f64>,
 }
 

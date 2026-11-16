@@ -1002,6 +1002,10 @@ pub fn overlaps(a: &Truth, b: &Truth, latency: u32) -> bool {
     a.start_cycle <= b.end_cycle + latency && b.start_cycle <= a.end_cycle + latency
 }
 
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1230,8 +1234,4 @@ mod tests {
         }
         assert_eq!(emitted.len(), Lookalike::COVERAGE.len(), "{emitted:?}");
     }
-}
-
-fn is_zero_u32(v: &u32) -> bool {
-    *v == 0
 }
