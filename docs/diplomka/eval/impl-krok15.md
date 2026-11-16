@@ -113,8 +113,35 @@ Stav: diagnóza hlásí „nelze určit, chybí telemetrie: X“ jen když typ n
 
 ## P5: realita vs. simulace
 
-Doplní se po měření (přehrání CTU-13/LUFlow/CSE-CIC-IDS2018 cestou kroku 12 a 13 s kandidátem `k15`, srovnání počtu zobrazených nálezů a omylem zavřených proti `off`).
+**LUFlow 2020-06-19 (200 000 toků, 28 oken po 1 800 s, rozsah 10.3.36.0/24, 259 škodlivých zdrojů podle štítků), produkční cesta `beh spust`, `tools/replay_public.py --v3-on`:** základ (`final` + `protect`) i kandidát (`final` + `refute_episode` + `upload_horizon`) dávají **totožný výsledek**: zobrazeno 522 nálezů (1 cold, 521 mature), 0 automaticky zavřených, žebřík 0 potvrzeno / 0 vyvráceno / 503 eskalováno, 64 z 259 škodlivých zdrojů zmíněno v zobrazených nálezech (jako v kroku 12). Čtení: v tomto datasetu žebřík nic nevyvrací (bez kontextu, kalendáře a sondy není žádná silná skupina), takže epizodové vyvrácení nemá co měnit, a honeypot nic nenahrává, takže horizont nahrání se neuplatní. Opravy kroku 15 tu nic nezhoršují ani nezlepšují; to je očekávané, ne důkaz přínosu.
+
+**CTU-13 scénář 42 (Neris; 10 oken, 31 735 toků, 59 413 DNS, 63 TLS) a 54 (fast-flux; 33 oken, 88 048 toků, 15 447 DNS, 370 TLS), Zeek logy, `tools/k13_replay_zeek.py --v3`:** základ i kandidát totožně: scénář 42 zobrazeno 11 nálezů zmiňujících infikovaný host 147.32.84.165 (5 nespárovaných pasivních událostí, 3 interaktivní relace, 2 dlouhá spojení), 0 o jiných hostech; scénář 54 zobrazeno 17 (11 nespárovaných, 1 interaktivní relace, 4 pravidelná volání), 0 o jiných hostech. Žádné vyvrácení žebříkem, žádný horizont nahrání (bot nenahrává desítky MB). Závěr P5: opravy kroku 15 na třech reálných datasetech **nic nemění**; jejich účinek je zatím doložen jen na simulaci, a mechanismy, které opravují (vyvrácený klíč pohlcující pozdější epizodu, lhoucí agent, nahrání pod prahem okna), v těchto datasetech nenastávají (žádný kontext ani sonda, žádný agent, žádné nahrání). Reálné ověření P1 by vyžadovalo záznam s kalendářem údržby nebo aktivní sondou a následným útokem na tentýž cíl; takový veřejný dataset nemám.
 
 ## Měření
 
-Doplní se (ladicí, pak jednou držené).
+### Regrese a determinismus (K15-8)
+
+Binárka kroku 15 bez nových přepínačů (`off`, seed 20261102, 2 sítě) dává `networks.jsonl` shodný s během kroku 14 (`k14n`) ve všech polích kromě časů (`wall_s`, `cycle_p99_s`). Cílené testy: `finding_memory`, `verify_ladder`, `engine::tests`, `ops_telemetry`, `behavior::egress_volume`: 60 prošlo, 0 selhalo (včetně 5 nových regresních testů). Celé `cargo test --lib` a golden snapshot viz závěr.
+
+### Ladicí seedy (5 seedů x 8 sítí, základ = běhy kroku 14)
+
+Odchylka od plánu: seed 20266106 má v bloku 3 dvě sítě XXL, jejichž běh trvá hodiny (rameno `elying` kroku 14 je také nemá); kandidáti se u tohoto seedu měří na 6 sítích, párování je po sítích, takže je to 38 párů místo 40. Výstupy `F:\Projekty\bakula-soak\k15\tune`, souhrn `F:\claude-tmp\k15\report15.sh tune`.
+
+**`k15` (`refute_episode` + `upload_horizon`) proti `off`, 38 párů:**
+
+| ukazatel | `off` | `k15` | rozdíl (95 %) | práh |
+|---|---:|---:|---|---|
+| detekce bezpečnostních útoků | 82,3 | 82,3 | +0,1 (+0,0 až +0,1) p. b. | K15-2 ≥ 0: splněno, ale bez přínosu |
+| zobrazené FP na síť-den | 9,81 | 9,87 | poměr 1,006 (1,002 až 1,011) | K15-3 ≤ 1,10: splněno |
+| útoky s omylem zavřeným | 0 z 2692 | 0 z 2692 (horní mez Wilson 0,14 %) | K15-1: splněno (na ladicích seedech nebylo co opravit) |
+| hn_* zobrazeno | 65,4 | 67,3 | +1,9 (+0,4 až +3,4) p. b. | zhoršení: `hn_nightly_cloud_backup_upload` 60,0 → 74,3 % (horizont zachytí noční zálohu 15 až 35 MB za okno; nález radí ověřit zálohu, ale zobrazí se) |
+| `exfil_cloud_storage_upload` | 55,6 (n = 9) | 55,6 | +0,0 | cíl ≥ +10 p. b. **nesplněn**: minuté exfiltrace ladicích seedů mají 2,8 až 13 MB za okno, tedy i součet 6 oken je pod `min_bytes` 50 MB nebo pod poměrem 10× k historii hostu; horizont pomůže jen pásmu 20 až 30 MB za okno, které je na držených seedech (3 z 11 minutých), ne na ladicích |
+| autonomně vyvráceno žebříkem | 8 z 22 823 | 1 z 22 966 | | epizodové vyvrácení posílá opakované epizody zpět do žebříku; zavírá se ještě méně než dřív, omylem 0 |
+
+Co `upload_horizon` změnil (`F:\claude-tmp\k15\horizoncheck.py`): nálezů `egress_volume_anomaly` 2 783 → 3 505; nově zachyceno 5 nočních záloh (hn) a 0 nových exfiltrací; 1 exfiltrace už zachycená získala druhý typ nálezu. Závěr: oprava mezery je správná co do mechanismu (test), ale v simulaci je v tomto pásmu objemu víc legitimních záloh než exfiltrací; **nedoporučuje se zapnout**, LOFO `k15b` níže.
+
+**`k15e` (`elying` + `endpoint_weak` + `refute_episode`) proti `elying`, 38 párů:** detekce 82,3 = 82,3 (+0,0), FP poměr 1,000, hn_* +0,0, omylem zavřeno 0 z 2692 v obou (horní mez 0,14 %), autonomně vyvráceno 13 → 2 (lhoucí agent už nevyvrací s historií sám). Na ladicích seedech se mechanismus případu 2 nevyskytl; test K15-1 pro `k15e` rozhodnou držené seedy.
+
+### Držené seedy (20268101 až 20268502, jednou)
+
+Doplní se.
