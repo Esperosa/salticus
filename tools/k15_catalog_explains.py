@@ -13,8 +13,11 @@ nová služba, nečekaný provoz), `periodic` (pravidelný maják), `scan` (rozp
 pokusy o sken).
 
 Pravidlo: porucha infrastruktury (`Fault`) nevysvětlí novost, maják ani sken; to dělá
-jen změna nebo porucha, která hostům mění cesty. Použití:
-python -I tools/k15_catalog_explains.py [--write]
+jen změna nebo porucha, která hostům mění cesty. K tomu se přidají skupiny podle
+autorského popisu typu v katalogu (`signals.flows` a `confusable_with_attack`: s čím
+se typ plete, to i vyvolává; např. „vlny nových spojení“, „vypadá jako beaconing“,
+„přepnutí na záložní region“), takže zdrojem je text katalogu, ne výstup simulátoru.
+Použití: python -I tools/k15_catalog_explains.py [--write]
 """
 import json
 import re
@@ -40,6 +43,25 @@ FAULT_PATTERN = {
     "Storm": ["broadcast", "volume", "availability"],
     "Peak": ["volume", "availability"],
 }
+# klicova slova autorskeho popisu (signals.flows, confusable_with_attack) -> skupina
+TEXT_GROUPS = [
+    ("periodic", ("beacon", "pravideln", "periodick", "c2 ", "kanál", "kanal")),
+    ("availability", ("dos", "ddos", "blok", "tarpit", "filtrov", "izolac", "výpad", "vypad", "timeout", "rst", "selh", "zamrz", "neodpov")),
+    ("volume", ("exfiltr", "objem", "staging", "stahov", "stažen", "saturac", "záplav", "zaplav", "flood", "amplifik")),
+    ("scan", ("sken", "scan", "sweep", "recon", "enumer", "spray", "brute", "stuffing", "lateral", "pokus", "přihlášen", "prihlasen", "starvation", "fuzzing")),
+    ("novelty", ("mitm", "spoof", "hijack", "rogue", "podvrž", "podvrz", "nov", "neznám", "neznam", "dga", "tunel", "fuzzing", "ciz", "přesměrov", "presmerov", "přepnut", "prepnut", "jinam", "záložn", "zalozn", "re-auth", "deauth", "mac ")),
+]
+
+
+def text_groups(entry):
+    text = (entry["signals"]["flows"] + " " + entry["confusable_with_attack"]).lower()
+    out = []
+    for group, words in TEXT_GROUPS:
+        if any(w in text for w in words):
+            out.append(group)
+    return out
+
+
 HOST_PATTERN = {
     "Periodic": ["periodic", "novelty"],
     "Burst": ["volume", "novelty"],
@@ -78,6 +100,9 @@ def main() -> int:
             groups = list(HOST_PATTERN[pattern])
             if e["id"] in PATH_CHANGING and "novelty" not in groups:
                 groups.append("novelty")
+        for g in text_groups(e):
+            if g not in groups:
+                groups.append(g)
         if e.get("explains") != groups:
             changed += 1
         e["explains"] = groups

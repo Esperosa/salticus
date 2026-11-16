@@ -360,7 +360,9 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "periodic",
+    "novelty"
    ]
   },
   {
@@ -404,7 +406,8 @@
     "broadcast",
     "volume",
     "availability",
-    "novelty"
+    "novelty",
+    "scan"
    ]
   },
   {
@@ -491,7 +494,8 @@
    ],
    "explains": [
     "availability",
-    "volume"
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -532,7 +536,8 @@
    ],
    "explains": [
     "availability",
-    "volume"
+    "volume",
+    "scan"
    ]
   },
   {
@@ -569,7 +574,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "periodic"
    ]
   },
   {
@@ -651,7 +657,9 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -691,7 +699,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -872,7 +881,9 @@
    "explains": [
     "broadcast",
     "volume",
-    "availability"
+    "availability",
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -913,7 +924,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -957,7 +969,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "scan"
    ]
   },
   {
@@ -1006,7 +1019,8 @@
    ],
    "explains": [
     "availability",
-    "volume"
+    "volume",
+    "scan"
    ]
   },
   {
@@ -1091,7 +1105,9 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -1177,7 +1193,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "scan"
    ]
   },
   {
@@ -1259,7 +1276,9 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -1295,7 +1314,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -1331,7 +1351,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "periodic"
    ]
   },
   {
@@ -1372,7 +1393,8 @@
    ],
    "explains": [
     "periodic",
-    "novelty"
+    "novelty",
+    "availability"
    ]
   },
   {
@@ -1413,7 +1435,9 @@
    ],
    "explains": [
     "scan",
-    "novelty"
+    "novelty",
+    "periodic",
+    "availability"
    ]
   },
   {
@@ -1498,7 +1522,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -1542,7 +1567,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "volume"
    ]
   },
   {
@@ -1802,7 +1828,8 @@
    ],
    "explains": [
     "volume",
-    "novelty"
+    "novelty",
+    "availability"
    ]
   },
   {
@@ -1951,7 +1978,8 @@
    ],
    "explains": [
     "volume",
-    "novelty"
+    "novelty",
+    "availability"
    ]
   },
   {
@@ -1988,7 +2016,8 @@
    ],
    "explains": [
     "volume",
-    "availability"
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -2025,7 +2054,8 @@
    ],
    "explains": [
     "volume",
-    "availability"
+    "availability",
+    "periodic"
    ]
   },
   {
@@ -2062,7 +2092,8 @@
    ],
    "explains": [
     "volume",
-    "novelty"
+    "novelty",
+    "availability"
    ]
   },
   {
@@ -2181,7 +2212,8 @@
    ],
    "explains": [
     "volume",
-    "novelty"
+    "novelty",
+    "availability"
    ]
   },
   {
@@ -2259,7 +2291,8 @@
    ],
    "explains": [
     "availability",
-    "novelty"
+    "novelty",
+    "scan"
    ]
   },
   {
@@ -2373,7 +2406,8 @@
    ],
    "explains": [
     "availability",
-    "novelty"
+    "novelty",
+    "scan"
    ]
   },
   {
@@ -2451,7 +2485,10 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "volume",
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -2537,7 +2574,9 @@
    ],
    "explains": [
     "availability",
-    "volume"
+    "volume",
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -2694,7 +2733,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "periodic"
    ]
   },
   {
@@ -2804,7 +2844,8 @@
    ],
    "explains": [
     "availability",
-    "volume"
+    "volume",
+    "periodic"
    ]
   },
   {
@@ -2878,7 +2919,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "scan"
    ]
   },
   {
@@ -2918,7 +2960,9 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "periodic",
+    "novelty"
    ]
   },
   {
@@ -2954,7 +2998,9 @@
    ],
    "explains": [
     "availability",
-    "volume"
+    "volume",
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -2996,7 +3042,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -3032,7 +3079,8 @@
    ],
    "explains": [
     "volume",
-    "novelty"
+    "novelty",
+    "scan"
    ]
   },
   {
@@ -3113,7 +3161,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "scan"
    ]
   },
   {
@@ -3194,7 +3243,8 @@
    "explains": [
     "broadcast",
     "volume",
-    "availability"
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -3234,7 +3284,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "scan"
    ]
   },
   {
@@ -3274,7 +3325,8 @@
     ]
    ],
    "explains": [
-    "availability"
+    "availability",
+    "novelty"
    ]
   }
  ]
