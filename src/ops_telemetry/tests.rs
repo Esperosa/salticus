@@ -79,6 +79,102 @@ fn catalog_signals_are_valid_and_every_type_identifies_itself() {
     assert!(ambiguous.len() <= 20 && ambiguous.iter().all(|a| a.3 || a.2 == "nejednoznacne"), "{ambiguous:?}");
 }
 
+/// Krok 15 (P3, `ops_symptoms`): porucha infrastruktury (saturace uplinku, OPS-011)
+/// vysvetli timeouty a objem, ne novy vztah; bez prepinace vysvetlila i `unexpected_traffic`
+/// (drzene seedy: snmp_walk a smtp_auth_spray zarazeny jako porucha podle signalu v /24).
+#[test]
+fn fault_explains_only_the_symptom_groups_of_its_mechanism() {
+    let idx = Index::shared();
+    let s = store_with(&["if_util_high", "if_out_discards", "qos_drop"], "10.0.0.0/24", 10_000);
+    let on = DiagPolicy {
+        symptoms: true,
+        ..DiagPolicy::default()
+    };
+    let off = DiagPolicy::default();
+    let ips = vec!["10.0.0.5".to_string()];
+    let d = diagnose(idx, &s, "unexpected_traffic", &ips, false, 10_000, &off);
+    assert_eq!(d.class, "porucha", "puvodni chovani: {d:?}");
+    let d = diagnose(idx, &s, "unexpected_traffic", &ips, false, 10_000, &on);
+    assert_eq!(d.class, "utok", "{d:?}");
+    assert!(d.explains_partly, "signaly poruchy zustavaji jako poznamka");
+    let d = diagnose(idx, &s, "connection_timeout_burst", &ips, false, 10_000, &on);
+    assert_eq!((d.class.as_str(), d.catalog_id.as_deref()), ("porucha", Some("OPS-011")), "{d:?}");
+}
+
+/// Krok 15 (P3, `ops_symptoms`): uplna sada signalu typu, jehoz signaly jsou nadmnozinou
+/// jineho typu (OPS-016 app_server_crash_cascade nad OPS-054 health_check_failing), urci typ:
+/// podmnozinovy kandidat je dominovany (pokryva min z tehoz dukazu). Bez prepinace vyjde
+/// dvojice kandidatu bez `catalog_id` (drzene seedy: catalog_id 1,6 % u 375 nalezu).
+#[test]
+fn superset_type_wins_over_its_dominated_subset_candidate() {
+    let c = Catalog::embedded();
+    let idx = Index::build(&c);
+    let big = c.get("OPS-016").unwrap();
+    let small = c.get("OPS-054").unwrap();
+    let small_keys: Vec<&str> = small.ops_signals.iter().map(|(k, _)| k.as_str()).collect();
+    let big_keys: Vec<&str> = big.ops_signals.iter().map(|(k, _)| k.as_str()).collect();
+    assert!(small_keys.iter().all(|k| big_keys.contains(k)), "predpoklad testu: podmnozina");
+    let s = store_with(&big_keys, "10.0.0.5", 10_000);
+    let ips = vec!["10.0.0.5".to_string()];
+    let off = diagnose(&idx, &s, "service_unreachable", &ips, false, 10_000, &DiagPolicy::default());
+    assert!(off.catalog_id.is_none() && off.candidates.contains(&"OPS-016".to_string()), "puvodni chovani: {off:?}");
+    let on = diagnose(
+        &idx,
+        &s,
+        "service_unreachable",
+        &ips,
+        false,
+        10_000,
+        &DiagPolicy {
+            symptoms: true,
+            ..DiagPolicy::default()
+        },
+    );
+    assert_eq!(on.catalog_id.as_deref(), Some("OPS-016"), "{on:?}");
+    // opacne: jen signaly podmnoziny -> podmnozinovy typ (nadmnozine chybi silne signaly)
+    let s = store_with(&small_keys, "10.0.0.5", 10_000);
+    let on = diagnose(
+        &idx,
+        &s,
+        "service_unreachable",
+        &ips,
+        false,
+        10_000,
+        &DiagPolicy {
+            symptoms: true,
+            ..DiagPolicy::default()
+        },
+    );
+    assert_eq!(on.catalog_id.as_deref(), Some("OPS-054"), "{on:?}");
+}
+
+/// Krok 15 (P3, `ops_blast`): signal o brane (flapping pateřního smerovace, OPS-002) plati pro
+/// hosty, ktere na ni zavisi; bez prepinace je timeout klienta „bez provozniho dukazu“
+/// (drzene seedy: core_router_flapping zarazen jako utok u nalezu klientu).
+#[test]
+fn infrastructure_signal_reaches_dependent_hosts_only_with_blast_radius() {
+    let idx = Index::shared();
+    let s = store_with(&["if_flap", "route_adj_change", "sys_link_down"], "10.0.0.1", 10_000);
+    let client = vec!["10.0.0.57".to_string()];
+    let off = diagnose(idx, &s, "connection_timeout_burst", &client, false, 10_000, &DiagPolicy::default());
+    assert_eq!(off.class, "utok", "{off:?}");
+    let on = DiagPolicy {
+        blast: true,
+        infra: ["10.0.0.1".to_string()].into_iter().collect(),
+        ..DiagPolicy::default()
+    };
+    let d = diagnose(idx, &s, "connection_timeout_burst", &client, false, 10_000, &on);
+    assert_eq!((d.class.as_str(), d.catalog_id.as_deref()), ("porucha", Some("OPS-002")), "{d:?}");
+    // adresa, ktera neni infrastrukturni, dosah nema
+    let other = DiagPolicy {
+        blast: true,
+        infra: ["10.0.0.99".to_string()].into_iter().collect(),
+        ..DiagPolicy::default()
+    };
+    let d = diagnose(idx, &s, "connection_timeout_burst", &client, false, 10_000, &other);
+    assert_eq!(d.class, "utok", "{d:?}");
+}
+
 #[test]
 fn attack_types_are_never_reclassified() {
     let idx = Index::shared();

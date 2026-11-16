@@ -1,5 +1,5 @@
 {
- "catalog_version": "1.1.0",
+ "catalog_version": "1.2.0",
  "created": "2026-11-15",
  "description": "Katalog běžných síťových a provozních incidentů (porucha / neškodná změna / nejednoznačné) pro vysvětlení nálezů a doporučené kontroly. Kategorie 'nejednoznacne' = na síťové úrovni nelze s jistotou rozlišit od útoku.",
  "note": "Texty o projevech jsou autorský souhrn z odborných znalostí; basis=assumption znamená, že tvrzení nebylo ověřeno primárním zdrojem v této relaci. Ověřené zdroje mají verified=true. Pole verified=true znamena, ze se stranka zdroje 2026-11-15 skutecne nacetla a odpovida tvrzenemu zdroji (RFC, norma, portal vyrobce); jednotliva tvrzeni o projevech zustavaji basis=assumption, dokud se neoveri v konkretni casti zdroje.",
@@ -312,6 +312,9 @@
      "dns_queries_absent",
      1
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -355,6 +358,9 @@
      "sys_link_down",
      2
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -393,6 +399,12 @@
      "dhcp_no_free",
      3
     ]
+   ],
+   "explains": [
+    "broadcast",
+    "volume",
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -430,6 +442,9 @@
      "dhcp_no_offer",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -473,6 +488,10 @@
      "dns_latency",
      1
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -510,6 +529,10 @@
      "cpu_high",
      2
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -544,6 +567,9 @@
      "ntp_unreach",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -581,6 +607,9 @@
      "sys_krb_skew",
      2
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -620,6 +649,9 @@
      "sys_cert_expired",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -657,6 +689,9 @@
      "sys_cert_chain",
      2
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -699,6 +734,10 @@
      "qos_drop",
      1
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -736,6 +775,10 @@
      "if_util_high",
      1
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -782,6 +825,11 @@
      "cpu_high",
      2
     ]
+   ],
+   "explains": [
+    "broadcast",
+    "volume",
+    "availability"
    ]
   },
   {
@@ -820,6 +868,11 @@
      "bcast_pps",
      1
     ]
+   ],
+   "explains": [
+    "broadcast",
+    "volume",
+    "availability"
    ]
   },
   {
@@ -858,6 +911,9 @@
      "arp_conflict",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -899,6 +955,9 @@
      "sys_health_fail",
      2
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -944,6 +1003,10 @@
      "conn_count_high",
      2
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -985,6 +1048,10 @@
      "probe_http_fail",
      1
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -1022,6 +1089,9 @@
      "sys_proc_crash",
      2
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -1060,6 +1130,10 @@
      "if_crc",
      3
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -1101,6 +1175,9 @@
      "sys_backup_fail",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -1138,6 +1215,10 @@
      "sys_oom",
      3
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -1176,6 +1257,9 @@
      "sys_ike_fail",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -1209,6 +1293,9 @@
      "sys_ap_lost_ctrl",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -1242,6 +1329,9 @@
      "sys_mail_deferred",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -1279,6 +1369,10 @@
      "sys_firmware_poll",
      2
     ]
+   ],
+   "explains": [
+    "periodic",
+    "novelty"
    ]
   },
   {
@@ -1316,6 +1410,10 @@
      "snmp_timeout",
      1
     ]
+   ],
+   "explains": [
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -1357,6 +1455,10 @@
      "probe_http_ok",
      2
     ]
+   ],
+   "explains": [
+    "volume",
+    "availability"
    ]
   },
   {
@@ -1394,6 +1496,9 @@
      "uptime_reset",
      2
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -1435,6 +1540,9 @@
      "sys_pending_reboot",
      1
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -1467,6 +1575,10 @@
      "sys_backup_job",
      3
     ]
+   ],
+   "explains": [
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -1499,6 +1611,10 @@
      "sys_update_job",
      3
     ]
+   ],
+   "explains": [
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -1535,6 +1651,10 @@
      "sys_scanner_job",
      1
     ]
+   ],
+   "explains": [
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -1567,6 +1687,10 @@
      "sys_dir_sync",
      3
     ]
+   ],
+   "explains": [
+    "periodic",
+    "novelty"
    ]
   },
   {
@@ -1599,6 +1723,10 @@
      "sys_sshd_key_accept",
      3
     ]
+   ],
+   "explains": [
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -1635,6 +1763,10 @@
      "repl_lag",
      1
     ]
+   ],
+   "explains": [
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -1667,6 +1799,10 @@
      "sys_mail_queue_bulk",
      3
     ]
+   ],
+   "explains": [
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -1699,6 +1835,10 @@
      "sys_scanner_job",
      3
     ]
+   ],
+   "explains": [
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -1733,6 +1873,10 @@
      "dns_queries_wrong_server",
      3
     ]
+   ],
+   "explains": [
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -1767,6 +1911,10 @@
      "dns_stale_record",
      3
     ]
+   ],
+   "explains": [
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -1800,6 +1948,10 @@
      "dns_split_horizon",
      3
     ]
+   ],
+   "explains": [
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -1833,6 +1985,10 @@
      "dns_nxdomain",
      3
     ]
+   ],
+   "explains": [
+    "volume",
+    "availability"
    ]
   },
   {
@@ -1866,6 +2022,10 @@
      "dns_ttl_anom",
      3
     ]
+   ],
+   "explains": [
+    "volume",
+    "availability"
    ]
   },
   {
@@ -1899,6 +2059,10 @@
      "sys_native_vlan_mismatch",
      3
     ]
+   ],
+   "explains": [
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -1936,6 +2100,10 @@
      "vlan_double_tag",
      2
     ]
+   ],
+   "explains": [
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -1969,6 +2137,10 @@
      "sys_icmp_frag_blocked",
      3
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -2006,6 +2178,10 @@
      "dhcp_rogue_offer",
      3
     ]
+   ],
+   "explains": [
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -2039,6 +2215,10 @@
      "dhcp_bad_lease",
      3
     ]
+   ],
+   "explains": [
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -2076,6 +2256,10 @@
      "dhcp_discover_absent",
      1
     ]
+   ],
+   "explains": [
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -2112,6 +2296,10 @@
      "sys_change_ticket",
      1
     ]
+   ],
+   "explains": [
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -2146,6 +2334,9 @@
      "sys_route_null0",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -2179,6 +2370,10 @@
      "sys_oos_drop",
      3
     ]
+   ],
+   "explains": [
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -2211,6 +2406,10 @@
      "route_default_changed",
      3
     ]
+   ],
+   "explains": [
+    "availability",
+    "novelty"
    ]
   },
   {
@@ -2250,6 +2449,9 @@
      "sys_conntrack_full",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -2291,6 +2493,10 @@
      "if_in_errors",
      2
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -2328,6 +2534,10 @@
      "if_in_errors",
      2
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -2360,6 +2570,10 @@
      "qos_drop",
      3
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -2397,6 +2611,10 @@
      "sys_change_ticket",
      1
     ]
+   ],
+   "explains": [
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -2434,6 +2652,10 @@
      "arp_new_mac",
      2
     ]
+   ],
+   "explains": [
+    "scan",
+    "novelty"
    ]
   },
   {
@@ -2470,6 +2692,9 @@
      "sys_boot",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -2503,6 +2728,10 @@
      "sys_update_failed",
      3
     ]
+   ],
+   "explains": [
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -2535,6 +2764,10 @@
      "sys_pending_reboot",
      3
     ]
+   ],
+   "explains": [
+    "novelty",
+    "periodic"
    ]
   },
   {
@@ -2568,6 +2801,10 @@
      "repl_lag",
      3
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -2600,6 +2837,9 @@
      "sys_license_expired",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -2636,6 +2876,9 @@
      "probe_http_fail",
      2
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -2673,6 +2916,9 @@
      "sys_ike_fail",
      2
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -2705,6 +2951,10 @@
      "sys_waf_block",
      3
     ]
+   ],
+   "explains": [
+    "availability",
+    "volume"
    ]
   },
   {
@@ -2744,6 +2994,9 @@
      "probe_http_fail",
      2
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -2776,6 +3029,10 @@
      "sys_change_ticket",
      3
     ]
+   ],
+   "explains": [
+    "volume",
+    "novelty"
    ]
   },
   {
@@ -2817,6 +3074,10 @@
      "probe_http_ok",
      1
     ]
+   ],
+   "explains": [
+    "volume",
+    "availability"
    ]
   },
   {
@@ -2850,6 +3111,9 @@
      "sys_http_5xx",
      3
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -2886,6 +3150,9 @@
      "probe_icmp_fail",
      2
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -2923,6 +3190,11 @@
      "mac_flap",
      2
     ]
+   ],
+   "explains": [
+    "broadcast",
+    "volume",
+    "availability"
    ]
   },
   {
@@ -2960,6 +3232,9 @@
      "sys_krb_skew",
      1
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   },
   {
@@ -2997,6 +3272,9 @@
      "conn_count_high",
      2
     ]
+   ],
+   "explains": [
+    "availability"
    ]
   }
  ]

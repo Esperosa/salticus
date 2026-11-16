@@ -212,10 +212,75 @@ impl OpsStore {
         from: i64,
         to: i64,
     ) -> impl Iterator<Item = &'a OpsSignal> + 'a {
+        self.matching_with(ips, from, to, None)
+    }
+
+    /// Krok 15 (P3, `ops_blast`): signál, jehož rozsah je adresa infrastrukturního zařízení
+    /// (brána, DNS, VPN, AP), se týká všech hostů, které na něm závisí; `infra = None` = jen
+    /// doslovná shoda rozsahu.
+    fn matching_with<'a>(
+        &'a self,
+        ips: &'a [String],
+        from: i64,
+        to: i64,
+        infra: Option<&'a HashSet<String>>,
+    ) -> impl Iterator<Item = &'a OpsSignal> + 'a {
         let parsed: Vec<std::net::IpAddr> = ips.iter().filter_map(|i| i.parse().ok()).collect();
         self.signals.iter().filter(move |s| {
-            s.at >= from && s.at <= to && s.scope.iter().any(|t| scope_hits(t, ips, &parsed))
+            s.at >= from
+                && s.at <= to
+                && s.scope.iter().any(|t| {
+                    scope_hits(t, ips, &parsed) || infra.is_some_and(|set| set.contains(t))
+                })
         })
+    }
+}
+
+/// Krok 15 (P3, `ops_blast`): adresy zařízení, na nichž závisí ostatní hosté (brána,
+/// přepínač, AP, DNS, VPN): signál o nich platí pro celou síť.
+pub fn infra_hosts(
+    classes: &HashMap<String, crate::device_class::DeviceClass>,
+) -> HashSet<String> {
+    use crate::device_class::DeviceKind as K;
+    classes
+        .iter()
+        .filter(|(_, c)| matches!(c.kind, K::Router | K::Switch | K::Ap | K::Dns | K::Vpn))
+        .map(|(ip, _)| ip.clone())
+        .collect()
+}
+
+/// Krok 15 (P3): příznakové skupiny typu nálezu (typ může patřit do více skupin).
+pub fn symptom_groups(finding_type: &str) -> &'static [&'static str] {
+    match finding_type {
+        "connection_timeout_burst"
+        | "service_unreachable"
+        | "service_overload_risk"
+        | "retry_storm"
+        | "vpn_reconnect_storm"
+        | "packet_loss_signal"
+        | "device_disappeared" => &["availability"],
+        "packet_rate_spike"
+        | "inductive_volume_anomaly"
+        | "egress_volume_anomaly"
+        | "ingest_volume_anomaly"
+        | "link_saturation"
+        | "source_volume_outlier"
+        | "slow_egress" => &["volume"],
+        "broadcast_storm" => &["broadcast", "volume"],
+        "unexpected_traffic"
+        | "unmapped_passive_event"
+        | "new_device"
+        | "novel_peer_burst"
+        | "novel_burst_peer"
+        | "peer_burst"
+        | "tls_novel_burst"
+        | "dns_anomaly"
+        | "novel_burst" => &["novelty"],
+        "beacon_periodic" => &["periodic"],
+        "novel_persistent_peer" => &["periodic", "novelty"],
+        "scan_attempts" | "multi_target_pattern" | "pivot_chain" => &["scan"],
+        "novel_fanout" => &["scan", "novelty"],
+        _ => &[],
     }
 }
 
@@ -372,6 +437,13 @@ pub struct DiagPolicy {
     /// Prahy pro behaviorální typy nálezů (přísnější).
     pub strict_score: f64,
     pub strict_margin: f64,
+    /// Krok 15 (P3, `ops_symptoms`): typ vysvětlí jen příznakové skupiny z `explains` a mezi
+    /// rovnocennými kandidáty vyhrává ten, který pokrývá víc přítomných signálů (dominance).
+    pub symptoms: bool,
+    /// Krok 15 (P3, `ops_blast`): dosah signálu o infrastrukturním zařízení na závislé hosty.
+    pub blast: bool,
+    /// Adresy infrastrukturních zařízení (brána, DNS, VPN, AP, přepínač) pro `blast`.
+    pub infra: HashSet<String>,
 }
 
 impl Default for DiagPolicy {
@@ -382,15 +454,24 @@ impl Default for DiagPolicy {
             min_margin: 0.10,
             strict_score: 0.65,
             strict_margin: 0.15,
+            symptoms: false,
+            blast: false,
+            infra: HashSet::new(),
         }
     }
 }
 
-type IndexEntry = (String, String, Vec<(String, f64)>, f64);
+/// Položka indexu: id, kategorie, (klíč, w*idf), součet, příznakové skupiny.
+struct IndexEntry {
+    id: String,
+    category: String,
+    signals: Vec<(String, f64)>,
+    explains: Vec<String>,
+}
 
 /// Předpočítaný index katalogu: klíč -> (typ, váha) a idf klíče.
 pub struct Index {
-    by_entry: Vec<IndexEntry>, // id, kategorie, (klíč, w*idf), součet
+    by_entry: Vec<IndexEntry>,
     idf: HashMap<String, f64>,
 }
 
@@ -418,8 +499,12 @@ impl Index {
                     .iter()
                     .map(|(k, w)| (k.clone(), *w as f64 * idf.get(k).copied().unwrap_or(1.0)))
                     .collect();
-                let total = v.iter().map(|(_, x)| x).sum();
-                (e.id.clone(), e.category.clone(), v, total)
+                IndexEntry {
+                    id: e.id.clone(),
+                    category: e.category.clone(),
+                    signals: v,
+                    explains: e.explains.clone(),
+                }
             })
             .collect();
         Self { by_entry, idf }
@@ -447,7 +532,12 @@ pub fn diagnose(
     policy: &DiagPolicy,
 ) -> OpsDiagnosis {
     let present: HashSet<&str> = store
-        .matching(ips, now - policy.window_s, now)
+        .matching_with(
+            ips,
+            now - policy.window_s,
+            now,
+            policy.blast.then_some(&policy.infra),
+        )
         .map(|s| s.key.as_str())
         .collect();
     let compatible = compatible_type(finding_type);
@@ -473,8 +563,19 @@ pub fn diagnose(
     // skóre: podíl důkazu, který je přítomen, proti důkazu, který u ŽIVÉHO zdroje chybí
     // (signál ze zdroje bez telemetrie typ nevyvrací; slabé signály (váha 1) chybět smí)
     let silent: HashSet<OpsSource> = store.silent_sources(now).into_iter().collect();
-    let mut ranked: Vec<(f64, &str, &str, Vec<&str>)> = Vec::new();
-    for (id, cat, sig, _total) in &index.by_entry {
+    // krok 15 (P3): pokrytí = kolik přítomných známých signálů typ vysvětluje (dominance)
+    let known_present = present.iter().filter(|k| index.known(k)).count().max(1) as f64;
+    let groups = symptom_groups(finding_type);
+    // (skóre, id, kategorie, přítomné klíče, pokrytí)
+    let mut ranked: Vec<(f64, &str, &str, Vec<&str>, f64)> = Vec::new();
+    // typy, které signály sedí, ale jejich mechanismus tento příznak nevyvolává
+    let mut symptom_excluded = false;
+    for e in &index.by_entry {
+        let symptom_ok = !policy.symptoms
+            || e.explains.is_empty()
+            || groups.is_empty()
+            || e.explains.iter().any(|g| groups.contains(&g.as_str()));
+        let sig = &e.signals;
         let top = sig
             .iter()
             .map(|(k, x)| x / index.idf.get(k).copied().unwrap_or(1.0))
@@ -495,10 +596,33 @@ pub fn diagnose(
             }
         }
         if hit > 0.0 && strong {
-            ranked.push((hit / (hit + miss), id.as_str(), cat.as_str(), keys));
+            if !symptom_ok {
+                symptom_excluded = true;
+                continue;
+            }
+            let coverage = keys.len() as f64 / known_present;
+            ranked.push((hit / (hit + miss), e.id.as_str(), e.category.as_str(), keys, coverage));
         }
     }
-    ranked.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(b.1)));
+    if ranked.is_empty() && symptom_excluded {
+        // signály poruchy v okně jsou, ale žádná porucha s těmito signály tento příznak
+        // nevyvolává (nový vztah při saturaci linky): zůstává útok, signály jen jako poznámka
+        let mut d = OpsDiagnosis::plain(
+            "utok",
+            "signály poruchy v okně nevysvětlují tento příznak (jen poznámka)",
+        );
+        d.explains_partly = true;
+        return d;
+    }
+    if policy.symptoms {
+        ranked.sort_by(|a, b| {
+            b.0.total_cmp(&a.0)
+                .then(b.4.total_cmp(&a.4))
+                .then(a.1.cmp(b.1))
+        });
+    } else {
+        ranked.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(b.1)));
+    }
     let any_known = present.iter().any(|k| index.known(k));
     let Some(best) = ranked.first() else {
         return if compatible {
@@ -528,8 +652,8 @@ pub fn diagnose(
         let total_signals = index
             .by_entry
             .iter()
-            .find(|e| e.0 == best.1)
-            .map_or(usize::MAX, |e| e.2.len());
+            .find(|e| e.id == best.1)
+            .map_or(usize::MAX, |e| e.signals.len());
         best.0 >= policy.strict_score
             && d.margin >= policy.strict_margin
             && (best.3.len() >= 2 || total_signals <= 2)
@@ -552,17 +676,26 @@ pub fn diagnose(
         _ => "nejednoznacne",
     }
     .into();
-    if d.margin < policy.min_margin {
+    // krok 15 (P3): kandidát, jehož přítomné signály jsou vlastní podmnožinou signálů
+    // nejlepšího typu, je dominovaný (vysvětluje míň z téhož důkazu) a typ neznejasňuje
+    let dominated = |r: &(f64, &str, &str, Vec<&str>, f64)| {
+        policy.symptoms && r.4 < best.4 && r.3.iter().all(|k| best.3.contains(k))
+    };
+    let close: Vec<&(f64, &str, &str, Vec<&str>, f64)> = ranked
+        .iter()
+        .skip(1)
+        .filter(|r| best.0 - r.0 < policy.min_margin && !dominated(r))
+        .collect();
+    if let Some(rival) = close.first() {
         // dva typy se signály téměř neliší: třída zůstává, přesný typ ne
+        d.margin = best.0 - rival.0;
         d.reason = "více typů s podobnou shodou".into();
-        d.candidates = ranked
-            .iter()
+        d.candidates = std::iter::once(best)
+            .chain(close.iter().copied())
             .take(3)
-            .filter(|r| best.0 - r.0 < policy.min_margin)
             .map(|r| r.1.to_string())
             .collect();
-        let same = ranked.iter().take(2).all(|r| r.2 == best.2);
-        if !same {
+        if rival.2 != best.2 {
             d.class = "nejednoznacne".into();
         }
         // dva typy bez rozlišujícího signálu: typ se neurčuje, kandidáti jsou v `candidates`

@@ -42,6 +42,11 @@ pub struct Entry {
     /// Krok 14 (C2): provozní signály typu (klíč, váha 1 až 3), viz `ops_telemetry`.
     #[serde(default)]
     pub ops_signals: Vec<(String, u8)>,
+    /// Krok 15 (P3): příznakové skupiny nálezů, které mechanismus typu vyvolává
+    /// (`availability`, `volume`, `broadcast`, `novelty`, `periodic`, `scan`); prázdné =
+    /// bez omezení. Generuje `tools/k15_catalog_explains.py` z povahy původce a tvaru provozu.
+    #[serde(default)]
+    pub explains: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
