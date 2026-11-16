@@ -33,7 +33,24 @@ pub struct Correlation {
     pub incidents: Vec<Incident>,
     #[serde(default, rename = "reassessAudit")]
     pub reassess_audit: Vec<AuditEntry>,
+    /// Krok 16: případové složky (přepínač `case_folder`; bez něj prázdné a nevypisuje se).
+    #[serde(default, rename = "caseFolders", skip_serializing_if = "Vec::is_empty")]
+    pub case_folders: Vec<crate::case_folder::CaseFolder>,
+    /// Krok 16: složky, které se nevešly pod strop (K16-2 hlásí počet; cíl 0).
+    #[serde(
+        default,
+        rename = "caseFoldersDropped",
+        skip_serializing_if = "is_zero"
+    )]
+    pub case_folders_dropped: usize,
 }
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
+/// Strop případových složek v jednom reportu (každá ≤ 16 KiB, tedy nejvýš asi 32 MiB).
+pub const MAX_CASE_FOLDERS: usize = 2000;
 
 /// Taktika ATT&CK podle typu nálezu (hrubé mapování; nezná-li typ, `None`).
 pub fn tactic_of(finding_type: &str) -> Option<&'static str> {

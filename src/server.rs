@@ -334,6 +334,20 @@ async fn get_run(
     Ok::<_, (StatusCode, String)>(Json(report))
 }
 
+/// Krok 16: případové složky z `report.json` (`correlation.caseFolders`); bez nich prázdný seznam.
+fn case_folders_of(
+    bytes: &[u8],
+) -> std::result::Result<Vec<crate::case_folder::CaseFolder>, serde_json::Error> {
+    let mut value: serde_json::Value = serde_json::from_slice(bytes)?;
+    match value
+        .pointer_mut("/correlation/caseFolders")
+        .map(serde_json::Value::take)
+    {
+        Some(folders) => serde_json::from_value(folders),
+        None => Ok(Vec::new()),
+    }
+}
+
 async fn get_run_export(
     Path((run_id, format)): Path<(String, String)>,
     State(state): State<AppState>,
@@ -352,24 +366,50 @@ async fn get_run_export(
         "json" => ("report.json", "application/json; charset=utf-8"),
         "md" => ("report.md", "text/markdown; charset=utf-8"),
         "txt" => ("report.txt", "text/plain; charset=utf-8"),
+        // krok 16: případové složky z report.json jako čitelný text nebo HTML
+        "cases-txt" => ("cases.txt", "text/plain; charset=utf-8"),
+        "cases-html" => ("cases.html", "text/html; charset=utf-8"),
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
-                "Neznamy export format. Pouzij json, md nebo txt.".to_string(),
+                "Neznamy export format. Pouzij json, md, txt, cases-txt nebo cases-html."
+                    .to_string(),
             ));
         }
     };
-    let path = state
-        .workspace_root
-        .join("runs")
-        .join(&run_id)
-        .join(filename);
-    let bytes = fs::read(&path).map_err(|error| {
+    let source = if format.starts_with("cases-") {
+        "report.json"
+    } else {
+        filename
+    };
+    let path = state.workspace_root.join("runs").join(&run_id).join(source);
+    let mut bytes = fs::read(&path).map_err(|error| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Chyba serveru: {error}"),
         )
     })?;
+    if format.starts_with("cases-") {
+        let folders = case_folders_of(&bytes).map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Chyba serveru: {error}"),
+            )
+        })?;
+        bytes = if format == "cases-html" {
+            crate::case_folder::render_html(&folders)
+        } else {
+            folders
+                .iter()
+                .map(crate::case_folder::render_text)
+                .collect::<Vec<_>>()
+                .join(
+                    "
+",
+                )
+        }
+        .into_bytes();
+    }
     let mut response = bytes.into_response();
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -2363,6 +2403,16 @@ mod tests {
         .into_response();
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn case_folders_are_read_from_report_correlation() {
+        assert!(
+            case_folders_of(br#"{"schemaVersion":"x"}"#)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(case_folders_of(br#"{"correlation":{"caseFolders":[{"bad":1}]}}"#).is_err());
     }
 
     #[tokio::test]

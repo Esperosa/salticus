@@ -301,6 +301,19 @@ pub struct Decision {
     pub protected: bool,
     /// Provedené kontroly a značka výsledku (pro měření a učení LR, krok 2C).
     pub steps: Vec<(CheckId, &'static str)>,
+    /// Krok 16: kroky s cyklem, poměrem věrohodnosti a textem (podklad případové složky).
+    pub notes: Vec<StepNote>,
+}
+
+/// Krok 16: jeden provedený krok žebříku pro případovou složku (nic nerozhoduje).
+#[derive(Debug, Clone, PartialEq)]
+pub struct StepNote {
+    pub check: CheckId,
+    pub cycle: u64,
+    pub tag: &'static str,
+    /// Poměr věrohodnosti u výsledku `Evidence`, jinak `None`.
+    pub lr: Option<f64>,
+    pub detail: String,
 }
 
 /// Rozhodnutí v reportu (UI, API, audit).
@@ -1402,6 +1415,24 @@ impl Ladder {
                 .steps
                 .iter()
                 .map(|step| (step.check, outcome_tag(&step.outcome)))
+                .collect(),
+            notes: case
+                .steps
+                .iter()
+                .map(|step| {
+                    let (lr, detail) = match &step.outcome {
+                        Outcome::Evidence { lr, detail } => (Some(*lr), detail.clone()),
+                        Outcome::Undetermined(d) | Outcome::Unavailable(d) => (None, d.clone()),
+                        Outcome::Wait(_) => (None, "ceka na dalsi cyklus".to_string()),
+                    };
+                    StepNote {
+                        check: step.check,
+                        cycle: step.cycle,
+                        tag: outcome_tag(&step.outcome),
+                        lr,
+                        detail,
+                    }
+                })
                 .collect(),
         })
     }

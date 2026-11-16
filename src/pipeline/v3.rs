@@ -1023,6 +1023,19 @@ impl V3Session {
             );
             self.store.save("retro", &history)?;
             self.store.save("ledger", &ledger)?;
+            let mut correlation = correlation;
+            if self.engine.case_folder() {
+                use crate::context_gate::ContextProvider as _;
+                self.case_folders(
+                    &mut correlation,
+                    &run_decisions,
+                    report,
+                    &lifecycle,
+                    &coverage,
+                    endpoint_view.as_ref(),
+                    calendar.entries(),
+                );
+            }
             report.correlation = Some(correlation);
         }
         if self.engine.behavior() {
@@ -1030,6 +1043,88 @@ impl V3Session {
         }
         report.finding_lifecycle = lifecycle;
         Ok(())
+    }
+
+    /// Krok 16: případová složka ke každému rozhodnutí žebříku v běhu a k zobrazenému
+    /// nálezu bez rozhodnutí (otevřený případ). Nic nerozhoduje.
+    #[allow(clippy::too_many_arguments)]
+    fn case_folders(
+        &self,
+        out: &mut crate::correlation_layer::Correlation,
+        decisions: &[crate::verify_ladder::Decision],
+        report: &RunReport,
+        lifecycle: &[crate::finding_memory::LifecycleRecord],
+        coverage: &crate::coverage_status::CoverageStatus,
+        endpoint: Option<&crate::endpoint::correlate::EndpointView>,
+        contexts: &[crate::context_gate::ContextEntry],
+    ) {
+        use crate::case_folder::{FolderInput, build};
+        let findings: std::collections::HashMap<&str, &crate::model::Finding> = report
+            .findings
+            .iter()
+            .map(|f| (f.finding_id.as_str(), f))
+            .collect();
+        let records: std::collections::HashMap<&str, &crate::finding_memory::LifecycleRecord> =
+            lifecycle
+                .iter()
+                .map(|r| (r.finding_id.as_str(), r))
+                .collect();
+        let privacy = crate::endpoint::graph::Privacy::default();
+        let mut decided: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        let mut open: Vec<crate::verify_ladder::Decision> = Vec::new();
+        for d in decisions {
+            decided.insert(d.finding_id.as_str());
+        }
+        // zobrazený nález bez rozhodnutí v tomto běhu: otevřený případ (L2), složka bez kroků
+        for r in lifecycle
+            .iter()
+            .filter(|r| r.displayed && !decided.contains(r.finding_id.as_str()))
+        {
+            let Some(f) = findings.get(r.finding_id.as_str()) else {
+                continue;
+            };
+            open.push(crate::verify_ladder::Decision {
+                key: crate::finding_memory::FindingKey::new(
+                    f.host_key.as_deref().unwrap_or(""),
+                    &f.finding_type,
+                    f.service_key.as_deref().unwrap_or(""),
+                ),
+                finding_id: f.finding_id.clone(),
+                finding_type: f.finding_type.clone(),
+                status: crate::verify_ladder::Status::Open,
+                host_ip: f.host_key.clone().unwrap_or_default(),
+                posterior: crate::verify_ladder::DEFAULT_PRIOR,
+                raw_posterior: crate::verify_ladder::DEFAULT_PRIOR,
+                opened: 0,
+                decided: 0,
+                reason: "bez rozhodnuti zebriku v tomto behu".into(),
+                checks: 0,
+                budget_escalation: false,
+                high_impact: false,
+                protected: r.protection.is_some(),
+                steps: Vec::new(),
+                notes: Vec::new(),
+            });
+        }
+        for d in decisions.iter().chain(open.iter()) {
+            if out.case_folders.len() >= crate::correlation_layer::MAX_CASE_FOLDERS {
+                out.case_folders_dropped += 1;
+                continue;
+            }
+            let record = records.get(d.finding_id.as_str()).copied();
+            out.case_folders.push(build(&FolderInput {
+                decision: d,
+                finding: findings.get(d.finding_id.as_str()).copied(),
+                lifecycle: record,
+                ops: record.and_then(|r| r.ops_diagnosis.as_ref()),
+                coverage: Some(coverage),
+                endpoint_covered: endpoint.map(|e| e.covered(&d.host_ip)),
+                contexts,
+                incidents: Some(&out.incidents),
+                pseudonymize_users: privacy.pseudonymize_users,
+                endpoint_weak: self.engine.endpoint_weak(),
+            }));
+        }
     }
 
     /// Krok 8: načte uložené koncové události, přiřadí je hostům podle inventáře

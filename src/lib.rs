@@ -5,6 +5,7 @@ pub mod behavior;
 pub mod broker;
 pub mod calibration;
 pub mod case_file;
+pub mod case_folder;
 pub mod case_history;
 pub mod case_memory;
 pub mod analyst_feedback;

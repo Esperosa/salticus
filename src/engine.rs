@@ -210,6 +210,10 @@ pub struct V3Features {
     /// se stejnými prahy; zaplňuje mezeru mezi jedním oknem a pomalým únikem.
     #[serde(default)]
     pub upload_horizon: bool,
+    /// Krok 16: případová složka pro seniora (shrnutí, aktéři, hypotézy, důkazy pro a
+    /// proti, co zbývá ověřit, slepá místa, důvod předání, uzávěr L1). Nic nerozhoduje.
+    #[serde(default)]
+    pub case_folder: bool,
 }
 
 impl Default for V3Features {
@@ -219,7 +223,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 52] = [
+    pub const NAMES: [&'static str; 53] = [
         "memory",
         "rate",
         "volume",
@@ -272,6 +276,7 @@ impl V3Features {
         "ops_symptoms",
         "ops_blast",
         "upload_horizon",
+        "case_folder",
     ];
 
     pub fn all() -> Self {
@@ -328,6 +333,7 @@ impl V3Features {
             ops_symptoms: true,
             ops_blast: true,
             upload_horizon: true,
+            case_folder: true,
         }
     }
 
@@ -392,6 +398,7 @@ impl V3Features {
             ops_symptoms: false,
             ops_blast: false,
             upload_horizon: false,
+            case_folder: false,
             ..Self::all()
         }
     }
@@ -459,6 +466,7 @@ impl V3Features {
             ops_symptoms: false,
             ops_blast: false,
             upload_horizon: false,
+            case_folder: false,
         }
     }
 
@@ -540,6 +548,7 @@ impl V3Features {
             "ops_symptoms" => &mut self.ops_symptoms,
             "ops_blast" => &mut self.ops_blast,
             "upload_horizon" => &mut self.upload_horizon,
+            "case_folder" => &mut self.case_folder,
             _ => return None,
         })
     }
@@ -756,6 +765,10 @@ impl EngineConfig {
     pub fn l7_ladder(&self) -> bool {
         self.on(|f| f.l7_ladder && f.ladder && (f.l7_tls || f.l7_dns))
     }
+    /// Krok 16: případová složka (jen s `case_files`).
+    pub fn case_folder(&self) -> bool {
+        self.case_files() && self.v3.case_folder
+    }
     pub fn case_files(&self) -> bool {
         self.on(|f| f.case_files && f.ladder && f.memory)
     }
@@ -852,7 +865,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext+endpoint_allow+endpoint_weak+refute_episode+ops_symptoms+ops_blast+upload_horizon]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext+endpoint_allow+endpoint_weak+refute_episode+ops_symptoms+ops_blast+upload_horizon+case_folder]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,

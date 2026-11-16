@@ -307,3 +307,53 @@ fn v3_closure_audit_samples_review_disables_kind_and_survives_restart() {
         );
     }
 }
+
+/// Krok 16: s `case_files,case_folder` nese report ke každému rozhodnutí žebříku
+/// případovou složku se stejným verdiktem; bez přepínače `caseFolders` chybí.
+#[test]
+fn v3_case_folder_accompanies_every_ladder_decision() {
+    let temp = TempDir::new().unwrap();
+    let scenarios = temp.path().join("simulace");
+    generate(&scenarios);
+    let on = temp.path().join("ws-on");
+    fs::create_dir_all(&on).unwrap();
+    fs::write(
+        on.join("salticus.toml"),
+        "[engine]\nmode = \"v3\"\n[engine.v3]\ncase_files = true\ncase_folder = true\n",
+    )
+    .unwrap();
+    run(&on, &scenarios, "slozky");
+    let runs = reports(&on);
+    let report = &runs[0];
+    let folders = report["correlation"]["caseFolders"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let decisions = report["verificationDecisions"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(!folders.is_empty(), "aspon jedna slozka");
+    for d in &decisions {
+        let f = folders
+            .iter()
+            .find(|f| f["case_id"] == d["finding_id"])
+            .expect("slozka k rozhodnuti");
+        assert_eq!(f["verdict"]["posterior_attack"], d["posterior"]);
+    }
+    for f in &folders {
+        assert_eq!(f["schema"], "salticus.case_folder/1");
+        assert!(!f["summary"].as_str().unwrap().is_empty());
+    }
+
+    let off = temp.path().join("ws-off");
+    fs::create_dir_all(&off).unwrap();
+    fs::write(
+        off.join("salticus.toml"),
+        "[engine]\nmode = \"v3\"\n[engine.v3]\ncase_files = true\n",
+    )
+    .unwrap();
+    run(&off, &scenarios, "bez");
+    let runs = reports(&off);
+    assert!(runs[0]["correlation"].get("caseFolders").is_none());
+}

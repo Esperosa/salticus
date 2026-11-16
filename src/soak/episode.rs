@@ -549,6 +549,35 @@ fn k15_trace(line: serde_json::Value) {
     }
 }
 
+/// Krok 16: dump případových složek (K16_CASE_DUMP=soubor, jedna JSON řádka na rozhodnutí).
+/// Jen měření; rozhodnutí neovlivní. Bez proměnné prostředí se složky v soaku nestaví.
+fn k16_dump_on() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("K16_CASE_DUMP").is_some())
+}
+
+fn k16_dump(line: serde_json::Value) {
+    use std::sync::{Mutex, OnceLock};
+    static SINK: OnceLock<Option<Mutex<std::io::BufWriter<std::fs::File>>>> = OnceLock::new();
+    let Some(sink) = SINK.get_or_init(|| {
+        let path = std::env::var("K16_CASE_DUMP").ok()?;
+        let f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .ok()?;
+        Some(Mutex::new(std::io::BufWriter::new(f)))
+    }) else {
+        return;
+    };
+    if let Ok(mut f) = sink.lock() {
+        use std::io::Write;
+        let _ = writeln!(f, "{line}");
+        let _ = f.flush();
+    }
+}
+
 fn stage<T>(agg: &mut Aggregate, name: &str, work: impl FnOnce() -> T) -> T {
     let started = Instant::now();
     let value = work();
@@ -2346,6 +2375,8 @@ fn run_episode_inner(
             }
         }
         let findings_started = Instant::now();
+        // krok 16: diagnózy provozu pro dump případových složek (jen s K16_CASE_DUMP)
+        let mut k16_ops: HashMap<String, crate::ops_telemetry::OpsDiagnosis> = HashMap::new();
         for (finding_index, finding) in run_report.findings.iter().enumerate() {
             let show = &shown[finding_index];
             // krok 6: detekce a FP poruch jen z fronty podezreni (bez ops_class totez)
@@ -2542,6 +2573,9 @@ fn run_episode_inner(
                                     };
                                     if let Some(root) = &d.root {
                                         ops_roots.insert(finding.finding_id.clone(), format!("ops:{root}"));
+                                    }
+                                    if k16_dump_on() {
+                                        k16_ops.insert(finding.finding_id.clone(), d.clone());
                                     }
                                     if exclusive {
                                         *ledger.cat_x.entry(key.clone()).or_default() += 1;
@@ -2961,6 +2995,33 @@ fn run_episode_inner(
                 "truth_cf": caused, "truth_causal": truth.is_some_and(|t| t.causal),
                 "truth_family": truth.and_then(|t| t.family),
             }));
+            if k16_dump_on() {
+                let finding = run_report
+                    .findings
+                    .iter()
+                    .find(|f| f.finding_id == decision.finding_id);
+                let folder = crate::case_folder::build(&crate::case_folder::FolderInput {
+                    decision,
+                    finding,
+                    lifecycle: None,
+                    ops: k16_ops.get(&decision.finding_id),
+                    coverage: None,
+                    endpoint_covered: None,
+                    contexts: &[],
+                    incidents: None,
+                    pseudonymize_users: true,
+                    endpoint_weak: cfg.engine.endpoint_weak(),
+                });
+                let violations = crate::case_folder::validate(&folder, decision);
+                let bytes = serde_json::to_vec(&folder).map_or(0, |b| b.len());
+                k16_dump(serde_json::json!({
+                    "seed": cfg.run_seed, "net": cfg.network_id, "cycle": cycle,
+                    "world": format!("{:?}", cfg.mask),
+                    "truth_cf": caused, "truth_causal": truth.is_some_and(|t| t.causal),
+                    "truth_family": truth.and_then(|t| t.family),
+                    "violations": violations, "bytes": bytes, "folder": folder,
+                }));
+            }
             let out = &mut agg.output;
             out.ladder_latency_sum += decision.decided - decision.opened;
             out.ladder_latency_max = out
