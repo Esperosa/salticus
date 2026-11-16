@@ -190,6 +190,26 @@ pub struct V3Features {
     /// Krok 11: sken vnejsiho zdroje s mene cili, ale bez jedineho uspechu (`scan_attempts`).
     #[serde(default)]
     pub scan_fresh: bool,
+    /// Krok 15 (P1): „nic podezřelého“ od koncového agenta není silná skupina důkazu
+    /// neškodnosti; při `strict_close` vyvrací jen spolu s kontextem nebo živostí.
+    #[serde(default)]
+    pub endpoint_weak: bool,
+    /// Krok 15 (P1): vyvrácený klíč paměti pohltí jen souvislé pokračování téže epizody;
+    /// po odmlce (> 1 h) se nález znovu ověřuje žebříkem místo tichého potlačení.
+    #[serde(default)]
+    pub refute_episode: bool,
+    /// Krok 15 (P3): typ katalogu vysvětlí jen příznaky, které jeho mechanismus vyvolává
+    /// (`explains`), a mezi rovnocennými kandidáty vyhrává ten, který pokrývá víc signálů.
+    #[serde(default)]
+    pub ops_symptoms: bool,
+    /// Krok 15 (P3): signál o infrastrukturním zařízení (router, DNS, VPN, AP) platí pro
+    /// hosty, které na něm závisí (celá síť), ne jen pro jeho vlastní adresu.
+    #[serde(default)]
+    pub ops_blast: bool,
+    /// Krok 15 (P2): nahraný objem hostu se hodnotí i přes klouzavé okno 6 oken (3 h)
+    /// se stejnými prahy; zaplňuje mezeru mezi jedním oknem a pomalým únikem.
+    #[serde(default)]
+    pub upload_horizon: bool,
 }
 
 impl Default for V3Features {
@@ -199,7 +219,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 47] = [
+    pub const NAMES: [&'static str; 52] = [
         "memory",
         "rate",
         "volume",
@@ -247,6 +267,11 @@ impl V3Features {
         "ops_telemetry",
         "endpoint_ext",
         "endpoint_allow",
+        "endpoint_weak",
+        "refute_episode",
+        "ops_symptoms",
+        "ops_blast",
+        "upload_horizon",
     ];
 
     pub fn all() -> Self {
@@ -298,6 +323,11 @@ impl V3Features {
             ops_telemetry: true,
             endpoint_ext: true,
             endpoint_allow: true,
+            endpoint_weak: true,
+            refute_episode: true,
+            ops_symptoms: true,
+            ops_blast: true,
+            upload_horizon: true,
         }
     }
 
@@ -357,6 +387,11 @@ impl V3Features {
             ops_telemetry: false,
             endpoint_ext: false,
             endpoint_allow: false,
+            endpoint_weak: false,
+            refute_episode: false,
+            ops_symptoms: false,
+            ops_blast: false,
+            upload_horizon: false,
             ..Self::all()
         }
     }
@@ -419,6 +454,11 @@ impl V3Features {
             ops_telemetry: false,
             endpoint_ext: false,
             endpoint_allow: false,
+            endpoint_weak: false,
+            refute_episode: false,
+            ops_symptoms: false,
+            ops_blast: false,
+            upload_horizon: false,
         }
     }
 
@@ -495,6 +535,11 @@ impl V3Features {
             "ops_telemetry" => &mut self.ops_telemetry,
             "endpoint_ext" => &mut self.endpoint_ext,
             "endpoint_allow" => &mut self.endpoint_allow,
+            "endpoint_weak" => &mut self.endpoint_weak,
+            "refute_episode" => &mut self.refute_episode,
+            "ops_symptoms" => &mut self.ops_symptoms,
+            "ops_blast" => &mut self.ops_blast,
+            "upload_horizon" => &mut self.upload_horizon,
             _ => return None,
         })
     }
@@ -688,6 +733,26 @@ impl EngineConfig {
     pub fn redisplay_age(&self) -> bool {
         self.on(|f| f.redisplay_age && f.memory)
     }
+    /// Krok 15 (P1): koncový „nic podezřelého“ není silná skupina (jen s žebříkem a endpointem).
+    pub fn endpoint_weak(&self) -> bool {
+        self.on(|f| f.endpoint_weak && f.endpoint && f.ladder)
+    }
+    /// Krok 15 (P1): vyvrácený klíč pohltí jen souvislou epizodu (jen s pamětí a žebříkem).
+    pub fn refute_episode(&self) -> bool {
+        self.on(|f| f.refute_episode && f.memory && f.ladder)
+    }
+    /// Krok 15 (P3): příznakové skupiny katalogu a pokrytí signálů v diagnóze.
+    pub fn ops_symptoms(&self) -> bool {
+        self.ops_telemetry() && self.v3.ops_symptoms
+    }
+    /// Krok 15 (P3): dosah signálu infrastrukturního zařízení na závislé hosty.
+    pub fn ops_blast(&self) -> bool {
+        self.ops_telemetry() && self.v3.ops_blast
+    }
+    /// Krok 15 (P2): nahraný objem přes klouzavý horizont oken (jen s odchozími toky).
+    pub fn upload_horizon(&self) -> bool {
+        self.on(|f| f.egress && f.upload_horizon)
+    }
     pub fn l7_ladder(&self) -> bool {
         self.on(|f| f.l7_ladder && f.ladder && (f.l7_tls || f.l7_dns))
     }
@@ -741,6 +806,8 @@ impl EngineConfig {
             escalate_first_source: self.recall() || self.strict_close(),
             reopen_stale: self.strict_close(),
             redisplay_age_s: if self.redisplay_age() { 6 * 3600 } else { 0 },
+            // krok 15: odmlka delsi nez hodina = nova epizoda (dva cykly po 30 min)
+            refute_episode_s: if self.refute_episode() { 3600 } else { 0 },
             protect: self.protect(),
             volume_factor: if self.redisplay() { 2.0 } else { 4.0 },
             min_escalation_count: if self.redisplay() { 8 } else { 20 },
@@ -785,7 +852,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext+endpoint_allow]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext+endpoint_allow+endpoint_weak+refute_episode+ops_symptoms+ops_blast+upload_horizon]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,

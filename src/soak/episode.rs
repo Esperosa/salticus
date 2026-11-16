@@ -378,6 +378,7 @@ fn shown_for(disposition: &Disposition, memory_on: bool, auto: Option<ContextKin
                 Escalation::Severity => "escalated_severity",
                 Escalation::NewSource => "escalated_source",
                 Escalation::Volume => "escalated_volume",
+                Escalation::Episode => "escalated_episode",
             },
         ),
         Disposition::Suppressed => (false, "suppressed"),
@@ -527,6 +528,25 @@ fn finding_mentions(finding: &Finding, keys: &[String]) -> bool {
             || mentions_ip(&finding.rationale, k)
             || finding.evidence.iter().any(|e| mentions_ip(e, k))
     })
+}
+
+/// Krok 15: forenzni stopa jedne site (K15_TRACE=soubor, jedna JSON radka na udalost).
+/// Jen diagnostika; nic nerozhoduje. Bez promenne prostredi se nic nezapisuje.
+fn k15_trace(line: serde_json::Value) {
+    use std::sync::{Mutex, OnceLock};
+    static SINK: OnceLock<Option<Mutex<std::io::BufWriter<std::fs::File>>>> = OnceLock::new();
+    let Some(sink) = SINK.get_or_init(|| {
+        let path = std::env::var("K15_TRACE").ok()?;
+        let f = std::fs::OpenOptions::new().create(true).append(true).open(path).ok()?;
+        Some(Mutex::new(std::io::BufWriter::new(f)))
+    }) else {
+        return;
+    };
+    if let Ok(mut f) = sink.lock() {
+        use std::io::Write;
+        let _ = writeln!(f, "{line}");
+        let _ = f.flush();
+    }
 }
 
 fn stage<T>(agg: &mut Aggregate, name: &str, work: impl FnOnce() -> T) -> T {
@@ -979,7 +999,11 @@ fn run_episode_inner(
     let mut ops_rt = (cfg.engine.ops_telemetry() && cfg.world.ops.on).then(|| OpsRt {
         sim: crate::soak::ops_sim::OpsSim::new(cfg.world.ops, &model),
         store: crate::ops_telemetry::OpsStore::new(Default::default()),
-        policy: crate::ops_telemetry::DiagPolicy::default(),
+        policy: crate::ops_telemetry::DiagPolicy {
+            symptoms: cfg.engine.ops_symptoms(),
+            blast: cfg.engine.ops_blast(),
+            ..Default::default()
+        },
     });
     for cycle in 0..cycles {
         let cycle_started = Instant::now();
@@ -1240,6 +1264,12 @@ fn run_episode_inner(
                         crate::device_class::peer_group_key(ip, class).map(|g| (ip.clone(), g))
                     })
                     .collect();
+                // krok 15 (P3): infrastrukturni zarizeni pro dosah provoznich signalu
+                if let Some(rt) = ops_rt.as_mut()
+                    && rt.policy.blast
+                {
+                    rt.policy.infra = crate::ops_telemetry::infra_hosts(&runtime.device_classes);
+                }
                 // presnost klasifikace proti roli v modelu (jen mereni)
                 for host in &hosts {
                     let Some(device) = model.device_by_ip(&host.ip) else {
@@ -2279,6 +2309,42 @@ fn run_episode_inner(
             })
             .map(|(index, _)| index)
             .collect();
+        if !collect_world {
+            // krok 15: forenzni stopa pravd (jednou seznam, pak aktivita v cyklu)
+            if cycle == 0 {
+                for (index, t) in truths.iter().enumerate() {
+                    k15_trace(serde_json::json!({
+                        "ev": "truth", "net": cfg.network_id, "id": t.id,
+                        "kind": match t.kind {
+                            Kind::Attack(f) => format!("attack:{}", f.label()),
+                            Kind::Benign(ref b) => format!("benign:{b:?}"),
+                        },
+                        "start": t.start_cycle, "end": t.end_cycle, "intensity": t.intensity,
+                        "attacker_external": t.attacker_external, "target_external": t.target_external,
+                        "keys": truth_keys[index],
+                    }));
+                }
+            }
+            for &index in &relevant_truths {
+                let t = &truths[index];
+                if cycle < t.start_cycle || cycle > t.end_cycle {
+                    continue;
+                }
+                let mut targets: Vec<String> =
+                    t.cycle_targets.iter().map(|(ip, p)| format!("{ip}:{p}")).collect();
+                targets.sort();
+                let mut sources: Vec<String> = t.cycle_sources.iter().cloned().collect();
+                sources.sort();
+                k15_trace(serde_json::json!({
+                    "ev": "truth_cycle", "net": cfg.network_id, "id": t.id, "cycle": cycle,
+                    "flows_emitted": t.flows_emitted, "flows_blocked": t.flows_blocked,
+                    "targets": targets.iter().take(12).collect::<Vec<_>>(),
+                    "sources": sources.iter().take(12).collect::<Vec<_>>(),
+                    "diag_flows": t.cov.diag.flows, "diag_bytes": t.cov.diag.bytes,
+                    "diag_failed": t.cov.diag.failed,
+                }));
+            }
+        }
         let findings_started = Instant::now();
         for (finding_index, finding) in run_report.findings.iter().enumerate() {
             let show = &shown[finding_index];
@@ -2297,6 +2363,51 @@ fn run_episode_inner(
                     finding.host_key.clone().unwrap_or_default(),
                 ));
             let closed = show.auto.is_some() || show.ladder_refuted;
+            if is_behavioral && !collect_world {
+                let mentioned: Vec<serde_json::Value> = relevant_truths
+                    .iter()
+                    .filter(|&&i| finding_mentions(finding, &truth_keys[i]))
+                    .map(|&i| {
+                        let t = &truths[i];
+                        serde_json::json!({
+                            "id": t.id,
+                            "kind": match t.kind {
+                                Kind::Attack(f) => format!("attack:{}", f.label()),
+                                Kind::Benign(ref b) => format!("benign:{b:?}"),
+                            },
+                            "start": t.start_cycle, "end": t.end_cycle,
+                            "in_window": cycle + ATTRIBUTION_LATENCY >= t.start_cycle
+                                && cycle <= t.end_cycle + ATTRIBUTION_LATENCY,
+                        })
+                    })
+                    .collect();
+                let key = lc.keys.get(finding_index).and_then(|k| k.as_ref());
+                let mem = key.and_then(|k| {
+                    v3.as_ref()
+                        .and_then(|r| r.memory.as_ref())
+                        .and_then(|m| m.get(k))
+                        .map(|e| {
+                            serde_json::json!({
+                                "state": e.state.label(), "occurrences": e.occurrences,
+                                "sources": e.sources.iter().cloned().collect::<Vec<_>>(),
+                                "max_count": e.max_count, "auto_reason": e.auto_reason,
+                            })
+                        })
+                });
+                k15_trace(serde_json::json!({
+                    "ev": "finding", "net": cfg.network_id, "cycle": cycle,
+                    "type": finding.finding_type, "id": finding.finding_id,
+                    "host": finding.host_key, "service": finding.service_key,
+                    "severity": format!("{:?}", finding.severity),
+                    "key": key.map(|k| format!("{}|{}|{}", k.entity, k.finding_type, k.service)),
+                    "sources": lc.sources.get(finding_index),
+                    "displayed": show.displayed, "reason": show.reason,
+                    "auto": show.auto.map(|a| format!("{a:?}")),
+                    "ladder_refuted": show.ladder_refuted, "protected": show.protected,
+                    "ops": show.ops, "closed": closed, "memory": mem,
+                    "truths": mentioned, "title": finding.title,
+                }));
+            }
             if is_behavioral && collect_world {
                 // kontrafaktualni svet: zapamatovat nalezy, ktere by fakticky beh mohl
                 // pripsat nekteremu utoku (stejne okno a klicove IP)
@@ -2836,6 +2947,20 @@ fn run_episode_inner(
             use crate::verify_ladder::Status;
             let truth = case_truth.remove(&decision.key);
             let caused = truth.is_some_and(|t| t.cf);
+            k15_trace(serde_json::json!({
+                "ev": "ladder", "net": cfg.network_id, "cycle": cycle,
+                "world": format!("{:?}", cfg.mask),
+                "key": format!("{}|{}|{}", decision.key.entity, decision.key.finding_type, decision.key.service),
+                "type": decision.finding_type, "id": decision.finding_id,
+                "status": format!("{:?}", decision.status),
+                "opened": decision.opened, "decided": decision.decided,
+                "posterior": decision.posterior, "protected": decision.protected,
+                "high_impact": decision.high_impact,
+                "steps": decision.steps.iter().map(|(c, t)| format!("{}:{t}", c.label())).collect::<Vec<_>>(),
+                "reason": decision.reason,
+                "truth_cf": caused, "truth_causal": truth.is_some_and(|t| t.causal),
+                "truth_family": truth.and_then(|t| t.family),
+            }));
             let out = &mut agg.output;
             out.ladder_latency_sum += decision.decided - decision.opened;
             out.ladder_latency_max = out

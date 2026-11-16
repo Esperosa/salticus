@@ -80,6 +80,11 @@ pub struct MemoryConfig {
     /// stale se opakuje, se zobrazi znovu (0 = vypnuto). Utok pod starym klicem nezmizi.
     #[serde(default)]
     pub redisplay_age_s: i64,
+    /// Krok 15 (P1): vyvracený nebo automaticky vyřešený záznam pohltí jen souvislé
+    /// pokračování téže epizody; výskyt po odmlce delší než tohle (0 = vypnuto) je nová
+    /// epizoda, kterou žebřík ověří znovu (důkaz neškodnosti z minula nemusí platit).
+    #[serde(default)]
+    pub refute_episode_s: i64,
 }
 
 impl Default for MemoryConfig {
@@ -97,6 +102,7 @@ impl Default for MemoryConfig {
             protect: false,
             reopen_stale: false,
             redisplay_age_s: 0,
+            refute_episode_s: 0,
         }
     }
 }
@@ -245,6 +251,8 @@ pub enum Escalation {
     Severity,
     NewSource,
     Volume,
+    /// Krok 15: nová epizoda po odmlce u vyvráceného nebo vyřešeného klíče.
+    Episode,
 }
 
 impl Escalation {
@@ -253,6 +261,7 @@ impl Escalation {
             Escalation::Severity => "severity",
             Escalation::NewSource => "new_source",
             Escalation::Volume => "volume",
+            Escalation::Episode => "episode",
         }
     }
 }
@@ -757,6 +766,17 @@ impl FindingMemory {
                 } else {
                     escalation
                 };
+                // krok 15 (P1): vyvraceni plati pro epizodu, ne pro klic navzdy; po odmlce
+                // je to nova epizoda a zebrik ji overi znovu (nic se nezobrazi bez overeni)
+                let escalation = if escalation.is_none()
+                    && cfg.refute_episode_s > 0
+                    && matches!(previous, FindingState::Refuted | FindingState::AutoResolved)
+                    && gap_s >= cfg.refute_episode_s
+                {
+                    Some(Escalation::Episode)
+                } else {
+                    escalation
+                };
                 // Objem v okne s neskodnym vysvetlenim (zaloha, davka) je ocekavany;
                 // vyssi zavaznost nebo novy zdroj se ale zobrazi i v okne kontextu.
                 let escalation = match (escalation, explanation) {
@@ -1178,6 +1198,37 @@ mod tests {
             "kratce po vyvraceni zustava potlaceno"
         );
         assert!(memory.observe(&obs(&k, 26 * 60, Severity::Low, 3, &none), None).displayed());
+    }
+
+    /// Krok 15 (P1): vyvraceni plati pro epizodu. Stejny klic, stejne zdroje a objem po
+    /// odmlce delsi nez `refute_episode_s` je nova epizoda (eskalace `episode`, stav
+    /// znovuotevreno, jde do zebriku); souvisle pokracovani zustava potlacene. Bez
+    /// prepinace puvodni chovani: vsechno potlaceno az do `quiet_close_s`.
+    #[test]
+    fn refuted_key_absorbs_only_the_continuous_episode_when_episode_scoped() {
+        let k = key("asset:35", "connection_timeout_burst");
+        let none: Vec<String> = Vec::new();
+        for episode in [false, true] {
+            let mut memory = FindingMemory::new(MemoryConfig {
+                reopen_stale: true,
+                refute_episode_s: if episode { 3600 } else { 0 },
+                ..MemoryConfig::default()
+            });
+            memory.observe(&obs(&k, 0, Severity::Low, 3, &none), None);
+            assert!(memory.refute(&k, "L3 liveness: vypadek", at(1)));
+            assert_eq!(
+                memory.observe(&obs(&k, 30, Severity::Low, 3, &none), None),
+                Disposition::Suppressed,
+                "souvisle pokracovani (30 min) zustava potlacene"
+            );
+            let d = memory.observe(&obs(&k, 3 * 60, Severity::Low, 3, &none), None);
+            if episode {
+                assert_eq!(d, Disposition::Escalated(Escalation::Episode), "{d:?}");
+                assert_eq!(memory.get(&k).unwrap().state, FindingState::Reopened);
+            } else {
+                assert_eq!(d, Disposition::Suppressed, "puvodni chovani: potlaceno do 24 h");
+            }
+        }
     }
 
     /// Krok 12: opakujici se otevreny nalez se po `redisplay_age_s` zobrazi znovu.

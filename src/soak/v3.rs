@@ -90,6 +90,7 @@ impl V3Runtime {
                     competing: engine.hypotheses(),
                     l7: engine.l7_ladder(),
                     ops: engine.ops_telemetry(),
+                    endpoint_weak: engine.endpoint_weak(),
                     ..Default::default()
                 },
                 secret,

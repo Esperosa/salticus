@@ -65,6 +65,8 @@ struct ProdEvidence<'a> {
     endpoint: Option<&'a crate::endpoint::correlate::EndpointView>,
     /// Provozní telemetrie běhu (krok 14, C2); `None` = vypnuto.
     ops: Option<&'a crate::ops_telemetry::OpsStore>,
+    /// Krok 15 (P3): politika diagnózy (příznakové skupiny, dosah infrastruktury).
+    ops_policy: &'a crate::ops_telemetry::DiagPolicy,
 }
 
 impl crate::verify_ladder::LadderEvidence for ProdEvidence<'_> {
@@ -207,7 +209,7 @@ impl crate::verify_ladder::LadderEvidence for ProdEvidence<'_> {
             &ips,
             false,
             self.now.timestamp(),
-            &crate::ops_telemetry::DiagPolicy::default(),
+            self.ops_policy,
         ))
     }
 
@@ -338,6 +340,17 @@ impl V3Session {
                 }
             }
         }
+        // krok 15 (P3): politika diagnózy provozní telemetrie (za přepínači)
+        let diag_policy = crate::ops_telemetry::DiagPolicy {
+            symptoms: self.engine.ops_symptoms(),
+            blast: self.engine.ops_blast(),
+            infra: if self.engine.ops_blast() {
+                crate::ops_telemetry::infra_hosts(&devices)
+            } else {
+                Default::default()
+            },
+            ..Default::default()
+        };
         if self.engine.unexpected_v3() {
             let mut list = std::mem::take(&mut report.findings);
             list.extend(findings::v3_extra_findings(report, self.engine.recall()));
@@ -531,6 +544,7 @@ impl V3Session {
                         competing: self.engine.hypotheses(),
                         l7: self.engine.l7_ladder(),
                         ops: self.engine.ops_telemetry(),
+                        endpoint_weak: self.engine.endpoint_weak(),
                         ..Default::default()
                     },
                     u64::from_le_bytes(
@@ -560,6 +574,7 @@ impl V3Session {
         ladder.policy.protect = self.engine.protect();
         ladder.policy.endpoint = self.engine.endpoint();
         ladder.policy.ops = self.engine.ops_telemetry();
+        ladder.policy.endpoint_weak = self.engine.endpoint_weak();
         if self.engine.protect() {
             let reset = ladder.reset_forbidden_novelty_evidence();
             if reset > 0 {
@@ -784,6 +799,7 @@ impl V3Session {
                     .then_some((&behavior_state.profile, &profile_policy)),
                 endpoint: endpoint_view.as_ref(),
                 ops: ops_ladder_store.as_ref(),
+                ops_policy: &diag_policy,
             };
             let decisions = ladder.step(cycle, &mut env);
             for decision in &decisions {
@@ -970,7 +986,7 @@ impl V3Session {
                         &ips,
                         reason.is_some(),
                         now.timestamp(),
-                        &crate::ops_telemetry::DiagPolicy::default(),
+                        &diag_policy,
                     );
                     record.catalog = Some(d.note(catalog));
                     record.ops_diagnosis = Some(d);

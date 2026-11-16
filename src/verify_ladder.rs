@@ -483,6 +483,9 @@ pub struct LadderPolicy {
     pub l7: bool,
     /// Krok 14: kontrola provozní telemetrie v plánu.
     pub ops: bool,
+    /// Krok 15 (P1): „nic podezřelého“ od agenta není silná skupina důkazu neškodnosti
+    /// (agent může lhát); při `strict_refute` vyvrací jen s kontextem nebo živostí.
+    pub endpoint_weak: bool,
     pub costs: crate::competing::Costs,
 }
 
@@ -508,6 +511,7 @@ impl Default for LadderPolicy {
             competing: false,
             l7: false,
             ops: false,
+            endpoint_weak: false,
             costs: crate::competing::Costs::default(),
             protect: false,
             endpoint: false,
@@ -1231,7 +1235,12 @@ impl Ladder {
                 if lr < 1.0 {
                     case.benign_evidence = true;
                     if let Some(group) = benign_group(check) {
-                        case.benign_groups.insert(group);
+                        // krok 15 (P1): „nic podezreleho“ od agenta je slaba skupina (6):
+                        // sama ani s historii nestaci, agent muze lhat (rameno `lying`)
+                        let weak = check == CheckId::Endpoint
+                            && self.policy.endpoint_weak
+                            && !detail.starts_with("seznam povolenych");
+                        case.benign_groups.insert(if weak { 6 } else { group });
                     }
                     // krok 14: seznam povolenych je schvaleni vlastnikem (kontext, skupina 1)
                     // potvrzene pozorovanym procesem (koncova telemetrie, skupina 4): dve skupiny
@@ -1303,10 +1312,11 @@ impl Ladder {
             // nizka pravdepodobnost utoku bez dostatecneho pozitivniho dukazu: nezavirat,
             // predat cloveku (zustava viditelne)
             self.stats.strict_escalated += 1;
+            let groups: Vec<u8> = case.benign_groups.iter().copied().collect();
             let decision = self.finish(key, Status::Escalated, cycle, false);
             return decision.map(|mut d| {
                 d.reason = format!(
-                    "pozitivni dukaz neskodnosti nestaci (mene nez dve nezavisle skupiny nebo zadna silna): {}",
+                    "pozitivni dukaz neskodnosti nestaci (mene nez dve nezavisle skupiny nebo zadna silna; skupiny {groups:?}): {}",
                     d.reason
                 );
                 d
@@ -1894,6 +1904,31 @@ mod tests {
         );
         let without = decide(ep_policy(false), "inductive_volume_anomaly", &mut mk());
         assert_ne!(without.status, Status::Refuted, "{}", without.reason);
+    }
+
+    /// Krok 15 (P1): pri `strict_refute` + `endpoint_weak` neni „nic podezreleho“ od agenta
+    /// silna skupina: historie + koncovy signal nevyvrati (rozhodnuti jde cloveku); bez
+    /// `endpoint_weak` tataz dvojice vyvrati (drzene seedy 20267401, sit 7, lhouci agent).
+    #[test]
+    fn lying_capable_agent_benign_signal_is_not_a_strong_group_under_strict_refute() {
+        use crate::endpoint::correlate::EndpointSignal;
+        let mk = || Env {
+            recurrence: Some(Recurrence::Seen { days: 3 }),
+            endpoint: Some(EndpointSignal::Benign("vse v poradku".into())),
+            ..Env::default()
+        };
+        let policy = |weak: bool| LadderPolicy {
+            endpoint: true,
+            protect: true,
+            strict_refute: true,
+            endpoint_weak: weak,
+            ..Default::default()
+        };
+        let before = decide(policy(false), "scan_attempts", &mut mk());
+        assert_eq!(before.status, Status::Refuted, "{}", before.reason);
+        let after = decide(policy(true), "scan_attempts", &mut mk());
+        assert_eq!(after.status, Status::Escalated, "{}", after.reason);
+        assert!(after.reason.contains("skupiny [3, 6]"), "{}", after.reason);
     }
 
     /// Koncova kontrola bez nalezu (NoSignal) nespotrebuje strop kontrol: rozhodnuti i
