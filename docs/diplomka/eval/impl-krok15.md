@@ -142,6 +142,20 @@ Co `upload_horizon` změnil (`F:\claude-tmp\k15\horizoncheck.py`): nálezů `egr
 
 **`k15e` (`elying` + `endpoint_weak` + `refute_episode`) proti `elying`, 38 párů:** detekce 82,3 = 82,3 (+0,0), FP poměr 1,000, hn_* +0,0, omylem zavřeno 0 z 2692 v obou (horní mez 0,14 %), autonomně vyvráceno 13 → 2 (lhoucí agent už nevyvrací s historií sám). Na ladicích seedech se mechanismus případu 2 nevyskytl; test K15-1 pro `k15e` rozhodnou držené seedy.
 
+**`k15ops` (`ops` + `ops_symptoms` + `ops_blast` + `refute_episode` + `upload_horizon`) proti `ops` (součty přes 5 seedů, `k15ops` bez 2 XXL sítí seedu 20266106):**
+
+| ukazatel | `ops` (krok 14) | `k15ops` | práh |
+|---|---:|---:|---|
+| C1 třída poruchy | 78,5 (n = 973) | **70,8** (n = 878) | ≥ 85: **nesplněno, horší** |
+| C2 `catalog_id` s telemetrií | 60,5 | **56,6**; mezi kandidáty 88,0 → 76,0 | ≥ 70: **nesplněno, horší** |
+| C4 útok maskovaný jako porucha (nálezy) | 8,3 | **21,3** | ≤ 5: **nesplněno, horší** |
+| C5 porucha maskovaná jako útok | 10,8 | **20,2** | ≤ 10: **nesplněno, horší** |
+| C7 správná kategorie celkem | 83,7 | 72,3 | ≥ 85: nesplněno |
+
+Rozbor na jedné síti (seed 20261102, síť 2, dump diagnóz `F:\claude-tmp\k15\diag`): `ops_symptoms` převedl nálezy poruch na útok tam, kde simulovaná porucha vyvolá typ nálezu, který její mechanismus podle katalogu nevyvolává (první verze `explains`: `port_crc_errors` → `unexpected_traffic`; po doplnění skupin z autorského textu katalogu už ne), a `ops_blast` naopak vysvětlil útoky signálem o infrastruktuře v celé síti (`ddos_volume`/`connection_timeout_burst`, `ddos_ntp_amplification`/`packet_rate_spike`, `c2_doh_resolver`/`tls_novel_burst` → porucha): rozšířený dosah bez časové vazby mezi signálem a nálezem (okno 3 h) vysvětlí každý dostupnostní nález v síti. Obě opravy míří na skutečné příčiny C4 a C5, ale v tomto simulátoru si jdou proti sobě a bez přesnějšího modelu (kdy přesně signál platí a kterých hostů se týká) celkový výsledek zhoršují. **Ani jedna se nedoporučuje zapnout.** LOFO `k15opsA` a `k15opsB` níže; ramena `k15noise` a `k15mix` se po tomto výsledku nepouštějí (složka neprošla ladicím prahem K15-4/K15-5), což je odchylka od předregistrace zapsaná zde.
+
+Co z toho plyne pro otázku „je simulace nerealistická“: to, které typy nálezů porucha vyvolá a jaký dosah má signál o zařízení, si simulátor i katalog vymýšlejí nezávisle na sobě (katalog: text autora; simulátor: generátor varianty), a diagnóza se dá vylepšit jen tak, že se jedno přizpůsobí druhému, tedy laděním na vlastní simulátor. Ověřit to jde jen na reálném záznamu provozních incidentů (incident log NOC + toky + SNMP/syslog téže sítě); takový veřejný dataset nemám a bez něj zůstává C1 až C5 horním odhadem na uzavřeném světě.
+
 ### Držené seedy (20268101 až 20268502, jednou)
 
 Doplní se.
