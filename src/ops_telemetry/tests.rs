@@ -326,7 +326,8 @@ fn fuzz_adapters_never_panic() {
         "SERVICE ALERT:",
         "no free leases",
     ];
-    for _ in 0..30_000 {
+    let fuzz_n: u64 = std::env::var("SALTICUS_FUZZ_N").ok().and_then(|v| v.parse().ok()).unwrap_or(30_000);
+    for _ in 0..fuzz_n {
         let n = (next() % 12) as usize;
         let mut line = String::new();
         for _ in 0..n {

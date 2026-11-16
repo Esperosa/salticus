@@ -236,7 +236,7 @@ Zmrazeno před během: kód `k14n` (commit b0cd196), konfigurace `final` + `endp
 | A12 | `elying`: detekce +0,0 (-0,0 až +0,1); **omylem zavřených útoků 5 z 6794 proti 1 u `off`: 4 navíc v jediné síti (20267401, síť 7: c2_high_jitter, update_channel_compromise_fleet, icmp_blocked_by_firewall, slow_link_loss_degradation)**; chráněnost těch nálezů z výstupu nelze určit | detekce splněno; část „nic chráněného nezavřeno“ **nelze potvrdit, brát jako nesplněno** (A4 pro `lying` <= `off` + 0,5 % útoků splněno: +0,06 %) |
 | A16 | 0 paniků | splněno |
 
-Další zjištění: i s poctivým agentem (`e100`, `e60`, `e30`, `both`) vyvrátil žebřík kauzálně omylem 2 nálezy `packet_rate_spike` (sítě 20267101/2 a 20267202/1), kdežto `off` 0; k zavření to nevedlo (A4 beze změny). U `elying` k tomu přibyly 4 a 1 nález `scan_attempts`. Pravděpodobná příčina: čistý koncový stav se u objemových nálezů bez procesu (provoz zvenčí) počítá jako neškodný důkaz. Neopraveno, protože na držených seedech se po měření nic nemění; je to otevřená vada ke kontrole na čerstvých seedech.
+Další zjištění: i s poctivým agentem (`e100`, `e60`, `e30`, `both`) vyvrátil žebřík kauzálně omylem 2 nálezy `packet_rate_spike` (sítě 20267101/2 a 20267202/1), kdežto `off` 0; k zavření to nevedlo (A4 beze změny). U `elying` a `emimic` je chybných vyvrácení celkem 5 (4 kauzální, 1 kontrafaktuální nález `scan_attempts`). Pravděpodobná příčina: čistý koncový stav se u objemových nálezů bez procesu (provoz zvenčí) počítá jako neškodný důkaz. Neopraveno, protože na držených seedech se po měření nic nemění; je to otevřená vada ke kontrole na čerstvých seedech.
 
 ### Část C2 (držené)
 
@@ -264,3 +264,7 @@ Tentýž seed dvakrát (2 sítě, `endpoint_ext`, `ops_telemetry`, endpoint 60 %
 ### Celá sada testů a clippy
 
 `cargo test --lib`: 625 prošlo, 5 selhalo (`broker::tests::*`), 31 ignorováno; selhání mají příčinu v prostředí (testy potřebují běžící Redis, který tu není, `src/broker.rs` se od kroku 13 nezměnil). Golden snapshot zelený. Clippy proti základu kroku 13 (32b438a): 121 varování na základu, 133 po kroku 14, po úpravě 120 (opraveno 13 nových: sbalitelné `if`, `Default` s přiřazením polí, složitý typ, `clone` na `Copy`, `to_string`, `and_then`, položka za testovacím modulem). Commit 18b10a2.
+
+### Fuzz parserů (A13, C12)
+
+Testy `fuzz_parsers_never_panic` (Sysmon, Wazuh, osquery), `fuzz_linux_adapters_never_panic` (Falco, Tetragon, auditd), `fuzz_adapters_never_panic` (syslog, SNMP, Prometheus, Nagios, DHCP, chrony, ARP) a `fuzz_redaction_never_panics` s `SALTICUS_FUZZ_N=100000` na formát: 0 paniků (5 z 5 prošlo). Výchozí počet v testech zůstává 20 000 až 30 000 (proměnná prostředí ho zvyšuje), předregistrovaných 100 000 bylo dosaženo jen tímto během. Parser EVTX (crate `evtx`) běží v `catch_unwind` a nemá vlastní fuzz test; A13 je pro EVTX splněno jen nepřímo.

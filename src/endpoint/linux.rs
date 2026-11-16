@@ -383,7 +383,8 @@ type=SOCKADDR msg=audit(1700000001.200:11): saddr=0200115CC6336407\n";
     fn fuzz_linux_adapters_never_panic() {
         let mut x: u64 = 0xDEAD_BEEF_CAFE_F00D;
         let words = ["type=SYSCALL", "msg=audit(", "1700000000.1:2)", "a0=\"", "saddr=0200", "node=", "{", "}", "\"", "process_exec", "time", "\u{1F600}"];
-        for _ in 0..30_000 {
+        let fuzz_n: u64 = std::env::var("SALTICUS_FUZZ_N").ok().and_then(|v| v.parse().ok()).unwrap_or(30_000);
+        for _ in 0..fuzz_n {
             x ^= x << 13;
             x ^= x >> 7;
             x ^= x << 17;
