@@ -109,6 +109,7 @@ def main():
     ap.add_argument("--window", type=int, default=1800)
     ap.add_argument("--max-windows", type=int, default=0)
     ap.add_argument("--protect", action="store_true")
+    ap.add_argument("--v3-on", default="", help="dalsi zmeny v3 nad presetem (carkami), napr. strict_close,refute_episode")
     ap.add_argument("--out")
     args = ap.parse_args()
 
@@ -128,8 +129,13 @@ def main():
     os.makedirs(workspace, exist_ok=True)
     with open(os.path.join(workspace, "salticus.toml"), "w", encoding="utf-8") as cfg:
         cfg.write('[engine]\nmode = "v3"\n')
-        if args.protect:
-            cfg.write("[engine.v3]\nprotect = true\n")
+        extra = [name.strip() for name in args.v3_on.split(",") if name.strip()]
+        if args.protect or extra:
+            cfg.write("[engine.v3]\n")
+            if args.protect:
+                cfg.write("protect = true\n")
+            for name in extra:
+                cfg.write(f"{name} = true\n")
     nmap = os.path.join(args.work, "empty-nmap.xml")
     with open(nmap, "w", encoding="utf-8") as handle:
         handle.write(EMPTY_NMAP)

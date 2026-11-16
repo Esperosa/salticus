@@ -67,6 +67,8 @@ pub struct BehaviorSwitches {
     pub icmp_payload: bool,
     /// Krok 13: `slow_egress` s mezí počtu zdrojů na cíl.
     pub slow_fanin: bool,
+    /// Krok 15 (P2): nahraný objem hostu i přes klouzavý horizont oken.
+    pub upload_horizon: bool,
 }
 
 impl BehaviorSwitches {
@@ -91,6 +93,7 @@ impl BehaviorSwitches {
             l7_dns: engine.l7_dns(),
             icmp_payload: engine.icmp_payload(),
             slow_fanin: engine.slow_fanin(),
+            upload_horizon: engine.upload_horizon(),
         }
     }
 
@@ -229,6 +232,13 @@ pub fn run_window(
             input.outbound,
             now,
         ));
+        if switches.upload_horizon {
+            out.findings.extend(egress_volume::detect_horizon(
+                &mut state.egress,
+                &thresholds.egress,
+                now,
+            ));
+        }
         out.findings
             .extend(egress_volume::ids_findings(input.outbound_alerts));
         state.prevalence.observe(input.outbound, now);

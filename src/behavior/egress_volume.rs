@@ -68,7 +68,20 @@ struct HostUpload {
     /// log1p(nahrané bajty) posledních oken bez poplachu.
     history: Vec<f32>,
     last: i64,
+    /// Krok 15 (P2): nahrané bajty posledních `HORIZON` oken (včetně poplachových),
+    /// klouzavý horizont pro `detect_horizon`.
+    #[serde(default)]
+    recent: Vec<f32>,
+    /// Čas posledního poplachu horizontu (jednou na horizont).
+    #[serde(default)]
+    horizon_alarmed: i64,
+    /// Kolik oken horizontu uplynulo od posledního poplachu horizontu.
+    #[serde(default)]
+    since_horizon_alarm: u32,
 }
+
+/// Krok 15 (P2): délka klouzavého horizontu v oknech (6 oken po 30 min = 3 h).
+pub const HORIZON: usize = 6;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -110,6 +123,12 @@ pub fn detect(
     for (host, (bytes, by_dst)) in uploads(outbound, t.net_upload) {
         let entry = state.hosts.entry(host.to_string()).or_default();
         entry.last = now;
+        entry.recent.push(bytes as f32);
+        if entry.recent.len() > HORIZON {
+            let drop = entry.recent.len() - HORIZON;
+            entry.recent.drain(..drop);
+        }
+        entry.since_horizon_alarm = entry.since_horizon_alarm.saturating_add(1);
         let x = bytes.ln_1p();
         let mut history: Vec<f64> = entry.history.iter().map(|v| *v as f64).collect();
         let alarm = if bytes < t.min_bytes {
@@ -187,6 +206,97 @@ pub fn detect(
         }
     }
     state.evicted += evict_oldest(&mut state.hosts, t.max_hosts, |h| h.last) as u64;
+    out
+}
+
+/// Krok 15 (P2, `upload_horizon`): tentýž test jako `detect`, ale nad součtem nahraného
+/// přebytku posledních `HORIZON` oken proti historii stejně dlouhých horizontů hostu.
+/// Zaplňuje mezeru mezi jedním oknem (`min_bytes`) a pomalým únikem (`slow_egress`:
+/// ≥ 6 oken s malým průměrem): nahrání desítek MB za 2 až 5 oken nemělo žádný detektor.
+/// Prahy jsou tytéž (`min_bytes`, `cold_bytes`, `z`, `ratio`); poplach nejvýš jednou na
+/// horizont. Volá se po `detect` v témže okně (čte `recent`, nic se neučí navíc).
+pub fn detect_horizon(
+    state: &mut EgressVolumeState,
+    t: &EgressThresholds,
+    now: i64,
+) -> Vec<BehaviorFinding> {
+    let mut out = Vec::new();
+    for (host, entry) in state.hosts.iter_mut() {
+        if entry.last != now || entry.recent.len() < 2 {
+            continue;
+        }
+        if entry.since_horizon_alarm < HORIZON as u32 && entry.horizon_alarmed > 0 {
+            continue;
+        }
+        let sum: f64 = entry.recent.iter().map(|b| *b as f64).sum();
+        if sum < t.min_bytes {
+            continue;
+        }
+        // historie horizontů: klouzavé součty `HORIZON` po sobě jdoucích oken historie
+        let windows: Vec<f64> = entry.history.iter().map(|v| (*v as f64).exp_m1()).collect();
+        let mut sums: Vec<f64> = windows
+            .windows(HORIZON.min(windows.len().max(1)))
+            .map(|w| w.iter().sum::<f64>().ln_1p())
+            .collect();
+        let x = sum.ln_1p();
+        let alarm = if sums.len() < t.min_history {
+            (sum >= t.cold_bytes).then(|| "bez historie, absolutni mez horizontu".to_string())
+        } else {
+            let (median, mad) = median_mad(&mut sums);
+            let z = 0.6745 * (x - median) / mad.max(0.25);
+            let ratio = (x - median).exp();
+            (z >= t.z && ratio >= t.ratio).then(|| {
+                format!(
+                    "{:.0}x median horizontu {} oken ({} horizontu historie), z = {z:.1}",
+                    ratio,
+                    entry.recent.len(),
+                    sums.len()
+                )
+            })
+        };
+        let Some(basis) = alarm else { continue };
+        entry.horizon_alarmed = now;
+        entry.since_horizon_alarm = 0;
+        let severity = if sum >= t.high_bytes {
+            Severity::High
+        } else {
+            Severity::Medium
+        };
+        let mut f = finding(
+            "egress_volume_anomaly",
+            host,
+            "out/upload",
+            severity,
+            Confidence::Medium,
+            format!(
+                "Host {host} odeslal ven {:.0} MB za {} oken",
+                sum / 1e6,
+                entry.recent.len()
+            ),
+            format!(
+                "Nahrany objem klouzaveho horizontu vybocuje z historie hostu ({basis}); jednotliva okna pod prahem."
+            ),
+            vec![format!(
+                "{host}: {} MB za posledni okna",
+                entry
+                    .recent
+                    .iter()
+                    .map(|b| format!("{:.1}", *b as f64 / 1e6))
+                    .collect::<Vec<_>>()
+                    .join(" + ")
+            )],
+            "Overit, zda jde o zalohu nebo synchronizaci (kalendar, profil hostu); jinak omezit odchozi provoz hostu a proverit proces.",
+        );
+        f.rationale
+            .push_str(" Pravidlo heuristika-behavior:egress_volume_horizon@v1.");
+        out.push(BehaviorFinding {
+            finding: f,
+            sources: Vec::new(),
+            targets: Vec::new(),
+            count: (sum / 1e6).min(u32::MAX as f64) as u32,
+            actor: host.clone(),
+        });
+    }
     out
 }
 
@@ -274,6 +384,35 @@ mod tests {
             conn_state: Some("SF".to_string()),
             history: None,
             missed_bytes: Some(0),
+        }
+    }
+
+    /// Krok 15 (P2): nahrani 30 MB za okno po tri okna je pod prahem jednoho okna (50 MB)
+    /// a nad prumerem pomaleho uniku; bez horizontu zadny nalez, s horizontem jeden
+    /// (drzene seedy: exfil_cloud_storage_upload 20 az 29 MB za okno bez nalezu).
+    #[test]
+    fn upload_spread_over_a_few_windows_is_caught_only_by_the_horizon() {
+        let t = EgressThresholds::default();
+        for horizon in [false, true] {
+            let mut state = EgressVolumeState::default();
+            let mut found = Vec::new();
+            for w in 0..24 {
+                let bytes = if w >= 21 { 30_000_000 } else { 1_000_000 + w * 1000 };
+                let now = w as i64 * 1800;
+                let single = detect(&mut state, &t, &[up("10.0.0.5", "203.0.113.9", bytes)], now);
+                assert!(single.is_empty(), "okno {w}: jednotlive okno pod prahem");
+                if horizon {
+                    found.extend(detect_horizon(&mut state, &t, now));
+                }
+            }
+            if horizon {
+                assert_eq!(found.len(), 1, "{found:?}");
+                assert_eq!(found[0].finding.finding_type, "egress_volume_anomaly");
+                assert_eq!(found[0].actor, "10.0.0.5");
+                assert!(found[0].finding.rationale.contains("horizon"));
+            } else {
+                assert!(found.is_empty());
+            }
         }
     }
 
