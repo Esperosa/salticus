@@ -166,3 +166,51 @@ Výsledek: **2 z 5 vzorků** vyústí v nález, a to jen díky pravidlům 4662 a
 | nesoulad síť x agent | `endpoint/graph.rs`, `soak/episode.rs` | `agent_mismatch` (blind a silent, příznak živých ostatních agentů); počítadla A11 v soaku |
 | simulace | `soak/endpoint_sim.rs` | agent `mimic` (kompromitovaný agent hlásí nástroj ze seznamu povolených s jeho hashem), hn_* hlásí všichni zúčastnění hosté |
 | dokumentace | `docs/ENDPOINT_NASAZENI_A_SOUKROMI.md` | pole, redakce, pseudonymizace, retence, doporučení pro dokumentaci nasazení (bez právních závěrů) |
+
+## Měření ladicí, 5 seedů (20261102, 20261103, 20266101, 20266105, 20266106; 8 sítí na seed, 3 konfigurace), binárka `k14n` (commit b0cd196)
+
+Výstup: `F:\Projekty\bakula-soak\k14\tune`, souhrn `report14.sh tune`. Párově proti `off`, 40 sítí v párech (rameno `elying` a `emimic` 38).
+
+### Část A, vyhodnocení prahů (rameno on100 = `e100`: `endpoint` + `endpoint_ext`, pokrytí 100 %)
+
+| práh | výsledek | stav |
+|---|---|---|
+| A1 | +24,0 p. b. (+17,5 až +31,0), n = 100; `e60` +15,0, `e30` +8,0 | splněno pro `e100` a `e60`. Po rodinách: bucket_mass_download +55,6, cloud_api_discovery_burst +55,6, drive_by_bulk_download +30,8, exfil_cloud_storage_upload +20,0, dns_zone_enum_burst +20,0, c2_dns_txt_beacon +8,3; **clicks_to_rare_destination +0,0 a c2_cloud_storage_dead_drop +0,0 (bez zlepšení)** |
+| A2 | +5,3 p. b. (+4,4 až +6,2) | splněno |
+| A3 | poměr 1,040 (1,029 až 1,053) | splněno |
+| A4 | `e100` 0 z 3360 (horní mez Wilson 0,11 %) | splněno bez seznamu povolených; **se seznamem povolených nesplněno** (viz níže) |
+| A5 | +1,0 p. b. (-0,3 až +2,4) (`e100`); stejně `e100allow` | **nesplněno** (cíl <= -10) |
+| A6 | 16 až 17 autonomně vyvrácených případů z 42 109, omylem 0, horní mez Wilson 19,4 % | **nesplněno**: při 16 případech nelze horní mez 1 % z principu dosáhnout (potřeba zhruba 380 případů bez chyby), jde o malý počet, ne o doložené chyby |
+| A7 | čistota `incidents_v2` 83,7 % (`mixboth`), 84,5 % (`mixops`), 86,2 % (`mixoff`); nálezů na incident 3,1 až 3,7; společná příčina rozdělena 87,5 % až 93,8 % | **nesplněno** (čistota < 90 %), viz C8 |
+| A8 | 1,67 (`e100`) proti 1,70 | splněno |
+| A9 | 46,9 KiB na host a den, simulace podhodnocuje reálný šum (viz A14) | splněno (s výhradou) |
+| A10 | detekce `e100` 88,4 >= `e60` 86,4 >= `e30` 84,8 >= `off` 83,1 | splněno |
+| A11 | `esilent`: detekce +0,0, mlčící hosté s provozem označeni 99,8 % | splněno |
+| A12 | `elying` (agent hlásí „vše v pořádku“): detekce +0,0 (-0,2 až +0,2), omylem zavřeno 0 z 2692 | splněno; `emimic` bez seznamu povolených totéž. Výhrada: ve dvou ramenech `elying` a `emimic` vyvrátil žebřík 3 nálezy `packet_rate_spike` v jediné síti (20261103, síť 6) kauzálně omylem (v ramenech `off`, `e100`, `e60`, `e30`, `esilent`, `ops*` 0); šlo o nechráněné nálezy, k automatickému zavření nedošlo (0 z 2692), chráněné nálezy endpoint nikdy nevyvrací. Je to očekávaný dopad agenta, který lže „vše v pořádku“; kontrola na držených seedech |
+| A13, A14, A15, A16 | fuzz, reálná data a determinismus viz výše a níže | A13 a A14 splněny dříve, A15 a A16 viz závěr |
+
+**Zjištění, které jsem před touto sérií neměl: ladicí ramena `e*` nezapínala `endpoint_allow`** (seznam povolených je za samostatným přepínačem a v `runs14.ps1` chyběl). A5 a rameno `mimic` tedy neměřily nic o seznamu povolených. Doměřeno ramena `e100allow`, `emimicallow` a `bothallow` (stejné seedy, jen přidán `endpoint_allow`):
+
+- `e100allow`: A5 beze změny (+1,0), **1 útok omylem zavřený z 3360** (horní mez Wilson 0,17 %), A6 17 případů s 1 chybou; `bothallow`: 3 z 3360, horní mez 0,26 %.
+- `emimicallow` (kompromitovaný agent hlásí nástroj ze seznamu povolených s jeho hashem): žebřík omylem vyvrátil řadu útoků (na seed až 40 případů v jedné síti).
+- Závěr: seznam povolených nepřináší žádný měřitelný přínos v A5 a porušuje laťku „0 omylem zavřených“. Příčina je v konstrukci (hash a podpis tvrdí sám agent, kterého útočník ovládá), ne v nastavení prahů. **`endpoint_allow` zůstává vypnutý a do kandidáta se nezařazuje.** Žádná úprava kódu; test nebyl uvolněn.
+
+**Rodiny bez přínosu endpointu.** `clicks_to_rare_destination` je podle návrhu simulace shodná s běžným kliknutím z pošty (koncový nástroj ji neodliší), takže 0 je očekávané a odpovídá tomu, co jsem předem přiznal. U `c2_cloud_storage_dead_drop` (PowerShell `Invoke-RestMethod -Method Put` spuštěný z explorer.exe) rameno nic nepřidalo; nepřidával jsem pravidlo jen kvůli této jedné rodině, protože by šlo o ladění na testovací scénář. Zapsáno jako otevřené.
+
+### Část C2, vyhodnocení prahů (rameno `ops`, ladicí seedy)
+
+| práh | výsledek | stav |
+|---|---|---|
+| C1 | 78,5 % (75,8 až 81,0), n = 973 (`both` 77,7) | **nesplněno** (cíl 85) |
+| C2 | 60,5 % (57,2 až 63,6); správný typ mezi kandidáty 88,0 % | **nesplněno** (cíl 80); typy bez rozlišujícího signálu (sdílené signály) jsou vedeny jako kandidáti, ne jako jistá shoda |
+| C3 | hlášeno „nelze určit“ 49,0 %, jistě zařazeno jako porucha nebo změna 11,2 % (`opsdrop60`: 60,4 % a 1,4 %) | **nesplněno** (cíl >= 90 % a <= 10 %) |
+| C4 | `ops` 8,3 %, `opsdrop60` 4,4 % | **nesplněno** v `ops` (cíl <= 5 %); měří i „nejednoznačné“, ostřeji než předregistrace |
+| C5 | 10,8 % (9,0 až 12,9) | **nesplněno** těsně (cíl <= 10 %) |
+| C6 | 0 poruch zavřených automaticky (viz `auto_closures_wrong` 0 ve všech ramenech `ops`) | splněno |
+| C7 | 83,7 % (`ops`), 84,6 % (`both`) | **nesplněno** těsně (cíl 85 %; v kroku 13: 54,0 %) |
+| C8 | čistota 84,5 % (`mixops`), rozdělení společné příčiny 87,5 % (v kroku 13: 90,0 % bez ops) | **nesplněno** |
+| C9 | `ops`: omylem zavřeno 0 z 3360, FP poměr 1,012, detekce +0,2 | splněno |
+| C10 | `opsunknown`: „nelze určit“ jen 10,9 % (cíl >= 90 %) | **nesplněno** |
+| C11 | `opsnoise`: C1 78,4 % (cíl >= 75, splněno), C4 13,5 % (cíl <= 5) | **nesplněno** (C4) |
+
+Čtení: třída poruch (C1, C7) a nejednoznačnost katalogu (C2) se oproti kroku 13 zlepšily řádově (třída poruch 5,0 % na 78,5 %, catalog_id 0,7 % na 60,5 %, A5 mixů 54,0 % na 51,9 až 52,8 % bez zlepšení), ale cíle 85 % a 80 % nejsou dosaženy. Zatížení: s rostoucím množstvím signálů (`opsnoise`) roste chybné zařazení útoku jako poruchy (C4 13,5 %); to je skutečná slabina (signál souběžné poruchy ve stejné /24 přehlasuje útok), nikoli artefakt měření. Žádnou z těchto slabin jsem po pohledu na data neopravoval: každá by vyžadovala změnu diagnózy typu (váhy, prahy 0,45 a 0,10, rozsah /24), tedy ladění na simulátor, který jsme sami napsali. Zapsáno jako nesplněné, prahy se nesnižují.
