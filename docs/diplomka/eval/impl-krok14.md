@@ -214,3 +214,53 @@ Výstup: `F:\Projekty\bakula-soak\k14\tune`, souhrn `report14.sh tune`. Párově
 | C11 | `opsnoise`: C1 78,4 % (cíl >= 75, splněno), C4 13,5 % (cíl <= 5) | **nesplněno** (C4) |
 
 Čtení: třída poruch (C1, C7) a nejednoznačnost katalogu (C2) se oproti kroku 13 zlepšily řádově (třída poruch 5,0 % na 78,5 %, catalog_id 0,7 % na 60,5 %, A5 mixů 54,0 % na 51,9 až 52,8 % bez zlepšení), ale cíle 85 % a 80 % nejsou dosaženy. Zatížení: s rostoucím množstvím signálů (`opsnoise`) roste chybné zařazení útoku jako poruchy (C4 13,5 %); to je skutečná slabina (signál souběžné poruchy ve stejné /24 přehlasuje útok), nikoli artefakt měření. Žádnou z těchto slabin jsem po pohledu na data neopravoval: každá by vyžadovala změnu diagnózy typu (váhy, prahy 0,45 a 0,10, rozsah /24), tedy ladění na simulátor, který jsme sami napsali. Zapsáno jako nesplněné, prahy se nesnižují.
+
+## Měření držené, jednorázově (nové seedy 20267101 až 20267502, 10 seedů x 8 sítí x 3 konfigurace, 80 sítí v párech)
+
+Zmrazeno před během: kód `k14n` (commit b0cd196), konfigurace `final` + `endpoint_ext` (ramena `e*`, `both`), `ops_telemetry` (ramena `ops*`), `endpoint_allow` vypnuto. Po měření se kód a konfigurace ve prospěch výsledků neměnily (později jen styl a test, viz níže). Výstup: `F:\Projekty\bakula-soak\k14\held`, souhrn `report14.sh held`. Žádný pád (0 záznamů `panicked` v logu ladicích ani držených běhů).
+
+### Část A (držené)
+
+| práh | výsledek | stav |
+|---|---|---|
+| A1 | `e100` +18,5 p. b. (+14,2 až +23,4), `e60` +10,3 (+6,6 až +14,5), `e30` +4,3 | splněno pro `e100` a `e60` (u `e60` na hraně) |
+| A2 | `e100` +4,2 (+3,7 až +4,6), `e60` +2,5, `e30` +1,2 | splněno pro `e100`, `e60` |
+| A3 | `e100` 1,055 (1,041 až 1,075), `both` 1,064 | splněno |
+| A4 | `off` 1 z 6794, `e100`, `e60`, `e30`, `esilent`, `both` 1 z 6794 (horní mez 0,08 %) | splněno vůči `off`; **základ `off` sám zavírá omylem 1 útok z 6794 (app_layer_flood_api, 20267402, síť 5)**, tj. laťka „0“ neplatí už před zásahem endpointu |
+| A5 | `e100` +0,5 (-0,2 až +1,1) | **nesplněno** (cíl <= -10) |
+| A6 | 18 autonomních vyvrácení z 82 741, omylem 0, horní mez Wilson 17,6 % | **nesplněno** (nízký počet případů, ne doložené chyby) |
+| A8 | 1,65 (`e100`) proti 1,65 | splněno (rovnost) |
+| A9 | 45,0 KiB na host a den (`elying` 183 KiB, `emimic` 295 KiB) | splněno |
+| A10 | 88,8 >= 87,0 >= 85,8 >= 84,6 | splněno |
+| A11 | `esilent`: detekce +0,0, mlčící hosté s provozem označeni 99,8 % | splněno |
+| A12 | `elying`: detekce +0,0 (-0,0 až +0,1); **omylem zavřených útoků 5 z 6794 proti 1 u `off`: 4 navíc v jediné síti (20267401, síť 7: c2_high_jitter, update_channel_compromise_fleet, icmp_blocked_by_firewall, slow_link_loss_degradation)**; chráněnost těch nálezů z výstupu nelze určit | detekce splněno; část „nic chráněného nezavřeno“ **nelze potvrdit, brát jako nesplněno** (A4 pro `lying` <= `off` + 0,5 % útoků splněno: +0,06 %) |
+| A16 | 0 paniků | splněno |
+
+Další zjištění: i s poctivým agentem (`e100`, `e60`, `e30`, `both`) vyvrátil žebřík kauzálně omylem 2 nálezy `packet_rate_spike` (sítě 20267101/2 a 20267202/1), kdežto `off` 0; k zavření to nevedlo (A4 beze změny). U `elying` k tomu přibyly 4 a 1 nález `scan_attempts`. Pravděpodobná příčina: čistý koncový stav se u objemových nálezů bez procesu (provoz zvenčí) počítá jako neškodný důkaz. Neopraveno, protože na držených seedech se po měření nic nemění; je to otevřená vada ke kontrole na čerstvých seedech.
+
+### Část C2 (držené)
+
+| práh | `ops` | stav |
+|---|---|---|
+| C1 | 80,3 % (78,8 až 81,6), n = 3117 | **nesplněno** (cíl 85) |
+| C2 | 60,5 % (58,7 až 62,2); mezi kandidáty 87,0 % | **nesplněno** (cíl 80) |
+| C3 | „nelze určit“ 27,0 %, jistě chybně zařazeno 6,0 % (`opsdrop60`: 50,9 % a 2,2 %) | **nesplněno** (hlášení), druhá část splněna |
+| C4 | 10,0 % (`opsnoise` 16,5 %, `opsdrop60` 4,0 %) | **nesplněno** |
+| C5 | 14,4 % | **nesplněno** (cíl 10) |
+| C6 | 0 (žádné `auto_closures_wrong` ani vyvrácení v ramenech `ops*`) | splněno |
+| C7 | 83,7 % přes všechny složky; mix A5: `mixops` 57,7 % proti `mixoff` 57,8 % | **nesplněno** (cíl 85, v kroku 13 54,0 %) |
+| C8 | `incidents_v2` čistota 82,6 % (`mixoff` 91,5 %), rozdělení společné příčiny 88,1 % (beze změny proti `mixoff`) | **nesplněno** |
+| C9 | FP poměr 1,010 (1,004 až 1,016), detekce +0,3 (+0,0 až +0,5), omylem zavřeno 0 | splněno |
+| C10 | `opsunknown` hlášeno „nelze určit“ 20,6 % | **nesplněno** (cíl 90) |
+| C11 | `opsnoise`: C1 80,0 % (splněno), C4 16,5 % | **nesplněno** (C4) |
+| C12, C13 | viz níže (fuzz 100 000, determinismus) | viz níže |
+
+`mixops` zlepšuje detekci (+1,9 p. b., +1,4 až +2,5) a snižuje zobrazené hn_* (-2,5 p. b.), čistotu seskupení ale zhoršuje (82,6 % proti 91,5 %), `mixboth` FP poměr 1,076 (1,052 až 1,117, horní mez nad 1,10).
+
+### Determinismus a regrese (A15, C13)
+
+Tentýž seed dvakrát (2 sítě, `endpoint_ext`, `ops_telemetry`, endpoint 60 %): `networks.jsonl` shodný až na pole času (`wall_s`, `cycle_p99_s`). `soak verify`: 1/1 bloku bit po bitu shodných. Bez nových přepínačů: `legacy` i `v3` (`final`) dávají s `k14n` shodný výstup jako `k13f` (stejný seed, 2 sítě) až na pole času. Golden snapshot: původně selhal, protože crate `evtx` zapíná `serde_json/preserve_order` pro celý binár a pořadí klíčů se změnilo; obsah byl shodný, test nyní porovnává abecedně seřazené klíče (commit c576a1c). Pořadí klíčů ve všech JSON výstupech programu se tím změnilo (insertion order místo abecedního); jde o formát, ne o obsah.
+
+### Celá sada testů a clippy
+
+`cargo test --lib`: 625 prošlo, 5 selhalo (`broker::tests::*`), 31 ignorováno; selhání mají příčinu v prostředí (testy potřebují běžící Redis, který tu není, `src/broker.rs` se od kroku 13 nezměnil). Golden snapshot zelený. Clippy proti základu kroku 13 (32b438a): 121 varování na základu, 133 po kroku 14, po úpravě 120 (opraveno 13 nových: sbalitelné `if`, `Default` s přiřazením polí, složitý typ, `clone` na `Copy`, `to_string`, `and_then`, položka za testovacím modulem). Commit 18b10a2.
