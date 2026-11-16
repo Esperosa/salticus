@@ -958,6 +958,9 @@ pub struct AttackK7 {
     pub habituated: bool,
     /// Kontrafaktualne omylem zavrene pripsane nalezy (pocet).
     pub wrong_closed: u32,
+    /// Krok 15: identifikatory techto nalezu (jeden nalez muze byt pripsan vice pravdam
+    /// pres sdilenou adresu; pocet ruznych nalezu v siti se pocita z nich).
+    pub wrong_ids: Vec<String>,
     /// Cykly od zacatku utoku do prvni kontrafaktualni zobrazene detekce.
     pub latency: Option<u32>,
     /// Pripsany nalez nesl provozni anotaci (B1).

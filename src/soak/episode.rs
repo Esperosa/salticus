@@ -3718,6 +3718,7 @@ fn run_episode_inner(
                                 silenced_cycles: ledger.silenced_cycles,
                                 habituated: ledger.habituated,
                                 wrong_closed: ledger.wrong_keys.len() as u32,
+                                wrong_ids: ledger.wrong_keys.iter().cloned().collect(),
                                 latency: ledger
                                     .cf_first
                                     .map(|c| c.saturating_sub(truth.start_cycle)),
