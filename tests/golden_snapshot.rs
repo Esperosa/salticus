@@ -203,6 +203,19 @@ const VOLATILE_SUMMARY_KEYS: &[&str] = &[
 /// ktere tenhle test vedome nezna do detailu - prave proto je normalizace
 /// podle TVARU hodnoty, ne podle enumerace klicu, s par vyjimkami pro znama
 /// cas-steny-hodiny pole).
+/// Rekurzivne seradi klice objektu abecedne (zlaty soubor je abecedni).
+fn sort_keys(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let sorted: std::collections::BTreeMap<String, Value> =
+                map.into_iter().map(|(k, v)| (k, sort_keys(v))).collect();
+            Value::Object(sorted.into_iter().collect())
+        }
+        Value::Array(items) => Value::Array(items.into_iter().map(sort_keys).collect()),
+        other => other,
+    }
+}
+
 fn normalize(value: &mut Value, path_needles: &[(String, &str)]) {
     match value {
         Value::String(text) => {
@@ -401,6 +414,9 @@ fn full_visibility_stack_report_matches_golden_snapshot() {
         (data_dir.to_string_lossy().replace('\\', "/"), "<REPO>/data"),
     ];
     normalize(&mut report, &path_needles);
+    // Poradi klicu neni chovani: zavislost `evtx` zapina `serde_json/preserve_order`
+    // pro cely binar, a mapy by pak drzely poradi vlozeni misto abecedniho.
+    report = sort_keys(report);
 
     let actual = serde_json::to_string_pretty(&report).expect("serializace reportu");
 
