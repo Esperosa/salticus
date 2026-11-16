@@ -37,3 +37,99 @@ Měření:
 - **K16-9:** výběr 30 případů ze dumpu soaku podle pevného semínka 16 (stratifikace podle stavu a rodiny), posouzení zapsáno do tohoto dokumentu. Hrozba validity: posuzuje autor kódu, ne nezávislý senior; výsledek je horní odhad použitelnosti.
 
 Omezení předem: Council a sol-loop se v tomto kroku podle zadání nespouštějí (odchylka od `CLAUDE.md` daná zadáním). Složka popisuje jen to, co engine viděl; kvalita doporučení je omezená kvalitou detekce, kterou tento krok nemění.
+
+## Implementace
+
+- `src/case_folder.rs` (+ `case_folder/tests.rs`): `build` (čistá funkce), `validate` (K16-1, K16-3, K16-4), `render_text`, `render_html` (escapované, bez stylů). Schéma `salticus.case_folder/1`, 21 klíčů v pevném pořadí.
+- `verify_ladder::Decision` nese `notes` (krok, cyklus, značka, LR, text). Rozhodování se nemění (ověřeno K16-7).
+- Přepínač `case_folder` (výchozí vypnuto, vyžaduje `case_files`); pipeline v3 staví složku ke každému rozhodnutí žebříku a k zobrazenému nálezu bez rozhodnutí v běhu (stav `open`, apriorní P, výslovně označené); strop 2 000 složek na report s počitadlem `caseFoldersDropped`.
+- API: `/runs/{id}/export/cases-txt` a `cases-html` (z `report.json`, UI beze změny).
+- Soak: `K16_CASE_DUMP=soubor` (jen měření, rozhodnutí neovlivní). Měřicí skript `tools/k16_case_folders.py`.
+- Testy: 12 jednotkových (úplnost, uzávěr s vlastníkem a expirací ze záznamu kontextu i ze seznamu povolených, uzávěr výpadkem s „nelze urcit“, slabý koncový signál není silný důkaz, odmítnutí nadsázky validátorem, pevné klíče a round-trip, escapování HTML, regresní testy z měření níže) a fuzz 20 000 náhodných rozhodnutí (NaN, záporné a > 1 posteriory, prázdné a nečitelné texty, prázdný host): 0 paniků, 0 porušení, determinismus, max ≤ 16 KiB. Integrační test produkční cesty (`tests/engine_v3.rs`): složka ke každému rozhodnutí se shodným P, bez přepínače `caseFolders` chybí. `cargo test --lib`: 641 prošlo, 5 selhalo (jen `broker::*` bez Redis, beze změny); clippy bez varování v nových souborech.
+
+## Výsledky
+
+### K16-7 determinismus (ladicí seed 20261102, 2 sítě, `off`)
+
+Binárka kroku 16 bez dumpu, s dumpem A i s dumpem B: `networks.jsonl` shodný s během kroku 15 (`F:\claude-tmp\k15\det\off-20261102`) ve všech polích kromě časů a pole `wrong_ids`, které přibylo v kroku 15 až po tomto běhu (commit `a381084`). Dump A a dump B: 1 328 složek, bajtově shodné. **Splněno.**
+
+### Držené seedy 20269101 až 20269502 (použity jednou, 10 seedů x 2 sítě, 5 ramen), složky v podobě před opravou
+
+| ramena | složek | potvrzeno / eskalováno / zavřeno | porušení validátoru | p50 / p95 / max B |
+|---|---|---|---|---|
+| vše | 35 821 | 7 131 / 28 688 / 2 | 2 500 (7,0 %) | 7 113 / 7 827 / 8 538 |
+| `off` | 16 045 | 3 408 / 12 635 / 2 | 1 545 | 6 902 / 7 568 / 7 969 |
+| `ops` | 3 461 | 241 / 3 220 / 0 | 95 | 7 356 / 7 763 / 8 288 |
+| `elying` | 6 754 | 1 564 / 5 190 / 0 | 471 | 7 355 / 8 016 / 8 538 |
+| `mixops` | 4 544 | 1 390 / 3 154 / 0 | 307 | 7 244 / 7 827 / 8 284 |
+| `opsnoise` | 5 017 | 528 / 4 489 / 0 | 82 | 7 365 / 7 825 / 8 228 |
+
+- K16-1 úplnost: 100 % (povinná pole vyplněna nebo „nelze urcit“; nezávislá kontrola skriptem 0 nálezů). **Splněno.**
+- K16-2 pokrytí: každé rozhodnutí žebříku má složku, 0 vynechaných. **Splněno**; v soaku se nestaví složky otevřených nálezů (jen v pipeline).
+- K16-3 konzistence: stav, úroveň, P(útok) a uzávěr 100 % shodné s verdiktem. **Splněno.**
+- **K16-4 nesplněno: 2 500 složek (7,0 %; 35 % potvrzených) uvádělo „potvrdil žebřík“, ač žádná kontrola nedala podezřelý výsledek.** Žebřík tu potvrdil jen podle apriorní pravděpodobnosti z paměti případů (Case Memory učí P(útok) typu z verdiktů simulovaného analytika; P = 0,90 až 0,96 bez jediného podezřelého kroku). Složka to číselně uváděla („0 nezávislých podezřelých skupin“), ale shrnutí a doporučení („rozhodnout o zásahu“) tvrdily víc, než důkazy dokládají. Je to i nález o enginu (potvrzení bez důkazu), který tento krok podle zadání neladí.
+- K16-6 velikost: p95 7 827 B, max 8 538 B. **Splněno** (těsně pod 8 KiB).
+- K16-8 uzávěry L1: jen 2 vyvrácení (`connection_timeout_burst`, výpadek služby podle živosti a historie), obě bez vlastníka a expirace („nelze urcit“: provozní příčina nemá schvalovatele). 0 zavřených útoků.
+- Důvody předání: slepé místo 99,3 % předaných, chybí pozitivní důkaz neškodnosti 97,6 %, chráněný prostředek 60,9 %, vysoký dopad 56,8 %, konflikt hypotéz 12,8 %. 39,3 % předaných nemá žádný důkaz pro ani proti (jen apriorní P).
+
+### K16-9 senior review na držených seedech (30 případů, semínko 16, složky před opravou)
+
+Výběr stratifikovaný podle stavu, pravdy a rodiny (`tools/k16_case_folders.py sample 30 16`), posouzení autorem (ne nezávislým seniorem). Rubrika: pochopí, co se stalo; ví, co udělat; důvod předání sedí; nic zavádějícího vůči pravdě simulace.
+
+- **Senior ví, co dělat: 17 z 30 (57 %). Zavádějící: 8. K16-9 nesplněno.**
+- Chyby složky:
+  1. Potvrzení jen podle apriorní P podané jako potvrzený útok (7 případů: `unexpected_traffic` 4x, `packet_rate_spike`, `unmapped_passive_event` na broadcast adrese a další). Zavádějící.
+  2. Konvenční podíl 0,8 pro neškodný druh, na který ukazuje provozní diagnóza, vypadal jako změřená pravděpodobnost („chybná konfigurace 0,68“ u `ssh_bruteforce`). Zavádějící (1 případ).
+  3. Doporučený krok opakoval kontrolu, která už proběhla bez dat („CaseHistory“ při „historie jen 0 dní“, „ConfigContext“ při „žádný záznam kontextu“ nebo u chráněného nálezu, kde kontext není důkaz). Senior nedostal použitelný další krok (5 případů).
+  4. Rovnoměrně rozdělené neškodné druhy se při nízkém P(útok) řadily na první místa („záloha 0,19, aktualizace 0,19, plánovaný skener 0,19“) se stavem „neověřená“, což vypadá jako tři konkrétní vysvětlení.
+  5. Kosmetika: tvar „1 nezávislých skupin“.
+
+### Oprava (po měření na držených seedech; držené seedy se znovu nepoužívají)
+
+- Potvrzení bez podezřelého důkazu: shrnutí „označil … za útok jen podle apriorní pravděpodobnosti, bez podezřelého důkazu z kontrol; nutno ověřit“, důvod předání „potvrzeno bez důkazu z kontrol“, doporučení „před zásahem ověřit …, bez podezřelého výsledku nezasahovat“; validátor i skript to vyžadují.
+- Neškodné druhy: jen rovnoměrný podíl se zdůvodněním „neškodné celkem X, rozdělení rovnoměrné“, stav „nerozlišená“; druh s neškodným důkazem je jen označen „podporena“ (bez konvenčního čísla).
+- Zbývá ověřit: nejdřív kontroly, které v případu neproběhly; provedené bez výsledku až za nimi („znovu má smysl až s novými daty“); u chráněného nálezu bez kontextu a provozní telemetrie. Doporučení vybírá jen z neprovedených.
+- Regresní testy `confirmation_without_suspicious_evidence_is_reported_as_prior_only`, `recommendation_skips_checks_that_already_ran_without_data`; fuzz rozšířen o potvrzení bez důkazu.
+
+### Kontrola opravy na ladicích seedech (20261102 `off`, 20261103 `ops`, 20266101 `elying`, 20266105 `mixops`, 20266106 `opsnoise`; po 2 sítích)
+
+- 8 168 složek (758 potvrzeno, 7 410 eskalováno), **0 porušení** validátoru i skriptu, p50 7 276 B, p95 8 159 B, max 8 592 B (p95 těsně pod prahem 8 192 B).
+- Potvrzení jen podle apriorní P: 513 z 758 potvrzených (68 %); složka je teď výslovně označuje.
+- Doporučený krok eskalovaných: `DnsPivot` 65 %, `CaseHistory` 27 %, `PeerCompare` 7 %.
+- Senior review (30 případů, semínko 16; ladicí seedy, tedy jen kontrola opravy, ne nezávislé měření): **ví, co dělat 24 z 30 (80 %), zavádějící 0.** Zbylých 6 jsou eskalované případy bez důkazu pro i proti (`packet_rate_spike` 3x, `connection_timeout_burst`, `service_unreachable`, `unexpected_traffic` s P = 0,78), kde složka doporučí `DnsPivot`, kontrolu, která u dostupnostního nálezu nic nerozliší a kterou program sám neumí (ruční dotaz do dns.log). Složka tu poctivě ukazuje, že engine nemá co předat.
+
+### Reálná data produkční cestou (`final` + `case_files,case_folder`)
+
+| dataset | složek (otevřené / eskalované) | bez složky | neshoda s verdiktem | porušení | p95 / max B | bez jakéhokoli důkazu |
+|---|---|---|---|---|---|---|
+| CTU-13 scénář 42 (10 oken) | 22 (11 / 11) | 0 | 0 | 0 | 7 708 / 7 735 | 90,9 % |
+| CTU-13 scénář 54 (33 oken) | 34 (17 / 17) | 0 | 0 | 0 | 7 798 / 7 956 | 82,4 % |
+| LUFlow 2020-06-19 (28 oken) | 1 025 (522 / 503) | 0 | 0 | 0 | 6 532 / 8 029 | 97,8 % |
+
+Detekce beze změny proti kroku 15 (CTU-42: 11 zobrazených nálezů o infikovaném hostu, 0 o jiných). Žebřík na reálných datech nic nepotvrdí ani nevyvrátí (bez kontextu, sondy a koncové telemetrie), takže složky jsou úplné, ale skoro bez důkazů; hlavním obsahem je seznam slepých míst a co chybí.
+
+## Shrnutí prahů
+
+| práh | výsledek |
+|---|---|
+| K16-1 úplnost | splněno (100 %, soak i reálná data) |
+| K16-2 pokrytí | splněno (0 rozhodnutí ani zobrazených nálezů bez složky, 0 zahozených) |
+| K16-3 konzistence | splněno (100 %) |
+| K16-4 netvrdí víc | **nesplněno na držených seedech (7,0 %)**; po opravě 0 na ladicích seedech a reálných datech |
+| K16-5 schéma | splněno (pevné klíče, round-trip, fuzz 20 000 bez paniky a porušení) |
+| K16-6 velikost | splněno (držené p95 7 827 B; ladicí po opravě p95 8 159 B, těsně) |
+| K16-7 determinismus | splněno |
+| K16-8 uzávěry L1 | 2 uzávěry, 0 % s vlastníkem a expirací (výpadek nemá schvalovatele) |
+| K16-9 senior review | **nesplněno na držených seedech (57 %, 8 zavádějících)**; po opravě 80 %, 0 zavádějících na ladicích seedech (autor = posuzovatel) |
+
+## Co se nepodařilo
+
+- K16-4 a K16-9 na držených seedech neprošly; oprava je ověřena jen na ladicích seedech a reálných datech. Nezávislé ověření potřebuje nové držené seedy a posouzení jiným člověkem než autorem.
+- EVTX/OTRF: `endpoint ingest` odmítne všechny události OTRF (cmd_psexec_lsa_secrets_dump) jako staré (`rejected_time` 57 z 57) a `endpoint replay-evtx` nevolá žebřík; bez posunu časů (zásah do reálných dat) a bez síťového inventáře hostů z datasetu z nich složka nevznikne. Nepřehráno.
+- Doporučený krok je „nejlevnější dosud neprovedená kontrola“, ne kontrola s nejvyšší rozlišovací schopností pro typ nálezu; u dostupnostních nálezů doporučí DNS pivot, který nic nerozliší a program ho sám neumí (složka neříká výslovně, že jde o ruční kontrolu).
+- Uživatel jako aktér není v datech žebříku nikdy; složka vždy hlásí „nelze urcit“. Proces jen z textu koncového kroku.
+- „Slepé místo“ je důvodem předání u 99 % případů (skoro každý případ má kontrolu bez dat), takže jako důvod málo rozlišuje.
+- V soaku složky nemají pokrytí senzory ani incidenty (hlášeno „nelze urcit“); v pipeline ano.
+- Uzávěry L1 v tomto světě skoro nejsou (2 z 35 821), vlastník a expirace uzávěru jsou ověřeny jen jednotkovými testy.
+- Nález o enginu mimo rozsah kroku: 35 % (držené) až 68 % (ladicí) potvrzení žebříku nemá žádný podezřelý výsledek kontroly; rozhoduje apriorní P z paměti případů. Patří do další práce na politice potvrzování, ne do ladění zde.
+- Council a sol-loop se podle zadání nespouštěly; review je jen autorské.
