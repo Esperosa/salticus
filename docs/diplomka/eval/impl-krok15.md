@@ -162,4 +162,27 @@ Co z toho plyne pro otázku „je simulace nerealistická“: to, které typy n�
 
 ### Držené seedy (20268101 až 20268502, jednou)
 
-Doplní se.
+Základy `off`, `elying`, `ops` i kandidáti na binárce `k15g`, 10 seedů x 8 sítí = 80 párů, bootstrap po sítích stratifikovaný po seed x konfigurace (B = 2000). Výstupy `F:\Projekty\bakula-soak\k15\held`, souhrn `F:\claude-tmp\k15\report-held.txt`. Po měření se nic neměnilo.
+
+| test | ukazatel | před | po | výsledek |
+|---|---|---:|---:|---|
+| K15-1 | omylem zavřeno, `k15e` proti `elying` | **5** z 7050 | **0** z 7050 (horní mez Wilson 0,05 %) | **splněno**: mechanismus případu 2 (lhoucí agent vyvrátí nález s historií) se na držených seedech opakoval 5× a `endpoint_weak` + `refute_episode` ho odstraní; autonomně vyvráceno 33 (omylem 2) → 1 (omylem 0) |
+| K15-1 | omylem zavřeno, `k15` proti `off` | 0 z 7050 | 0 z 7050 | splněno, beze změny |
+| K15-2 | detekce, `k15` − `off` | 85,9 | 86,1 | +0,1 (+0,0 až +0,2) p. b.: práh ≥ 0 splněn, cíl `exfil_cloud_storage_upload` ≥ +10 **nesplněn** (67,7 = 67,7, n = 31) |
+| K15-3 | FP na síť-den, `k15` / `off` | 11,57 | 11,61 | poměr 1,004 (1,002 až 1,006): splněno; hn_* 63,3 → 65,2 (+1,8), celé z `hn_nightly_cloud_backup_upload` 50,6 → 64,7 |
+| K15-4 | C4, `k15ops` | 8,3 | **22,7** | **nesplněno, horší** |
+| K15-5 | C5, `k15ops` | 14,9 | **22,9** | **nesplněno, horší** |
+| K15-6 | C1 / C2, `k15ops` | 74,9 / 60,5 | **67,1 / 47,4** | **nesplněno, horší** |
+| K15-7 | C8 `k15mix` | 82,6 | neměřeno | rameno vynecháno (odchylka výše) |
+| K15-8 | determinismus, regrese | | | splněno (sekce výše) |
+
+`k15e` dále: detekce 85,9 = 85,9, FP poměr 1,000, hn_* +0,0, objem endpointových dat 164 KiB na host a den, latence 1,66 = 1,66. `k15ops` v A-ukazatelích: detekce +0,1 (−0,0 až +0,3), FP poměr 1,008, hn_* +2,0.
+
+**Návrh pro `recommended()` (neprovedeno, ke schválení, stejně jako v krocích 13 a 14; `endpoint_weak` navíc vyžaduje `endpoint`, který v presetu není):** zapnout `endpoint_weak` a `refute_episode` (K15-1 splněn na držených seedech, LOFO `k15a` bez záporného příspěvku, cena nula ve všech A-ukazatelích); `upload_horizon`, `ops_symptoms` a `ops_blast` zůstávají volitelné (horizont bez přínosu pro cíl a +1,8 p. b. hn_*; obě ops opravy zhoršují C1, C4 i C5 na ladicích i držených seedech).
+
+### Co se nepodařilo
+
+1. Mezera `exfil_cloud_storage_upload` (P1): `upload_horizon` je mechanicky správný (test), ale minuté exfiltrace jsou pod `min_bytes` i pod poměrem k historii hostu i přes 6 oken; v tomto pásmu objemu jsou v simulaci častější noční zálohy než exfiltrace. Bez endpointu nebo obsahového signálu (TLS SNI k cloudovému úložišti mimo pracovní dobu) se rodina z toků nedá posunout.
+2. Diagnóza poruch (C1 až C5): obě opravy jdou proti sobě; `ops_symptoms` zlepší C2 a C4 (65,7 a 5,7 na ladicích), ale zhorší C1 a C5; `ops_blast` zhorší C4 na 30 %. Příčina je v tom, že projev poruchy v simulátoru a v katalogu vznikly nezávisle; bez reálného záznamu provozních incidentů se dál ladí jen vlastní simulátor.
+3. `k15noise` a `k15mix` neměřena (předregistrace je uváděla); K15-7 bez výsledku.
+4. Seed 20266106 na ladicí sadě jen 6 sítí (XXL blok), ladicí párování 38 místo 40.
