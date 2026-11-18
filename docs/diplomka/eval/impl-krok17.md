@@ -125,7 +125,7 @@ Relace (tunely a DoH jsou pozitivní, kontroly negativní):
 | iodine | `-T NULL` (původní) |
 | iodine-txt, iodine-cname, iodine-mx, iodine-a | `-T TXT`, `CNAME`, `MX`, `A` |
 | dnscat | výchozí střídání TXT/CNAME/MX (původní) |
-| dnscat-txt, dnscat-cname, dnscat-mx, dnscat-a | `--dns ...,type=X` |
+| dnscat-txt, dnscat-cname, dnscat-mx, dnscat-aaaa | `--dns ...,type=X` (odchylka před během: `type=A` přes resolver unbound relaci nenaváže, unbound přeuspořádá sadu záznamů A a klient hlásí „DNS didn't return an answer“; přímo na server funguje. Varianta s adresním typem se proto měří jako `type=AAAA`, která přes resolver funguje; zjištěno zkouškou 25 s, ne měřením) |
 | dns2tcp | dns2tcpc, stažení přes tunel (TXT/KEY) |
 | exfil-slow | 1 dotaz za 5 až 10 s, 600 s, značka 52 znaků base32, typ A |
 | exfil-short | krátké značky (12 znaků base32), typ A, 4 dotazy/s |
