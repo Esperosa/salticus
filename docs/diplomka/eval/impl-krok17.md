@@ -189,3 +189,40 @@ Po změnách (binárka z `08c4210`): iodine 5/5, dnscat2 5/5, dns2tcp 1/1 (`debu
 ### Zmrazení pro držený běh laboratoře B (zapsáno před během)
 
 Detektory `dns_tunnel_names` v2 a `doh_suspected` ve stavu commitu `08c4210` (binárka `salticus-k17-d4.exe` postavená z tohoto stromu), laboratoř a vyhodnocení ve stavu `b3661dd`. Držená sada (seed 17101): každý z 26 režimů jednou a navíc druhá relace iodine, dnscat, doh a control (30 relací), dns2tcp přímo na autoritu. Zachycení běží souběžně s ladicím během laboratoře A (stejně jako ladicí běh B5). Výsledek se hlásí, ať je jakýkoli; po něm se prahy nemění.
+
+## Registr slepých míst detekce skrytých kanálů (krok 17)
+
+Každé místo s mechanismem, proč ho pravidlo nevidí, a s tím, zda bylo v laboratoři změřeno. „Změřeno“ = relace v ladicí nebo držené sadě; „z mechanismu“ = odvozeno z definice pravidla, laboratoří neověřeno.
+
+| # | varianta | proč ji pravidlo nevidí | stav |
+|---|---|---|---|
+| SM1 | krátké značky (≤ ~16 znaků), typ A/AAAA, mírné tempo (exfil-short: 12 znaků base32, 4 dotazy/s) | T1 až T3 vyžadují délku ≥ 24 (T3 ≥ 40), T4 typ nesoucí data; tvarem jména se neliší od DNSBL a CDN (control-names: DNSBL délka 12,8, entropie 2,97) | změřeno, nezachyceno |
+| SM2 | pomalý tunel s hex kódováním a typem A/AAAA (např. dnscat2 `type=AAAA` s `--delay`) | T1 potřebuje typ nesoucí data, T2 objem ≥ 96 kB a ≥ 1 kB/s, T3 entropii ≥ 4,2 (hex má nejvýš 4,0) | z mechanismu |
+| SM3 | velmi pomalý tunel (< 30 různých jmen za okno; při 5min okně pomaleji než 1 dotaz za 10 s) | T3 potřebuje ≥ 30 jmen v okně, T1 ≥ 8 jmen a typ; detektor nemá paměť přes okna | z mechanismu (exfil-slow 1 dotaz za 5 až 10 s v 600s okně zachycen) |
+| SM4 | rozprostření přes mnoho zón (desítky domén, v každé jen pár jmen) | skupina je (zdroj, základní zóna); exfil-multi se 6 zónami zachycen, protože každá zóna měla ≥ 8 jmen s typem TXT | z mechanismu |
+| SM5 | data jen v odpovědích s krátkými jmény a typem A (obdoba dns2tcp s A) | T4 vyžaduje podíl typů nesoucích data; DnsMeta nenese velikost odpovědi | z mechanismu |
+| SM6 | tunel přes zónu ze seznamu reputačních služeb | seznam se z vyhodnocení vynechává; útočník tyto zóny neovládá, takže je to slepé místo jen při kompromitaci služby | z mechanismu |
+| SM7 | zóna pod veřejnou příponou se dvěma úrovněmi (např. `co.uk`, `duckdns.org`) | `zone_of` bere poslední dvě značky, takže sloučí tunel s jinými jmény pod stejnou příponou; tvarové průměry se pak zředí | z mechanismu |
+| SM8 | DoH na neznámý resolver, když host zároveň dál používá obyčejné DNS (prohlížeč s DoH, systém bez) | C2 vyžaduje, aby obyčejných dotazů bylo méně než dalších cílů a aby SNI dalších cílů nebyla přeložena obyčejným DNS | z mechanismu |
+| SM9 | DoH na resolver se jménem, jehož bootstrap proběhl před oknem (přeložení v cache) | C2 vyžaduje kandidáta bez SNI, nebo s SNI přeloženým v okně | z mechanismu |
+| SM10 | DoH přes doménový fronting nebo CDN sdílenou s weby | seznam známých resolverů ho nemá a tvar toků se nemusí lišit od webu | z mechanismu |
+| SM11 | DNS přes TLS na jiném portu než 853 | DoT se pozná jen podle portu 853 | z mechanismu |
+| SM12 | konfigurace, které nástroj v laboratoři nenaváže: dnscat2 `type=A` a dns2tcp přes rekurzivní resolver unbound | unbound přeuspořádá nebo upraví odpovědi a relace se nenaváže; měřeno jen přímo na autoritu (dns2tcp) nebo jiný typ (dnscat2 AAAA) | změřeno jako nefunkční konfigurace nástroje, ne jako slepé místo detektoru |
+| SM13 | velikost okna | T2 a T3 jsou citlivé na délku okna (relace 150 s, exfil-slow 600 s); v provozu s kratším oknem se pomalé tunely posunou pod práh | z mechanismu |
+
+Známé riziko falešných poplachů (ne slepé místo, ale hranice): AV reputace s hashem v base32/base64 mimo seznam zón (T3), hromadný sken AV nad 1 kB/s jmen (T2; v laboratoři avburst 478 B/s tichý), aplikace s long-pollingem na IP bez SNI u hosta, který jinak nepoužívá obyčejné DNS (DoH tvar B).
+
+## Výsledek drženého běhu laboratoře B (seed 17101, `heldB`, 30 relací, binárka z `08c4210`, vyhodnoceno jednou)
+
+| skupina | detekce | Wilson 95 % | práh | splněno |
+|---|---|---|---|---|
+| iodine (NULL ×2, TXT, CNAME, MX, A) | 6/6 | 61 až 100 % | K17-T1 ≥ 80 % | ano |
+| dnscat2 (výchozí ×2, TXT, CNAME, MX, AAAA) | 6/6 | 61 až 100 % | K17-T1b | ano |
+| dns2tcp (přímo na autoritu) | 1/1 | 21 až 100 % | K17-T1b | ano |
+| exfil (slow, multi, short) | 2/3 | 21 až 94 % | K17-T1b | exfil-short ne (SM1) |
+| tunely celkem | 15/16 | 72 až 99 % | K17-T1b ≥ 80 % souhrnně | ano |
+| DoH (doh ×2, doh-keep), správný cíl | 3/3 | 44 až 100 % | K17-T3 ≥ 80 % | ano (bodově) |
+| falešné poplachy na kontrolách (10 typů, control ×2) | 0/11 | 0 až 26 % | K17-T2 = 0 | ano |
+| DoH nálezy na jiný cíl než resolver | 0 | | | |
+
+Větve, které zabraly: iodine T1 (TXT, CNAME, MX, NULL) a T2 (A), dnscat2 T1 a T2 (AAAA), dns2tcp T4, exfil-multi T1, exfil-slow T3, DoH tvar A (doh) a tvar B (doh-keep). Nezachycen exfil-short (stejně jako v ladicí sadě, mechanismus SM1). Malé n: každá varianta má 1 až 2 relace, intervaly jsou široké; výsledek neznamená 100% detekci variant, jen že žádná z naměřených relací kromě SM1 neprošla.
