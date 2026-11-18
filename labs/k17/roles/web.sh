@@ -2,6 +2,7 @@
 start_syslog; route_srv
 ROLE=$1
 mkdir -p /data /run/nginx /etc/nginx/http.d
+rm -f /etc/nginx/http.d/default.conf  # výchozí server Alpine koliduje s default_server níže
 [ "$ROLE" = primary ] && python3 /lab/certs.py
 while [ ! -f /out/ca/ca.pem ]; do sleep 1; done
 [ "$ROLE" = secondary ] && { sleep 2; python3 /lab/certs.py; }

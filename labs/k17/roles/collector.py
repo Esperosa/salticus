@@ -1,13 +1,14 @@
-"""Sběrač SNMP (obdoba Zabbix/Cacti): po 10 s čte IF-MIB a HOST-RESOURCES-MIB, čítače převádí na rychlost.
+"""SbÄ›raÄŤ SNMP (obdoba Zabbix/Cacti): po 10 s ÄŤte IF-MIB a HOST-RESOURCES-MIB, ÄŤĂ­taÄŤe pĹ™evĂˇdĂ­ na rychlost.
 
-Výstup /out/logs/snmp.log: `EPOCH<TAB>host oid = TYPE: value` (čas sběru, pak řádek ve tvaru snmpget).
-Využití linky = rychlost / známá rychlost linky z inventáře (směrovač: emulovaná WAN 20 Mbit/s).
+VĂ˝stup /out/logs/snmp.log: `EPOCH<TAB>host oid = TYPE: value` (ÄŤas sbÄ›ru, pak Ĺ™Ăˇdek ve tvaru snmpget).
+VyuĹľitĂ­ linky = rychlost / znĂˇmĂˇ rychlost linky z inventĂˇĹ™e (smÄ›rovaÄŤ: emulovanĂˇ WAN 20 Mbit/s).
 """
-import subprocess, time
+import os, subprocess, time
 
 LOG = "/out/logs/snmp.log"
 SPEED = {"10.77.2.254": 20e6, "10.77.2.10": 10e9}
 prev = {}
+os.makedirs(os.path.dirname(LOG), exist_ok=True)
 
 def walk(host, oid):
     r = subprocess.run(["snmpwalk", "-v2c", "-c", "lab", "-t", "2", "-r", "1", "-On", "-Oq", host, oid],
@@ -58,7 +59,7 @@ while True:
                         lines.append(f"{host} ifUtil{n.capitalize()}Pct.{idx} = Gauge32: {pct:.1f}")
                 prev[key] = (v, now)
         if host == "10.77.2.10":
-            # HOST-RESOURCES-MIB hrStorage: obsazen� /data v procentech (used / size, jako �ablony Zabbix)
+            # HOST-RESOURCES-MIB hrStorage: obsazení /data v procentech (used / size, jako šablony Zabbix)
             sd = walk(host, ".1.3.6.1.2.1.25.2.3.1.3") or {}
             size = walk(host, ".1.3.6.1.2.1.25.2.3.1.5") or {}
             used = walk(host, ".1.3.6.1.2.1.25.2.3.1.6") or {}
