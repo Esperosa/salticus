@@ -533,6 +533,73 @@ fn adapters_parse_reference_lines() {
         .key,
         "ntp_unreach"
     );
+    // krok 17, ladicí běh laboratoře A: dnsmasq, udhcpc, unbound, supervisord a check_dns/check_cert
+    let sys = |l: &str| parse_syslog(l, 5, &|_| None).map(|s| s.key);
+    assert_eq!(
+        sys("<13>1 2026-11-18T14:20:00+00:00 10.77.1.2 dnsmasq-dhcp - - - dnsmasq-dhcp[13]: DHCPDISCOVER(eth0) 02:42:0a:4d:01:0b no address available").as_deref(),
+        Some("dhcp_no_free")
+    );
+    assert_eq!(
+        sys("<30>1 2026-11-18T14:20:00+00:00 10.77.1.11 udhcpc 13 - - no lease, forking to background").as_deref(),
+        Some("dhcp_no_offer")
+    );
+    assert_eq!(
+        sys("<13>1 2026-11-18T14:20:00+00:00 10.77.1.2 dnsmasq-dhcp - - - dnsmasq[13]: exiting on receipt of SIGTERM").as_deref(),
+        Some("dhcp_service_down")
+    );
+    assert_eq!(
+        sys("<29>1 2026-11-18T14:20:00+00:00 10.77.2.53 unbound - - - [1:0] error: SERVFAIL <web.lab.test. A IN>: all the configured stub or forward servers failed").as_deref(),
+        Some("dns_servfail")
+    );
+    assert_eq!(
+        sys("<14>1 2026-11-18T14:20:00+00:00 10.77.2.10 supervisord - - - 2026-11-18 14:20:00,123 INFO exited: app (terminated by SIGKILL; not expected)").as_deref(),
+        Some("sys_proc_crash")
+    );
+    // běžné hlášky stejných nástrojů signál nedávají
+    assert_eq!(
+        sys("<30>1 2026-11-18T14:20:00+00:00 10.77.1.11 udhcpc 13 - - broadcasting discover"),
+        None
+    );
+    assert_eq!(
+        sys(
+            "<14>1 2026-11-18T14:20:00+00:00 10.77.2.10 supervisord - - - INFO exited: app (exit status 0; expected)"
+        ),
+        None
+    );
+    assert_eq!(
+        parse_dhcp(
+            "dnsmasq-dhcp[13]: DHCPDISCOVER(eth0) 02:42:0a:4d:01:0b no address available",
+            3
+        )
+        .unwrap()
+        .key,
+        "dhcp_no_free"
+    );
+    assert_eq!(
+        parse_dhcp("udhcpc 13 - - no lease, forking to background", 3)
+            .unwrap()
+            .key,
+        "dhcp_no_offer"
+    );
+    let nag = |l: &str| parse_nagios(l, 1).map(|s| (s.key, s.value));
+    assert_eq!(
+        nag(
+            "[1795011728] SERVICE ALERT: 10.77.2.53;DNS;CRITICAL;SOFT;1;DNS CRITICAL - 1.348 seconds response time"
+        ),
+        Some(("dns_latency".to_string(), 1.348))
+    );
+    assert_eq!(
+        nag("[1795015388] SERVICE ALERT: 10.77.2.53;DNS;CRITICAL;SOFT;1;DNS CRITICAL - query returned SERVFAIL").map(|x| x.0),
+        Some("dns_servfail".to_string())
+    );
+    assert_eq!(
+        nag("[1795011153] SERVICE ALERT: 10.77.2.10;SSL cert;CRITICAL;SOFT;1;SSL CRITICAL - connection failed: [Errno 113] Host is unreachable").map(|x| x.0),
+        Some("probe_http_fail".to_string())
+    );
+    assert_eq!(
+        nag("[1795011153] SERVICE ALERT: 10.77.2.10;SSL cert;CRITICAL;HARD;3;SSL CRITICAL - Certificate 'web.lab.test' expired").map(|x| x.0),
+        Some("probe_tls_expired".to_string())
+    );
     // Zabbix/HOST-RESOURCES zaplnění v procentech se rozpozná
     assert_eq!(
         parse_snmp(

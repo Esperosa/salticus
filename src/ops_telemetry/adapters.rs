@@ -46,7 +46,19 @@ const SYSLOG: &[(&[&str], &str)] = &[
     (&["topology change"], "stp_tc"),
     (&["stp", "tcn"], "stp_tc"),
     (&["no free leases"], "dhcp_no_free"),
+    // krok 17: dnsmasq „DHCPDISCOVER(eth0) MAC no address available“ = vyčerpaný pool
+    (&["no address available"], "dhcp_no_free"),
+    // krok 17: klient se vzdal bez nabídky (busybox udhcpc, ISC dhclient)
+    (&["no lease, forking"], "dhcp_no_offer"),
+    (&["no dhcpoffers received"], "dhcp_no_offer"),
     (&["dhcp", "service stopped"], "dhcp_service_down"),
+    // krok 17: DHCP server dnsmasq ukončen („dnsmasq-dhcp ... exiting on receipt of SIGTERM“)
+    (&["dnsmasq-dhcp", "exiting on receipt"], "dhcp_service_down"),
+    // krok 17: unbound „error: SERVFAIL <name>: all the configured stub or forward servers failed“
+    (&["error: servfail"], "dns_servfail"),
+    // krok 17: supervisord „exited: app (terminated by SIGKILL; not expected)“, „entered FATAL state“
+    (&["exited:", "not expected"], "sys_proc_crash"),
+    (&["entered fatal state"], "sys_proc_crash"),
     (&["helper-address"], "dhcp_relay_missing"),
     (&["certificate has expired"], "sys_cert_expired"),
     (&["certificate expired"], "sys_cert_expired"),
@@ -315,9 +327,27 @@ pub fn parse_nagios(line: &str, now: i64) -> Option<OpsSignal> {
                 "probe_http_fail"
             } else if svc.contains("dns") {
                 // check_dns se shodou proti autoritě: „expected X but got Y“ = zastaralý/špatný
-                // záznam resolveru; jinak nedostupnost (timeout, SERVFAIL).
+                // záznam resolveru; „N seconds response time“ nad kritickým prahem = latence
+                // (krok 17: dříve padalo na nedostupnost); SERVFAIL; jinak nedostupnost.
                 if out.contains("expected") && out.contains("but got") {
                     "dns_stale_record"
+                } else if out.contains("response time") {
+                    if let Some(v) = out
+                        .split("critical -")
+                        .nth(1)
+                        .and_then(|s| s.split_whitespace().next())
+                        .and_then(|s| s.parse::<f64>().ok())
+                    {
+                        return Some(OpsSignal {
+                            at,
+                            key: "dns_latency".to_string(),
+                            value: v,
+                            scope: vec![host.to_string()],
+                        });
+                    }
+                    "probe_dns_fail"
+                } else if out.contains("servfail") {
+                    "dns_servfail"
                 } else {
                     "probe_dns_fail"
                 }
@@ -341,7 +371,13 @@ pub fn parse_nagios(line: &str, now: i64) -> Option<OpsSignal> {
             } else if svc.contains("ping") || svc.contains("icmp") {
                 "probe_icmp_fail"
             } else if svc.contains("cert") {
-                "probe_tls_expired"
+                // krok 17: prošlý certifikát jen podle textu; „connection failed“/timeout je
+                // nedostupnost služby, ne certifikát (dříve chybně probe_tls_expired)
+                if out.contains("expired") || out.contains("not yet valid") {
+                    "probe_tls_expired"
+                } else {
+                    "probe_http_fail"
+                }
             } else {
                 return None;
             }
@@ -359,8 +395,17 @@ pub fn parse_nagios(line: &str, now: i64) -> Option<OpsSignal> {
 /// DHCP: ISC dhcpd (`DHCPDISCOVER ... no free leases`) a Kea (`DHCP4_...`).
 pub fn parse_dhcp(line: &str, now: i64) -> Option<OpsSignal> {
     let low = lower_clip(line)?;
-    let key = if low.contains("no free leases") || low.contains("dhcp4_lease_alloc_fail") {
+    let key = if low.contains("no free leases")
+        || low.contains("dhcp4_lease_alloc_fail")
+        || low.contains("no address available")
+    {
         "dhcp_no_free"
+    } else if low.contains("no lease, forking") || low.contains("no dhcpoffers received") {
+        // krok 17: klient se vzdal bez nabídky (udhcpc, dhclient)
+        "dhcp_no_offer"
+    } else if low.contains("dnsmasq") && low.contains("exiting on receipt") {
+        // krok 17: DHCP server dnsmasq ukončen
+        "dhcp_service_down"
     } else if low.contains("pool") && (low.contains("exhaust") || low.contains("100%")) {
         "dhcp_pool_high"
     } else if low.contains("dhcpoffer") && low.contains("unknown server") {
