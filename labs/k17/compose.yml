@@ -1,0 +1,100 @@
+# Krok 17, laboratoř A: provozní poruchy. Bez NAT a bez výchozích tras ven (kontejnery si je mažou),
+# směrovač zahazuje vše mimo 10.77.0.0/16. Síť `internal` nejde: Docker v ní zahazuje směrovaný provoz.
+# Spouští tools/k17_lab.py; LOGDIR = adresář běhu mimo repo (F:\Projekty\bakula-datasets\lab-k17\...).
+x-node: &node
+  image: k17lab:1
+  restart: "no"
+  volumes:
+    - ./roles:/lab:ro
+    - ${LOGDIR:-/tmp/k17-nolog}:/out
+  cap_add: [NET_ADMIN, NET_RAW]
+
+networks:
+  lan:
+    driver_opts: {com.docker.network.bridge.enable_ip_masquerade: "false"}
+    ipam:
+      config: [{subnet: 10.77.1.0/24, ip_range: 10.77.1.0/26}]
+  srv:
+    driver_opts: {com.docker.network.bridge.enable_ip_masquerade: "false"}
+    ipam:
+      config: [{subnet: 10.77.2.0/24, ip_range: 10.77.2.0/26}]
+
+services:
+  syslog:
+    <<: *node
+    hostname: syslog
+    networks: {srv: {ipv4_address: 10.77.2.50}}
+    command: ["sh", "/lab/syslog.sh"]
+  router:
+    <<: *node
+    hostname: router
+    sysctls: {net.ipv4.ip_forward: "1"}
+    networks:
+      lan: {ipv4_address: 10.77.1.254}
+      srv: {ipv4_address: 10.77.2.254}
+    command: ["sh", "/lab/router.sh"]
+  cap:
+    <<: *node
+    network_mode: "service:router"
+    command: ["sh", "/lab/cap.sh"]
+  auth:
+    <<: *node
+    hostname: auth
+    networks: {srv: {ipv4_address: 10.77.2.54}}
+    command: ["sh", "/lab/auth.sh"]
+  resolver:
+    <<: *node
+    hostname: resolver
+    networks: {srv: {ipv4_address: 10.77.2.53}}
+    command: ["sh", "/lab/resolver.sh"]
+  ntp:
+    <<: *node
+    hostname: ntp
+    networks: {srv: {ipv4_address: 10.77.2.123}}
+    command: ["sh", "/lab/ntp.sh"]
+  web:
+    <<: *node
+    hostname: web
+    networks: {srv: {ipv4_address: 10.77.2.10}}
+    tmpfs: ["/data:size=8m"]
+    command: ["sh", "/lab/web.sh", "primary"]
+  web2:
+    <<: *node
+    hostname: web2
+    networks: {srv: {ipv4_address: 10.77.2.11}}
+    command: ["sh", "/lab/web.sh", "secondary"]
+  collector:
+    <<: *node
+    hostname: collector
+    networks: {srv: {ipv4_address: 10.77.2.60}}
+    command: ["sh", "-c", ". /lab/common.sh; route_srv; exec python3 /lab/collector.py"]
+  dhcp:
+    <<: *node
+    hostname: dhcp
+    networks: {lan: {ipv4_address: 10.77.1.2}}
+    command: ["sh", "/lab/dhcp.sh"]
+  mon:
+    <<: *node
+    hostname: mon
+    networks: {lan: {ipv4_address: 10.77.1.5}}
+    command: ["sh", "/lab/client.sh", "mon"]
+  c1:
+    <<: *node
+    hostname: c1
+    networks: {lan: {ipv4_address: 10.77.1.11}}
+    command: ["sh", "/lab/client.sh", "client"]
+  c2:
+    <<: *node
+    hostname: c2
+    networks: {lan: {ipv4_address: 10.77.1.12}}
+    command: ["sh", "/lab/client.sh", "client"]
+  c3:
+    <<: *node
+    hostname: c3
+    networks: {lan: {ipv4_address: 10.77.1.13}}
+    command: ["sh", "/lab/client.sh", "client"]
+  c4:
+    <<: *node
+    hostname: c4
+    networks: {lan: {ipv4_address: 10.77.1.14}}
+    command: ["sh", "/lab/client.sh", "client"]

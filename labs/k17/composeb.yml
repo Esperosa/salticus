@@ -1,0 +1,41 @@
+# Krok 17, laboratoř B: DNS tunel (iodine, dnscat2), DoH a kontrolní provoz.
+# Vše mezi kontejnery v izolované síti 10.88.0.0/16; žádný cíl mimo lab, nic ven.
+x-node: &node
+  image: k17labb:1
+  restart: "no"
+  volumes:
+    - ./rolesb:/lab:ro
+    - ${LOGDIR:-/tmp/k17b-nolog}:/out
+  cap_add: [NET_ADMIN, NET_RAW]
+
+networks:
+  labb:
+    driver_opts: {com.docker.network.bridge.enable_ip_masquerade: "false"}
+    ipam:
+      config: [{subnet: 10.88.0.0/16, ip_range: 10.88.1.0/24}]
+
+services:
+  resolver:
+    <<: *node
+    networks: {labb: {ipv4_address: 10.88.0.53}}
+    command: ["sh", "/lab/resolver.sh"]
+  auth:
+    <<: *node
+    networks: {labb: {ipv4_address: 10.88.0.54}}
+    command: ["sh", "/lab/auth.sh"]
+  web:
+    <<: *node
+    networks: {labb: {ipv4_address: 10.88.0.10}}
+    command: ["sh", "/lab/web.sh"]
+  iodinesrv:
+    <<: *node
+    networks: {labb: {ipv4_address: 10.88.0.21}}
+    command: ["sh", "/lab/iodine_srv.sh"]
+  dnscatsrv:
+    <<: *node
+    networks: {labb: {ipv4_address: 10.88.0.22}}
+    command: ["sh", "/lab/dnscat_srv.sh"]
+  doh:
+    <<: *node
+    networks: {labb: {ipv4_address: 10.88.0.70}}
+    command: ["sh", "/lab/coredns_doh.sh"]
