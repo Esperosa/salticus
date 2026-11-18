@@ -83,3 +83,79 @@ Při malém n se hlásí i Wilsonův interval; „splněno“ se posuzuje podle 
 - Běhy: Idle, maska 0x3FFFFC, nejvýš 8 vláken, dlouhé běhy odpojeně (`Start-Process` a čekání na PID). `CARGO_TARGET_DIR=F:/claude-tmp/target-k17`.
 
 Hrozby validity zapsané předem: laboratoř staví a štítkuje autor kódu; malé n (1 slot na scénář a sadu); Docker Desktop sdílí jádro, hodiny a disk VM, takže některé poruchy jsou jen přiblížení; health-check a sběrač konfiguruje autor (formát výstupu je ale formát skutečného nástroje, ne vymyšlený text); motor je v krátké laboratoři „studený“ (zralost hostů 12 h), takže M2 podhodnocuje detekci chování.
+
+## Dodatek D1: detektor DNS tunelu v2, detektor DoH a atypické varianty (zapsáno 2026-11-18 před změnou kódu)
+
+### Proč (ladicí běh laboratoře B, `debugB4`)
+
+Laboratoř B se rozběhla až po opravách (dnscat2 server bez TTY končil hned po startu a resolver vracel SERVFAIL; nginx kolidoval s výchozím serverem). Ladicí běh B4 (seed 17001, jedna relace na režim): iodine 1/1, dnscat2 0/1, DoH 0/1, kontrola 0 falešných poplachů. dnscat2 má 4 826 různých jmen, průměrná značka 60 znaků, entropie 3,79, ale podíl TXT/NULL jen 0,35, protože střídá TXT, CNAME a MX; pravidlo v1 vyžaduje ≥ 0,6. Předregistrované očekávání (dnscat2 mine) se potvrdilo. Kořenová příčina: rys „typ záznamu“ je definován úzce (jen TXT/NULL/PRIVATE) a tunel s typem A ho nesplní nikdy. Druhá slabina v1: délka a entropie se měří jen u nejlevější značky a průměrují se přes dotazy (opakování), ne přes různá jména.
+
+### Detektor `dns_tunnel_names` v2 (`heuristika-behavior:l7-dns-tunnel@v2`)
+
+Skupina = (vnitřní zdroj, základní zóna `zone_of`). Vynechá se provoz, který z principu nemůže nést tunel přes hranici sítě: jména pod `.local` a dotazy na adresy link-local multicast (mDNS 224.0.0.251, ff02::fb, LLMNR 224.0.0.252, ff02::1:3). Rysy, všechny přes **různá jména** U:
+
+- `s` = část jména před zónou bez teček (celá zakódovaná část, ne jen první značka), `n_u` = |U|, `uniq` = |U| / počet dotazů,
+- `L` = průměrná délka `s`, `H` = průměrná Shannonova entropie `s` (bity na znak),
+- `R` = podíl dotazů s typem schopným nést data v odpovědi: TXT, NULL, PRIVATE, CNAME, MX, SRV, KEY, DNAME (A, AAAA, PTR, HTTPS/SVCB a SOA se nepočítají; HTTPS/SVCB posílají prohlížeče ke každému jménu),
+- `B` = součet délek `s` přes U (zakódované bajty), `rate` = B / max(rozpětí času dotazů, 60 s).
+
+Poplach, když platí **T1** (tvar + typ): `n_u ≥ 8`, `uniq ≥ 0,3`, `L ≥ 24`, `H ≥ 3,0`, `R ≥ 0,5`; nebo **T2** (tvar + objem, bez ohledu na typ, pro tunely typu A): `n_u ≥ 100`, `uniq ≥ 0,5`, `L ≥ 24`, `H ≥ 3,0`, `B ≥ 96 000` a `rate ≥ 1 000 B/s`. Nález uvádí, která větev zabrala, a všechny rysy. Každá větev kombinuje aspoň dva nezávislé rysy (tvar jména a typ, resp. tvar jména a objem). Prahy se smí ladit jen na ladicí sadě (seed 17001); změny se zapíší níže před drženým během.
+
+### Detektor `doh_suspected` (`heuristika-behavior:l7-doh@v1`)
+
+Jen metadata toků (`conn.log`), TLS (`ssl.log`: SNI, ALPN) a DNS, žádné dešifrování. Kandidát = (vnitřní host, vnější IP) s TCP na 443. Spouští se se `l7_tls`.
+
+- **K** (známý resolver): IP nebo SNI ze seznamu veřejných DoH resolverů (Cloudflare, Google, Quad9, OpenDNS, AdGuard, NextDNS, CleanBrowsing), nebo TCP 853 (DoT) na vnější adresu. Stačí samo, závažnost nízká (obcházení firemního resolveru). V laboratoři se ověří jen jednotkovým testem (nic ven).
+- **Tvar A** (spojení na dotaz): ≥ 10 spojení na kandidáta v okně, medián `orig_bytes` ≤ 2 500, medián `resp_bytes` ≤ 8 000, medián trvání ≤ 10 s.
+- **Tvar B** (trvalé spojení s malými záznamy): spojení s trváním ≥ 30 s, `orig_pkts` ≥ 30, průměrně ≤ 300 B na paket od klienta a ≤ 600 B na paket od serveru.
+- **C2** (mlčení resolveru, druhý nezávislý rys): host v okně kontaktoval ≥ 2 další vnější IP (mimo kandidáta, mimo port 53) a položil méně dotazů na port 53, než je těchto IP (cíle se zjevně neresolvují obyčejným DNS).
+
+Poplach: K, nebo (tvar A nebo tvar B) a zároveň C2. SNI a ALPN se uvádějí v důkazech (chybějící SNI = přímá IP), do rozhodnutí nevstupují, protože je nemá každý zdroj. JA3 se nepoužije: Zeek 9 ho bez balíčku nepočítá. Poplachový pár se neučí.
+
+Nový typ nálezu se zařadí stejně jako `dns_tunnel_names` (chráněný typ „novelty“, taktika command-and-control, kontrola protějšků ve žebříku).
+
+### Rozšíření laboratoře B (před během, platí pro obě sady)
+
+Měřená cesta stejná jako dosud, jen rozsah `--scope` při vyhodnocení je **síť klientů 10.88.1.0/24** (servery 10.88.0.x jsou pro klienta „venku“, jako resolver a weby u skutečného hosta; s rozsahem /16 by DoH server i weby byly vnitřní a pravidla pro odchozí provoz by se nevyhodnotila). Zachytávání u klienta: celé rozhraní (ne jen porty 53 a 443), aby byly vidět i spojení na weby. Nový `web2` (10.88.0.11) se stejným obsahem, oba weby i HTTPS (vlastní certifikát). Autorita `nsd` dostane zóny se zástupnými záznamy (`*.www.lab.test`, `*.cdn.test`, `*.avqs.test`, `*.bl.test`, `*.s1.test`, `*.slow.test`, `x1.test` až `x6.test`), reverzní zónu `88.10.in-addr.arpa`, DKIM, SPF, DMARC a SRV. dns2tcp se sestaví z veřejného zdroje (zóna `t3.lab.test`, server 10.88.0.23). Vlastní exfiltrační klient `exfil.py` (UDP dotazy na resolver, data z `/dev/urandom` v base32) pro varianty, které nástroje neumí.
+
+Relace (tunely a DoH jsou pozitivní, kontroly negativní):
+
+| režim | popis |
+|---|---|
+| iodine | `-T NULL` (původní) |
+| iodine-txt, iodine-cname, iodine-mx, iodine-a | `-T TXT`, `CNAME`, `MX`, `A` |
+| dnscat | výchozí střídání TXT/CNAME/MX (původní) |
+| dnscat-txt, dnscat-cname, dnscat-mx, dnscat-a | `--dns ...,type=X` |
+| dns2tcp | dns2tcpc, stažení přes tunel (TXT/KEY) |
+| exfil-slow | 1 dotaz za 5 až 10 s, 600 s, značka 52 znaků base32, typ A |
+| exfil-short | krátké značky (12 znaků base32), typ A, 4 dotazy/s |
+| exfil-multi | značka 52 znaků, TXT, střídání šesti domén `x1.test` až `x6.test`, 6 dotazů/s |
+| doh | curl `--doh-url`, nové spojení na dotaz (původní, cíle web a web2) |
+| doh-keep | jeden curl s `--rate`, trvalé spojení na DoH, náhodná jména `*.www.lab.test` |
+| control | původní (A, TXT, HTTP) |
+| control-names | CDN se zahešovanými jmény (A + HTTPS typ), DKIM/SPF/DMARC TXT, PTR na 60 adres, SRV (služby AD), DNSBL obrácené IP |
+| control-av | antivirová reputace: hash 40 + 8 hex znaků, typ A, 2 dotazy/s |
+| control-avburst | totéž 10 dotazů/s (plný sken disku; očekávaný nejtěžší případ pro T2) |
+| control-mdns | mDNS na 224.0.0.251:5353, instance Chromecast s 32znakovým UUID (PTR/SRV/TXT) |
+| control-browse | HTTPS i HTTP na web a web2, obyčejné DNS, malé stránky |
+| control-download | HTTPS stažení 4 MB opakovaně |
+| control-stream | HTTPS stažení omezené rychlostí (dlouhé spojení) |
+| control-poll | HTTPS dotaz na API každou 1 s, nové spojení |
+| control-pollkeep | HTTPS dotazy na API 1/s v jednom trvalém spojení |
+
+Sady: **ladicí** (seed 17001) každý režim jednou; **držená** (seed 17101) každý režim jednou a navíc druhá relace iodine, dnscat, doh a control (původní předregistrace „2x“). Seed určuje pořadí relací a parametry v předem daném rozsahu (velikost dat, přesné tempo). Relace 180 s, exfil-slow 600 s. Držená sada se pustí jednou po zmrazení kódu (commit zapsaný níže před během).
+
+### Prahy (dodatek)
+
+| práh | metrika | splněno, když |
+|---|---|---|
+| K17-T1 | iodine (všechny typy) | ≥ 80 % relací (beze změny) |
+| K17-T1b | dnscat2 (všechny typy), dns2tcp, exfil-* | hlásí se po režimech s Wilsonovým intervalem; cíl ≥ 80 % souhrnně, bez nároku na každou variantu |
+| K17-T2 | falešné poplachy `dns_tunnel_names`, `dns_zone_enumeration` a `doh_suspected` na všech kontrolách (laboratoř B i A) | 0 |
+| K17-T3 | DoH (doh, doh-keep) | hlásí se s Wilsonovým intervalem; cíl ≥ 80 % |
+
+Nezachycené varianty se zapíší do registru slepých míst (níže) s mechanismem, proč je pravidlo nevidí, ne do „ladění, dokud to nevyjde“. Žádné tvrzení o 100% detekci.
+
+### Hrozby validity dodatku
+
+Varianty i kontroly staví autor detektoru; kontroly napodobují tvar skutečného provozu (CDN, AV reputace, mDNS), ale nejsou to záznamy skutečných zařízení. Jedna relace na režim v ladicí sadě. Seznam známých DoH resolverů se v laboratoři neověří provozem. Okno detekce je délka relace (180 s nebo 600 s); v provozu s jinou délkou okna se mění hlavně T2 a pomalé tunely.
