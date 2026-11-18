@@ -36,6 +36,9 @@ services:
     <<: *node
     networks: {labb: {ipv4_address: 10.88.0.22}}
     command: ["sh", "/lab/dnscat_srv.sh"]
+    # server dnscat2 má interaktivní REPL; bez TTY dostane EOF a ukončí se
+    stdin_open: true
+    tty: true
   doh:
     <<: *node
     networks: {labb: {ipv4_address: 10.88.0.70}}

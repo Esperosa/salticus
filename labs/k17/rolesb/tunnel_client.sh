@@ -8,11 +8,13 @@ CAP=$!
 sleep 6
 case "$MODE" in
   iodine)
-    iodine -f -T NULL -P labpass -r 10.88.0.53 t1.lab.test >/tmp/iodine.log 2>&1 &
-    sleep 10
+    # tunel přímo na vlastní autoritativní iodined (10.88.0.21), typ NULL.
+    # -r = vypnout raw UDP režim (jinak iodine po handshaku přejde na ne-DNS UDP).
+    echo "nameserver 10.88.0.21" > /etc/resolv.conf
+    iodine -f -r -T NULL -P labpass 10.88.0.21 t1.lab.test >/tmp/iodine.log 2>&1 &
+    sleep 12
     for i in $(seq 1 "${ROUNDS:-1}"); do
-      iperf3 -c 10.99.1.1 -t 60 -b 300k -l 1024 >/dev/null 2>&1 || true
-      ping -c 40 -s 1000 10.99.1.1 >/dev/null 2>&1 || true
+      iperf3 -c 10.99.1.1 -t 60 -b 400k -l 900 >/dev/null 2>&1 || true
     done
     ;;
   dnscat)
