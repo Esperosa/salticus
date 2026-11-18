@@ -240,3 +240,17 @@ Vývoj na ladicí sadě (rameno `k15ops`): C1 60 % → 67 % → 87 %, C2 60 % �
 ### Zmrazení pro držený běh laboratoře A
 
 Kód ve stavu `c5c42f3` (parsery z `086b3ef`, detektory z `08c4210`; binárka `salticus-k17-d4.exe`), laboratoř ve stavu `cac0ab4`. Držená sada seed 17101, 21 slotů, fáze 100 s, zahřátí 180 s. Výsledek se hlásí, ať je jakýkoli.
+
+## Výsledek drženého běhu laboratoře A (seed 17101, `held`, 21 slotů, binárka z `08c4210`, vyhodnoceno jednou)
+
+| práh | metrika | `ops` | `k15ops` | splněno (`k15ops`) |
+|---|---|---|---|---|
+| K17-C1 ≥ 85 % | správná třída u S | 11/15 = 73 % (48 až 89) | 12/15 = 80 % (55 až 93) | ne |
+| K17-C2 ≥ 80 % | správné `catalog_id`, kde telemetrie dodána | 10/13 = 77 % (50 až 92) | 11/13 = 85 % (58 až 96) | ano |
+| K17-C3 ≥ 90 % | bez SNMP a syslogu „nelze určit“ | 5/15 = 33 % | 5/15 = 33 % | ne |
+| K17-C4 ≤ 5 % | útok jako porucha nebo změna | 1/6 = 17 % | 2/6 = 33 % (10 až 70) | ne |
+| K17-C5 ≤ 10 % | porucha jako útok | 1/15 = 7 % | 0/15 = 0 % (0 až 20) | ano |
+| K17-C6 = 0 | kontroly K mimo „útok/bez důkazu“ | 0/3 | 0/3 | ano |
+| K17-T2 = 0 | `dns_tunnel_names`, `doh_suspected`, `dns_zone_enumeration` v laboratoři A | 0 | 0 | ano |
+
+Chyby `k15ops`: S08 (MTU, bez telemetrie), S06 (ztráty, jen `if_oper_down`, slabá shoda), S07 (využití linky, nejednoznačné mezi typy se stejnou vahou), S02 (vyčerpaný pool, nejednoznačné, chybí čítač poolu), A2 ×2 (otrávení ARP jako změna CHG-013: jediný provozní signál je nová MAC, katalog nemá typ „cizí MAC pro IP brány“ odlišný od nového zařízení). C3 nesplněno z důvodu popsaného u ladicích běhů (Nagios, DHCP a ARP zůstávají a stačí). Prahy diagnózy a katalog se v kroku 17 neměnily (pravidla změn); C1, C3 a C4 jsou vstupem pro další krok, ne pro dodatečné ladění na této sadě.
