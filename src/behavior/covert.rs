@@ -265,7 +265,10 @@ fn median(v: &mut [f64]) -> f64 {
 }
 
 fn multicast(ip: &str) -> bool {
-    ip.starts_with("ff") || ip.starts_with("224.") || ip.starts_with("239.") || ip == "255.255.255.255"
+    ip.starts_with("ff")
+        || ip.starts_with("224.")
+        || ip.starts_with("239.")
+        || ip == "255.255.255.255"
 }
 
 pub fn doh(
@@ -279,7 +282,9 @@ pub fn doh(
     let mut snis: HashMap<(&str, &str), BTreeSet<&str>> = HashMap::new();
     for ev in events {
         match ev {
-            L7Event::Dns(d) if !link_local_dns(d) => *plain_dns.entry(d.src_ip.as_str()).or_default() += 1,
+            L7Event::Dns(d) if !link_local_dns(d) => {
+                *plain_dns.entry(d.src_ip.as_str()).or_default() += 1
+            }
             L7Event::Tls(s) => {
                 if let Some(n) = s.sni.as_deref() {
                     snis.entry((s.src_ip.as_str(), s.dst_ip.as_str()))
@@ -294,7 +299,9 @@ pub fn doh(
     let mut per: BTreeMap<(&str, &str), Vec<&ConnectionObservation>> = BTreeMap::new();
     let mut dsts: HashMap<&str, BTreeSet<&str>> = HashMap::new();
     for f in outbound {
-        let Some(src) = f.src_ip.as_deref() else { continue };
+        let Some(src) = f.src_ip.as_deref() else {
+            continue;
+        };
         if !internal(src) || internal(&f.dst_ip) || multicast(&f.dst_ip) {
             continue;
         }
@@ -313,8 +320,14 @@ pub fn doh(
         let sni_known = names.is_some_and(|s| s.iter().any(|n| known_doh_sni(n)));
         let dot = flows.iter().any(|f| f.dst_port == Some(853));
         let known = DOH_IPS.contains(&dst) || sni_known;
-        let mut up: Vec<f64> = flows.iter().map(|f| f.orig_bytes.unwrap_or(0) as f64).collect();
-        let mut down: Vec<f64> = flows.iter().map(|f| f.resp_bytes.unwrap_or(0) as f64).collect();
+        let mut up: Vec<f64> = flows
+            .iter()
+            .map(|f| f.orig_bytes.unwrap_or(0) as f64)
+            .collect();
+        let mut down: Vec<f64> = flows
+            .iter()
+            .map(|f| f.resp_bytes.unwrap_or(0) as f64)
+            .collect();
         let mut dur: Vec<f64> = flows.iter().map(|f| f.duration_s.unwrap_or(0.0)).collect();
         let n443 = flows.iter().filter(|f| f.dst_port == Some(443)).count();
         let shape_a = n443 >= t.doh_conns
@@ -404,7 +417,17 @@ mod tests {
         })
     }
 
-    fn conn(src: &str, dst: &str, port: u16, dur: f64, o: u64, r: u64, op: u64, rp: u64) -> ConnectionObservation {
+    #[allow(clippy::too_many_arguments)]
+    fn conn(
+        src: &str,
+        dst: &str,
+        port: u16,
+        dur: f64,
+        o: u64,
+        r: u64,
+        op: u64,
+        rp: u64,
+    ) -> ConnectionObservation {
         use chrono::TimeZone;
         ConnectionObservation {
             timestamp: chrono::Utc.timestamp_opt(1_800_000_000, 0).unwrap(),
@@ -532,7 +555,10 @@ mod tests {
 
     #[test]
     fn encoded_part_joins_labels_before_zone() {
-        assert_eq!(encoded_part("ab.cd.t2.tun.example", "tun.example"), "abcdt2");
+        assert_eq!(
+            encoded_part("ab.cd.t2.tun.example", "tun.example"),
+            "abcdt2"
+        );
         assert_eq!(encoded_part("tun.example", "tun.example"), "");
     }
 
@@ -556,7 +582,13 @@ mod tests {
         // tentýž tvar, ale host resolvuje obyčejným DNS (API polling): ticho
         let mut ev2 = ev.clone();
         for i in 0..40 {
-            ev2.push(dns("10.0.0.5", "192.0.2.53", "api.example", "A", 1_800_000_000 + i));
+            ev2.push(dns(
+                "10.0.0.5",
+                "192.0.2.53",
+                "api.example",
+                "A",
+                1_800_000_000 + i,
+            ));
         }
         assert!(doh(&t, &ev2, &flows, &int).is_empty());
     }
@@ -571,7 +603,16 @@ mod tests {
             sni: Some("mozilla.cloudflare-dns.com".into()),
             ..TlsMeta::default()
         })];
-        let one = vec![conn("10.0.0.5", "203.0.113.9", 443, 120.0, 90_000, 400_000, 600, 500)];
+        let one = vec![conn(
+            "10.0.0.5",
+            "203.0.113.9",
+            443,
+            120.0,
+            90_000,
+            400_000,
+            600,
+            500,
+        )];
         assert_eq!(doh(&t, &ev, &one, &int).len(), 1);
         let dot = vec![conn("10.0.0.6", "198.51.100.3", 853, 5.0, 900, 1500, 9, 8)];
         assert_eq!(doh(&t, &[], &dot, &int).len(), 1);
@@ -583,8 +624,23 @@ mod tests {
     fn long_small_record_connection_without_silence_is_quiet() {
         let t = CovertThresholds::default();
         // API long-poll v jednom spojení, host resolvuje normálně a nemá další cíle
-        let flows = vec![conn("10.0.0.5", "192.0.2.10", 443, 150.0, 7000, 9000, 160, 120)];
-        let ev = vec![dns("10.0.0.5", "192.0.2.53", "api.example", "A", 1_800_000_000)];
+        let flows = vec![conn(
+            "10.0.0.5",
+            "192.0.2.10",
+            443,
+            150.0,
+            7000,
+            9000,
+            160,
+            120,
+        )];
+        let ev = vec![dns(
+            "10.0.0.5",
+            "192.0.2.53",
+            "api.example",
+            "A",
+            1_800_000_000,
+        )];
         assert!(doh(&t, &ev, &flows, &int).is_empty());
         // velké stažení: žádný tvar
         let big: Vec<ConnectionObservation> = (0..20)
