@@ -13,7 +13,7 @@
 //! Prahy jsou volba autora, ladí se jen na ladicí sadě (seed 17001) a zapisují se do dokumentu
 //! kroku před drženým během.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -38,6 +38,21 @@ pub struct CovertThresholds {
     pub tunnel_vol_uniq: f64,
     pub tunnel_vol_bytes: f64,
     pub tunnel_vol_rate: f64,
+    /// T3 (ladicí sada, krok 17): pomalý tunel s hustým kódováním (base32/base64), bez ohledu na
+    /// typ a objem: nejméně různých jmen, podíl různých jmen, délka a entropie.
+    pub tunnel_slow_names: usize,
+    pub tunnel_slow_uniq: f64,
+    pub tunnel_slow_label: f64,
+    pub tunnel_slow_entropy: f64,
+    /// T4 (ladicí sada, krok 17): krátká jména, data v odpovědích (dns2tcp): velmi mnoho různých
+    /// jmen s typem nesoucím data; nejméně jmen, podíl různých, podíl typů, entropie, délka.
+    pub tunnel_card_names: usize,
+    pub tunnel_card_uniq: f64,
+    pub tunnel_card_types: f64,
+    pub tunnel_card_entropy: f64,
+    pub tunnel_card_label: f64,
+    /// Zóny reputačních služeb (AV, DNSBL/HBL), které do jmen záměrně kódují hashe.
+    pub tunnel_allow_zones: Vec<String>,
     /// DoH tvar A: nejméně spojení, mediány bajtů klienta a serveru, medián trvání (s).
     pub doh_conns: usize,
     pub doh_med_up: f64,
@@ -64,6 +79,32 @@ impl Default for CovertThresholds {
             tunnel_vol_uniq: 0.5,
             tunnel_vol_bytes: 96_000.0,
             tunnel_vol_rate: 1_000.0,
+            tunnel_slow_names: 30,
+            tunnel_slow_uniq: 0.9,
+            tunnel_slow_label: 40.0,
+            tunnel_slow_entropy: 4.2,
+            tunnel_card_names: 1_000,
+            tunnel_card_uniq: 0.9,
+            tunnel_card_types: 0.5,
+            tunnel_card_entropy: 3.0,
+            tunnel_card_label: 8.0,
+            tunnel_allow_zones: [
+                "sophosxl.net",
+                "avqs.mcafee.com",
+                "gti.mcafee.com",
+                "e5.sk",
+                "dq.spamhaus.net",
+                "spamhaus.org",
+                "barracudacentral.org",
+                "surbl.org",
+                "uribl.com",
+                "dnswl.org",
+                "mailspike.net",
+                "cymru.com",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
             doh_conns: 10,
             doh_med_up: 2_500.0,
             doh_med_down: 8_000.0,
@@ -141,11 +182,17 @@ pub fn tunnel_shape(items: &[&DnsMeta], zone: &str) -> TunnelShape {
     }
 }
 
-/// Která větev zabrala (T1 typ, T2 objem), nebo žádná.
+/// Která větev zabrala (T1 typ, T2 objem, T3 husté kódování, T4 kardinalita), nebo žádná.
 pub fn tunnel_branch(s: &TunnelShape, t: &CovertThresholds) -> Option<&'static str> {
     let shape = s.avg_len >= t.tunnel_label && s.avg_entropy >= t.tunnel_entropy;
     if !shape {
-        return None;
+        // T4: krátká jména, ale extrémní počet různých jmen s typem nesoucím data
+        let card = s.names >= t.tunnel_card_names
+            && s.uniq >= t.tunnel_card_uniq
+            && s.data_types >= t.tunnel_card_types
+            && s.avg_entropy >= t.tunnel_card_entropy
+            && s.avg_len >= t.tunnel_card_label;
+        return card.then_some("T4 kardinalita jmen s typem nesoucim data");
     }
     if s.names >= t.tunnel_names && s.uniq >= t.tunnel_uniq && s.data_types >= t.tunnel_types {
         return Some("T1 tvar jmena a typ zaznamu");
@@ -156,6 +203,13 @@ pub fn tunnel_branch(s: &TunnelShape, t: &CovertThresholds) -> Option<&'static s
         && s.rate >= t.tunnel_vol_rate
     {
         return Some("T2 tvar jmena a objem");
+    }
+    if s.names >= t.tunnel_slow_names
+        && s.uniq >= t.tunnel_slow_uniq
+        && s.avg_len >= t.tunnel_slow_label
+        && s.avg_entropy >= t.tunnel_slow_entropy
+    {
+        return Some("T3 huste kodovani bez ohledu na tempo");
     }
     None
 }
@@ -168,7 +222,11 @@ pub fn dns_tunnel(
     let mut groups: BTreeMap<(&str, &str), Vec<&DnsMeta>> = BTreeMap::new();
     for ev in events {
         let L7Event::Dns(d) = ev else { continue };
-        if link_local_dns(d) || !internal(&d.src_ip) {
+        let allowed = t
+            .tunnel_allow_zones
+            .iter()
+            .any(|z| d.qname == *z || d.qname.ends_with(&format!(".{z}")));
+        if link_local_dns(d) || allowed || !internal(&d.src_ip) {
             continue;
         }
         groups
@@ -279,11 +337,16 @@ pub fn doh(
 ) -> Vec<BehaviorFinding> {
     // obyčejné DNS dotazy hosta (bez mDNS/LLMNR) a SNI podle cíle
     let mut plain_dns: HashMap<&str, usize> = HashMap::new();
+    let mut resolved: HashMap<&str, HashSet<&str>> = HashMap::new();
     let mut snis: HashMap<(&str, &str), BTreeSet<&str>> = HashMap::new();
     for ev in events {
         match ev {
             L7Event::Dns(d) if !link_local_dns(d) => {
-                *plain_dns.entry(d.src_ip.as_str()).or_default() += 1
+                *plain_dns.entry(d.src_ip.as_str()).or_default() += 1;
+                resolved
+                    .entry(d.src_ip.as_str())
+                    .or_default()
+                    .insert(d.qname.as_str());
             }
             L7Event::Tls(s) => {
                 if let Some(n) = s.sni.as_deref() {
@@ -346,7 +409,22 @@ pub fn doh(
             .get(host)
             .map_or(0, |s| s.iter().filter(|d| **d != dst).count());
         let queries = plain_dns.get(host).copied().unwrap_or(0);
-        let silent = others >= t.doh_other_dsts && queries < others;
+        // C2 (zpřesněno na ladicí sadě): resolver se adresuje IP (bez SNI), nebo jeho jméno host
+        // přeložil obyčejným DNS (bootstrap); další cíle hosta mají SNI, které obyčejným DNS
+        // nepřeložil. Bez toho by se jako „DoH“ označily i weby, na které host po DoH přistupuje.
+        let known_names = resolved.get(host);
+        let was_resolved = |n: &str| known_names.is_some_and(|r| r.contains(n));
+        let bootstrapped = names.is_none_or(|s| s.is_empty() || s.iter().any(|n| was_resolved(n)));
+        let unresolved_others = dsts.get(host).map_or(0, |s| {
+            s.iter()
+                .filter(|d| **d != dst)
+                .filter(|d| {
+                    snis.get(&(host, **d))
+                        .is_some_and(|n| !n.is_empty() && n.iter().all(|x| !was_resolved(x)))
+                })
+                .count()
+        });
+        let silent = bootstrapped && unresolved_others >= t.doh_other_dsts && queries < others;
         let why = if known {
             "znamy verejny DoH resolver".to_string()
         } else if dot {
@@ -523,6 +601,96 @@ mod tests {
     }
 
     #[test]
+    fn slow_base32_exfil_alarms_t3_slow_hex_and_allowlisted_zones_do_not() {
+        let t = CovertThresholds::default();
+        let b32 = |i: u64| -> String {
+            const A: &[u8] = b"abcdefghijklmnopqrstuvwxyz234567";
+            hexname(i, 104)
+                .as_bytes()
+                .chunks(2)
+                .map(|c| {
+                    A[(u8::from_str_radix(std::str::from_utf8(c).unwrap(), 16).unwrap() % 32)
+                        as usize] as char
+                })
+                .collect()
+        };
+        // 1 dotaz za 7,5 s, 52 znaků base32, typ A, 300 s
+        let slow: Vec<L7Event> = (0..40)
+            .map(|i| {
+                dns(
+                    "10.0.0.5",
+                    "192.0.2.53",
+                    &format!("{}.slow.example", b32(i)),
+                    "A",
+                    1_800_000_000 + i as i64 * 7,
+                )
+            })
+            .collect();
+        let f = dns_tunnel(&t, &slow, &int);
+        assert_eq!(f.len(), 1);
+        assert!(f[0].finding.title.contains("T3"));
+        // stejné tempo a délka, ale hex (hash AV): entropie pod prahem T3
+        let hex: Vec<L7Event> = (0..40)
+            .map(|i| {
+                dns(
+                    "10.0.0.6",
+                    "192.0.2.53",
+                    &format!("{}.avqs.example", hexname(i, 52)),
+                    "A",
+                    1_800_000_000 + i as i64 * 7,
+                )
+            })
+            .collect();
+        assert!(dns_tunnel(&t, &hex, &int).is_empty());
+        // reputační zóna ze seznamu (HBL kóduje hash v base32) se nevyhodnocuje
+        let hbl: Vec<L7Event> = (0..40)
+            .map(|i| {
+                dns(
+                    "10.0.0.7",
+                    "192.0.2.53",
+                    &format!("{}._file.key.hbl.dq.spamhaus.net", b32(i)),
+                    "A",
+                    1_800_000_000 + i as i64,
+                )
+            })
+            .collect();
+        assert!(dns_tunnel(&t, &hbl, &int).is_empty());
+    }
+
+    #[test]
+    fn short_name_tunnel_with_extreme_txt_cardinality_alarms_t4() {
+        let t = CovertThresholds::default();
+        // dns2tcp: 12znaková jména, TXT, tisíce různých jmen
+        let ev: Vec<L7Event> = (0..3000)
+            .map(|i| {
+                dns(
+                    "10.0.0.5",
+                    "192.0.2.23",
+                    &format!("{}.t3.tun.example", hexname(i, 12)),
+                    "TXT",
+                    1_800_000_000 + i as i64 / 20,
+                )
+            })
+            .collect();
+        let f = dns_tunnel(&t, &ev, &int);
+        assert_eq!(f.len(), 1);
+        assert!(f[0].finding.title.contains("T4"));
+        // stejný počet krátkých jmen typu A (např. CDN, DNSBL): ticho
+        let a: Vec<L7Event> = (0..3000)
+            .map(|i| {
+                dns(
+                    "10.0.0.6",
+                    "192.0.2.53",
+                    &format!("{}.cdn.example", hexname(i, 12)),
+                    "A",
+                    1_800_000_000 + i as i64 / 20,
+                )
+            })
+            .collect();
+        assert!(dns_tunnel(&t, &a, &int).is_empty());
+    }
+
+    #[test]
     fn mdns_and_repeated_long_names_are_quiet() {
         let t = CovertThresholds::default();
         // mDNS: dlouhé UUID instance, PTR/SRV/TXT, multicast
@@ -568,17 +736,29 @@ mod tests {
         let mut flows: Vec<ConnectionObservation> = (0..40)
             .map(|_| conn("10.0.0.5", "192.0.2.70", 443, 0.01, 2000, 2400, 14, 11))
             .collect();
-        flows.push(conn("10.0.0.5", "192.0.2.10", 443, 0.01, 1800, 2200, 13, 9));
-        flows.push(conn("10.0.0.5", "192.0.2.11", 443, 0.01, 1800, 2200, 13, 9));
-        let ev = vec![L7Event::Tls(TlsMeta {
-            ts: 1_800_000_000,
-            src_ip: "10.0.0.5".into(),
-            dst_ip: "192.0.2.70".into(),
-            ..TlsMeta::default()
-        })];
+        // weby, na které host po DoH přistupuje: stejně malé výměny, SNI bez obyčejného DNS
+        for _ in 0..20 {
+            flows.push(conn("10.0.0.5", "192.0.2.10", 443, 0.01, 1800, 2200, 13, 9));
+            flows.push(conn("10.0.0.5", "192.0.2.11", 443, 0.01, 1800, 2200, 13, 9));
+        }
+        let tls = |dst: &str, sni: Option<&str>| {
+            L7Event::Tls(TlsMeta {
+                ts: 1_800_000_000,
+                src_ip: "10.0.0.5".into(),
+                dst_ip: dst.into(),
+                sni: sni.map(str::to_string),
+                ..TlsMeta::default()
+            })
+        };
+        let ev = vec![
+            tls("192.0.2.70", None),
+            tls("192.0.2.10", Some("web.example")),
+            tls("192.0.2.11", Some("files.example")),
+        ];
         let f = doh(&t, &ev, &flows, &int);
-        assert_eq!(f.len(), 1);
+        assert_eq!(f.len(), 1, "jen resolver, ne weby");
         assert_eq!(f[0].actor, "10.0.0.5");
+        assert_eq!(f[0].targets[0].0, "192.0.2.70");
         // tentýž tvar, ale host resolvuje obyčejným DNS (API polling): ticho
         let mut ev2 = ev.clone();
         for i in 0..40 {
