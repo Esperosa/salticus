@@ -1,6 +1,6 @@
 # Krok 17: vlastní Docker laboratoř se skutečnými záznamy provozních poruch, DNS tunelu a DoH
 
-Datum zahájení 2026-11-18. Výchozí stav: konec kroku 16 (commit `8ddcf45`). Zadání: `F:\claude-tmp\briefs\krok17-lab.txt`. Rozsah: `docs/diplomka/rozsah-autonomie.md`.
+Datum zahájení 2026-11-18. Výchozí stav: konec kroku 16 (commit `8ddcf45`). Zadání: `F:\work-tmp\briefs\krok17-lab.txt`. Rozsah: `docs/diplomka/rozsah-autonomie.md`.
 
 Proč: v kroku 15 (P3) se ukázalo, že projev poruchy v simulátoru a v katalogu vznikly nezávisle, takže klasifikaci poruch (C1 až C5) na simulaci ověřit nejde (krok 15: C1 67 %, C2 47 %, C4 a C5 22 %). Veřejné datasety DoH a DNS tunelu vyžadují formulář s osobními údaji, proto se nepoužijí. Řešení: vlastní laboratoř na tomto počítači, kde je štítek (typ poruchy, začátek, konec) dán skriptem, který poruchu vyvolal.
 
@@ -80,7 +80,7 @@ Při malém n se hlásí i Wilsonův interval; „splněno“ se posuzuje podle 
 - Povolené změny kódu: parsery formátů, které laboratoř skutečně produkuje a které adaptéry neznají (každý s fuzz testem: náhodné bajty a mutace řádků, nikdy panika), `ops ingest` s časem přehrávání, příkaz `ops diagnose`. Rozhodují se jen na ladicí sadě a zapíší se níže před drženým během.
 - Zakázané: změna prahů diagnózy a detektorů, změna katalogu podle laboratoře, ladění na držené sadě.
 - Kořenové příčiny selhání se zapíší po scénářích (parser chybí, signál chybí v katalogu, mechanismus nevede ke klíči, rozsah signálu nesedí na hosta).
-- Běhy: Idle, maska 0x3FFFFC, nejvýš 8 vláken, dlouhé běhy odpojeně (`Start-Process` a čekání na PID). `CARGO_TARGET_DIR=F:/claude-tmp/target-k17`.
+- Běhy: Idle, maska 0x3FFFFC, nejvýš 8 vláken, dlouhé běhy odpojeně (`Start-Process` a čekání na PID). `CARGO_TARGET_DIR=F:/work-tmp/target-k17`.
 
 Hrozby validity zapsané předem: laboratoř staví a štítkuje autor kódu; malé n (1 slot na scénář a sadu); Docker Desktop sdílí jádro, hodiny a disk VM, takže některé poruchy jsou jen přiblížení; health-check a sběrač konfiguruje autor (formát výstupu je ale formát skutečného nástroje, ne vymyšlený text); motor je v krátké laboratoři „studený“ (zralost hostů 12 h), takže M2 podhodnocuje detekci chování.
 

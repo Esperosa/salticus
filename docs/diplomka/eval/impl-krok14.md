@@ -1,6 +1,6 @@
 # Krok 14: endpointová telemetrie jako plnohodnotný zdroj, graf aktiv a incidentů; část C2 provozní telemetrie (předregistrace a stav)
 
-Datum zahájení 2026-11-15. Výchozí stav: konec kroku 13 (commit `32b438a`), engine `v3`, preset `recommended()` beze změny, vše nové za přepínačem, výchozí vypnuto. Zadání: `F:\claude-tmp\briefs\krok14-endpoint.txt` a doplnění o část C2. Rešerše: `docs/diplomka/studie/14-endpoint-a-graf-aktiv.md` a `14-provozni-telemetrie.md` (vznikají souběžně; do kódu se z nich přebírá jen ověřené, V3/V2).
+Datum zahájení 2026-11-15. Výchozí stav: konec kroku 13 (commit `32b438a`), engine `v3`, preset `recommended()` beze změny, vše nové za přepínačem, výchozí vypnuto. Zadání: `F:\work-tmp\briefs\krok14-endpoint.txt` a doplnění o část C2. Rešerše: `docs/diplomka/studie/14-endpoint-a-graf-aktiv.md` a `14-provozni-telemetrie.md` (vznikají souběžně; do kódu se z nich přebírá jen ověřené, V3/V2).
 
 ## Výchozí stav (z kroku 13, držené seedy, kandidát `final`)
 

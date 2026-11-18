@@ -45,7 +45,7 @@ Platí pro zbytek kroku 13 a pro krok 14. Porovnání verzí se nedělá jedním
 - **Jednotka analýzy** je síť. Poměrové ukazatele jsou součty přes sítě (poměr součtů). Intervaly 95 %: bootstrap po sítích stratifikovaný po seed x konfigurace, B = 2000, pevný seed, stejné vzorkování pro obě ramena; Wilson jen doplňkově. Hlásí se celek, konfigurace, rozptyl mezi seedy a rodiny zvlášť.
 - **Dvě sady seedů.** Ladicí (smí se ladit): 20261102, 20261103, 20266101, 20266102, 20266103, 20266104, 20266105, 20266106, 20266107, 20266108. Držené (zapsáno dopředu, použít jednou na konci, nikdy nepoužity): 20265101, 20265102, 20265201, 20265202, 20265301, 20265302, 20265401, 20265402, 20265501, 20265502. hn_* ladicí (hn_cdn_update_download, hn_mail_newsletter_burst, hn_admin_bulk_ssh, hn_authorized_internal_scan) a držené (hn_nightly_cloud_backup_upload, hn_db_replication_bulk, hn_monitoring_snmp_sweep, hn_password_sync_periodic) zvlášť jako dosud.
 - **Rozsah (skutečný, upraveno 2026-11-15 podle výkonu stroje, ~3 min na síť při 6 vláknech Idle):** ladicí sada seed 20261102 = 20 sítí, ostatních devět seedů po 8 sítích = 92 sítí na rameno; držená sada 10 seedů po 8 sítích = 80 sítí na rameno. Cíl 600 až 1 000 sítí **nesplněn** (potřeboval by ~30 h na rameno). Tabulky po konfiguracích mají proto malé buňky (kolem 3 sítí na seed x konfiguraci); intervaly to ukazují a závěry jsou orientační, dokud se matice nerozšíří.
-- **Pořadí běhů (skripty v `F:\claude-tmp\k13
+- **Pořadí běhů (skripty v `F:\work-tmp\k13
 uns3b.ps1`, `runs4.ps1`, `runs5.ps1`):** ladicí base/cand (`k13m`), ladicí mixy `--mix on` (`k13mix`), držené base/cand, držené mixy, LOFO po detektorech (`l7_tls`, `l7_dns`, `icmp_payload`; rameno = kandidát bez jednoho detektoru). Držená část se spouští až po rozhodnutí o kandidátu.
 - **Dlouhé běhy** (soak 72 h) jen jako test stability a objemu, ne pro porovnání verzí.
 - **Nástroj:** `tools/k13_matrix.py --families TSV --base DIRS --cand DIRS` (párové srovnání po sítích, tabulky po konfiguracích, seedech a rodinách). Stav: viz „Stav matice“ níže.
@@ -139,7 +139,7 @@ Metrika čistoty jako dosud (nález bez připsání = vlastní štítek). Úplno
 
 ### Ladicí matice k13m (vyhodnoceno 2026-11-15, `tools/k13_matrix.py`)
 
-Základ a kandidát (`breadth, bulk_clear, strict_close, l7_tls, l7_dns, icmp_payload`), 10 ladicích seedů, **92 párových sítí na rameno** (20 + 9 x 8; 0 nepárových), kalibrovaný svět (`--l7 cal`). Plná tabulka rodin je v `F:\claude-tmp\k13\matrix-tune.md`; níže celek, konfigurace, rozptyl mezi seedy a rodiny se změnou.
+Základ a kandidát (`breadth, bulk_clear, strict_close, l7_tls, l7_dns, icmp_payload`), 10 ladicích seedů, **92 párových sítí na rameno** (20 + 9 x 8; 0 nepárových), kalibrovaný svět (`--l7 cal`). Plná tabulka rodin je v `F:\work-tmp\k13\matrix-tune.md`; níže celek, konfigurace, rozptyl mezi seedy a rodiny se změnou.
 
 ### Celkem a po konfiguracích
 
@@ -244,11 +244,11 @@ Rodiny: největší zisky u exfil_alt_protocol_ftp (+52), exfil_icmp_payload (+4
 
 Limit „max 6 vláken“ zrušen (až 16 souhrnně, Idle, maska jader 0x3FFFFC). Do `soak run` přibyl přepínač `--block-offset` (další sítě téhož seedu; `network_id = (blok + offset) * block_size + k`), takže rozšíření nemíchá sítě z původní matice. Determinismus ověřen: seed 20261103, sítě 0 a 1, offset 0 novou binárkou (`k13d.exe`) dává stejné řádky `networks.jsonl` jako původní běh, liší se jen časové údaje (`wall_s`, `cycle_p99_s`).
 
-Běh `runs6.ps1` (`F:\claude-tmp\k13`, výstup `F:\Projektyakula-soak\k13m2`): dvě ramena (base, cand) paralelně po 5 vláknech vedle `runs4.ps1` (6 vláken, mixy) = 16 vláken. Pro každý ladicí seed +16 sítí (seed 20261102 od sítě 20, ostatní od sítě 8), tj. plánovaně +160 sítí na rameno, celkem 252 na rameno po dokončení. **Skutečný dosažený počet bude zapsán po dokončení**; cíl 600 až 1 000 není dosažen (odhad času a další rozšíření podle rychlosti po prvních seedech).
+Běh `runs6.ps1` (`F:\work-tmp\k13`, výstup `F:\Projektyakula-soak\k13m2`): dvě ramena (base, cand) paralelně po 5 vláknech vedle `runs4.ps1` (6 vláken, mixy) = 16 vláken. Pro každý ladicí seed +16 sítí (seed 20261102 od sítě 20, ostatní od sítě 8), tj. plánovaně +160 sítí na rameno, celkem 252 na rameno po dokončení. **Skutečný dosažený počet bude zapsán po dokončení**; cíl 600 až 1 000 není dosažen (odhad času a další rozšíření podle rychlosti po prvních seedech).
 
 ### Sloučená ladicí matice k13m + k13m2 (2026-11-15)
 
-Doběhla obě ramena. **Skutečný počet: 252 párových sítí na rameno** (92 + 160, 0 nepárových, 10 seedů, 30 buněk seed x konfigurace), nikoli cílových 600 až 1 000; důvod je čas běhu (kalibrovaný svět, největší sítě stovky zařízení). Plná tabulka: `F:\claude-tmp\k13\matrix-merged.md`.
+Doběhla obě ramena. **Skutečný počet: 252 párových sítí na rameno** (92 + 160, 0 nepárových, 10 seedů, 30 buněk seed x konfigurace), nikoli cílových 600 až 1 000; důvod je čas běhu (kalibrovaný svět, největší sítě stovky zařízení). Plná tabulka: `F:\work-tmp\k13\matrix-merged.md`.
 
 | skupina (sítí) | ukazatel | základ | kandidát | rozdíl |
 |---|---|---:|---:|---|
@@ -265,7 +265,7 @@ Se 252 sítěmi je celkový poměr FP 1,123, horní mez 1,167 je těsně nad 1,1
 
 ### Ladicí mixy k13mix (80 sítí, 1943 složek, `tools/k13_mix.py`)
 
-Zobrazeno 77,6 % složek (75,7 až 79,4), omylem zavřeno 0, **správná kategorie (A5) 56,0 % (53,5 až 58,5), cíl 90 %: nesplněno**. Důvod: kategorie se dosud zjišťuje jen z provozní anotace (E1 až E3); neškodné změny a většina poruch bez evidence E1 až E3 skončí jako „bez provozní značky“. Detekce složky v mixu proti téže rodině mimo mix: společná příčina 0,951, souběh bez vazby 0,993, následek 1,168 (A1: složky se v mixu neztrácejí). Seskupení: původní (host nebo indikátor, 1 h) má čistotu 36,5 % (cíl 80 %: nesplněno) a 36,9 nálezu na incident; `incident_v2` (host+protějšek nebo host+typ) má čistotu 86,9 % (cíl splněn) a chybné spojení souběhu bez vazby 0 z 92 (cíl <= 15 % splněn), ale společná příčina a následek jsou rozdělené v 20 z 21 případů (95,2 %, cíl <= 30 % nesplněn). Výsledky: `F:\claude-tmp\k13\mix-tune.md`.
+Zobrazeno 77,6 % složek (75,7 až 79,4), omylem zavřeno 0, **správná kategorie (A5) 56,0 % (53,5 až 58,5), cíl 90 %: nesplněno**. Důvod: kategorie se dosud zjišťuje jen z provozní anotace (E1 až E3); neškodné změny a většina poruch bez evidence E1 až E3 skončí jako „bez provozní značky“. Detekce složky v mixu proti téže rodině mimo mix: společná příčina 0,951, souběh bez vazby 0,993, následek 1,168 (A1: složky se v mixu neztrácejí). Seskupení: původní (host nebo indikátor, 1 h) má čistotu 36,5 % (cíl 80 %: nesplněno) a 36,9 nálezu na incident; `incident_v2` (host+protějšek nebo host+typ) má čistotu 86,9 % (cíl splněn) a chybné spojení souběhu bez vazby 0 z 92 (cíl <= 15 % splněn), ale společná příčina a následek jsou rozdělené v 20 z 21 případů (95,2 %, cíl <= 30 % nesplněn). Výsledky: `F:\work-tmp\k13\mix-tune.md`.
 
 ### Příčina FP v konfiguraci large a oprava před držením seedů
 
@@ -281,7 +281,7 @@ Závěr bodu 4: rozbor ukazuje tři příčiny a žádná se v tomto kroku neods
 
 ### Katalog, generátory a trojice (2026-11-15)
 
-- **Ověření zdrojů katalogu**: skript `F:\claude-tmp\k13\verify_sources.py` načetl všech 36 URL; `verified: true` je nyní u 31 (stránka se skutečně načetla a odpovídá tvrzenému zdroji, titulek je v poli `verification`), `false` u 5 (ITIL/Axelos jen obecná úvodní stránka, IEEE 802.1D 404, Cisco, Aruba a NANOG 403). `verified` neznamená ověření každého tvrzení o projevu: ta zůstávají `basis: assumption`. Juniper se přesměrovává na portál HPE Networking, URL aktualizována.
+- **Ověření zdrojů katalogu**: skript `F:\work-tmp\k13\verify_sources.py` načetl všech 36 URL; `verified: true` je nyní u 31 (stránka se skutečně načetla a odpovídá tvrzenému zdroji, titulek je v poli `verification`), `false` u 5 (ITIL/Axelos jen obecná úvodní stránka, IEEE 802.1D 404, Cisco, Aruba a NANOG 403). `verified` neznamená ověření každého tvrzení o projevu: ta zůstávají `basis: assumption`. Juniper se přesměrovává na portál HPE Networking, URL aktualizována.
 - **Generátory**: přidáno 24 řádků do `SPECS` (`src/soak/variants.rs`); všech 75 typů katalogu má `sim_variant` (B1: 100 %, dříve 51 z 75 = 68 %). Čtyři nejednoznačné typy (VLAN hopping, rogue DHCP, rogue zařízení, DDoS vs flash crowd) se generují s příčinou poruchy a jako tvrdý záporný scénář (`hard`, jen svět k10). **Důsledek**: výběr variant v `plan_variants` losuje z `SPECS`, takže světy s poruchami (k9, k10) se po této změně liší od ladicích běhů před změnou; ladicí matice výše byla měřena starou tabulkou (51 poruch a změn), držené seedy novou. Čísla před a po proto nejsou párově srovnatelná po rodinách.
 - **Trojice v mixech**: `MIX_TRIPLES` (8 trojic: následek x 3, společná příčina, souběh bez vazby x 3 s útokem, poruchou a neškodnou změnou); druhá a třetí událost začíná v okně první, štítek `pair = 100 + index`, `role` 0 až 2. `tools/k13_mix.py` je počítá po složkách (A1, A2, A5); A3 a A4 (seskupení) zůstávají jen u dvojic. Test `mix_tables_reference_existing_variants`.
 - **Zařazení podle katalogu v enginu**: `incident_catalog::suggest` (nález bez provozního důkazu = `utok`, E2 = porucha OPS-013, E3 = změna CHG-001, E1 = porucha OPS-016); `LifecycleRecord.catalog` (třída, id, název, příčina, doporučená kontrola) vzniká u každého zobrazeného nálezu s `ops_annotate` a jde do reportu (`finding_lifecycle`). Měření v soaku: `attacks[].catalog`, nástroj `tools/k13_catalog.py` (B2, B3, B6). Mapování je záměrně hrubé (typ nálezu + důvod fronty provoz); B2 a B6 se měří, ne předpokládají.
@@ -297,7 +297,7 @@ Závěr bodu 4: rozbor ukazuje tři příčiny a žádná se v tomto kroku neods
 
 ## Držené seedy, LOFO a souhrn (2026-11-15)
 
-Kandidát `final` = `breadth,bulk_clear,strict_close,l7_tls,l7_dns,icmp_payload,slow_fanin,ops_annotate` (binárka k13f). Držené seedy 20265101 až 20265502, 8 sítí na seed, 80 sítí na rameno, párově (`base` x `final`), spuštěno jednou, bez úprav po pohledu na výsledek. Surové tabulky: `F:\claude-tmp\k13\matrix-held.md`, `mix-held.md`, `catalog-held.md`.
+Kandidát `final` = `breadth,bulk_clear,strict_close,l7_tls,l7_dns,icmp_payload,slow_fanin,ops_annotate` (binárka k13f). Držené seedy 20265101 až 20265502, 8 sítí na seed, 80 sítí na rameno, párově (`base` x `final`), spuštěno jednou, bez úprav po pohledu na výsledek. Surové tabulky: `F:\work-tmp\k13\matrix-held.md`, `mix-held.md`, `catalog-held.md`.
 
 ### LOFO na ladicích seedech (k13m3, 5 seedů, 80 sítí, `c2` = celý kandidát)
 

@@ -2,7 +2,7 @@
 """Vygeneruje vsechny tabulky kroku 9 a 10 z hotovych behu v F:/Projekty/bakula-soak/k9.
 
 Behy chybejici na disku se preskoci a vypise se, co chybi. Pouziti (z korene repa):
-  python tools/k9_finish.py [--soak F:/Projekty/bakula-soak/k9] [--bin F:/claude-tmp/k9bin/k9-b9.exe]
+  python tools/k9_finish.py [--soak F:/Projekty/bakula-soak/k9] [--bin F:/work-tmp/k9bin/k9-b9.exe]
 """
 import argparse
 import os
@@ -27,7 +27,7 @@ def run(cmd):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--soak", default="F:/Projekty/bakula-soak/k9")
-    ap.add_argument("--bin", default="F:/claude-tmp/k9bin/k9-b9.exe")
+    ap.add_argument("--bin", default="F:/work-tmp/k9bin/k9-b9.exe")
     args = ap.parse_args()
     soak = args.soak
     families = os.path.join(soak, "families.tsv")

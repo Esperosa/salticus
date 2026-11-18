@@ -1,6 +1,6 @@
 # Krok 16: případová složka pro seniora jako hlavní produkt
 
-Datum zahájení 2026-11-16. Výchozí stav: konec kroku 15 (commit `dcda412`). Závazný rozsah: `docs/diplomka/rozsah-autonomie.md` (oddíl „Hlavní výstup: případová složka“). Zadání: `F:\claude-tmp\briefs\krok16-pripadova-slozka.txt`. Tento krok nemění detekci ani prahy; měří se kvalita a úplnost výstupu.
+Datum zahájení 2026-11-16. Výchozí stav: konec kroku 15 (commit `dcda412`). Závazný rozsah: `docs/diplomka/rozsah-autonomie.md` (oddíl „Hlavní výstup: případová složka“). Zadání: `F:\work-tmp\briefs\krok16-pripadova-slozka.txt`. Tento krok nemění detekci ani prahy; měří se kvalita a úplnost výstupu.
 
 ## Co dnes dělá přepínač `case_files` (krok 12)
 
@@ -51,7 +51,7 @@ Omezení předem: Council a sol-loop se v tomto kroku podle zadání nespouště
 
 ### K16-7 determinismus (ladicí seed 20261102, 2 sítě, `off`)
 
-Binárka kroku 16 bez dumpu, s dumpem A i s dumpem B: `networks.jsonl` shodný s během kroku 15 (`F:\claude-tmp\k15\det\off-20261102`) ve všech polích kromě časů a pole `wrong_ids`, které přibylo v kroku 15 až po tomto běhu (commit `a381084`). Dump A a dump B: 1 328 složek, bajtově shodné. **Splněno.**
+Binárka kroku 16 bez dumpu, s dumpem A i s dumpem B: `networks.jsonl` shodný s během kroku 15 (`F:\work-tmp\k15\det\off-20261102`) ve všech polích kromě časů a pole `wrong_ids`, které přibylo v kroku 15 až po tomto běhu (commit `a381084`). Dump A a dump B: 1 328 složek, bajtově shodné. **Splněno.**
 
 ### Držené seedy 20269101 až 20269502 (použity jednou, 10 seedů x 2 sítě, 5 ramen), složky v podobě před opravou
 

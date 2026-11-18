@@ -1,6 +1,6 @@
 # Krok 15: forenzní analýza příčin selhání jádra (kroky 9 až 14) a oprava kořenových příčin
 
-Datum zahájení 2026-11-16. Výchozí stav: konec kroku 14 (commit `02d3055`), engine `v3`, konfigurace `final` = `recommended()` + `breadth,bulk_clear,strict_close,l7_tls,l7_dns,icmp_payload,slow_fanin,ops_annotate`. Zadání: `F:\claude-tmp\briefs\krok15-forenzni-analyza.txt`. Nic z kroku 15 není v `recommended()`; každá oprava je za vlastním přepínačem `V3Features`, výchozí vypnuto, s regresním testem, který bez opravy padá.
+Datum zahájení 2026-11-16. Výchozí stav: konec kroku 14 (commit `02d3055`), engine `v3`, konfigurace `final` = `recommended()` + `breadth,bulk_clear,strict_close,l7_tls,l7_dns,icmp_payload,slow_fanin,ops_annotate`. Zadání: `F:\work-tmp\briefs\krok15-forenzni-analyza.txt`. Nic z kroku 15 není v `recommended()`; každá oprava je za vlastním přepínačem `V3Features`, výchozí vypnuto, s regresním testem, který bez opravy padá.
 
 Metoda: ne ladění prahů, ale rekonstrukce jednotlivých případů. Soak dostal forenzní stopu (`K15_TRACE=soubor`): jedna JSON řádka na nález a cyklus (klíč paměti, stav položky, zdroje, dispozice, zda ho pohltil vyvrácený klíč, které pravdy zmiňuje), na rozhodnutí žebříku (kroky, důvod, pravda) a na pravdu (okno, adresy, toky a bajty po cyklech). Jedna síť se přehrává sama (`--block-size 1 --block-offset <id> --max-networks 1`); přehrání je bajtově shodné s původním během kroku 14 (ověřeno na 4 sítích: stejné počty zobrazených nálezů, FP, vyvrácení i stejné výsledky všech útoků).
 
@@ -11,7 +11,7 @@ Protokol kroku 13 beze změny (párově podle `run_seed` a `network_id`, bootstr
 - Ladicí seedy (smí se ladit): 20261102, 20261103, 20266101, 20266105, 20266106 (5 seedů kroku 14, 8 sítí na seed, 3 konfigurace).
 - **Nové držené seedy kroku 15 (zapsáno dopředu, použít jednou, nikdy nepoužity):** 20268101, 20268102, 20268201, 20268202, 20268301, 20268302, 20268401, 20268402, 20268501, 20268502.
 - Ramena kandidátů (všechna nad `final`): `k15` = `refute_episode` + `upload_horizon` (proti `off`); `k15a` = jen `refute_episode`, `k15b` = jen `upload_horizon` (LOFO); `k15e` = `elying` + `endpoint_weak` + `refute_episode` (proti `elying`); `k15ops` = `ops` + `ops_symptoms` + `ops_blast` + `refute_episode` + `upload_horizon` (proti `ops`), `k15opsA` (jen `ops_symptoms`), `k15opsB` (jen `ops_blast`); `k15noise` (proti `opsnoise`), `k15drop60` (proti `opsdrop60`), `k15mix` (proti `mixops`).
-- Běhy: Idle, maska 0x3FFFFC, nejvýš 8 vláken celkem, `CARGO_TARGET_DIR=F:/claude-tmp/target-k15`, binárky `F:\claude-tmp\k15\bin`, výstupy `F:\Projekty\bakula-soak\k15\{tune,held}`.
+- Běhy: Idle, maska 0x3FFFFC, nejvýš 8 vláken celkem, `CARGO_TARGET_DIR=F:/work-tmp/target-k15`, binárky `F:\work-tmp\k15\bin`, výstupy `F:\Projekty\bakula-soak\k15\{tune,held}`.
 - Po prvním měřicím běhu na ladicích seedech se změna kódu zapíše jako odchylka; na držených seedech se po měření nic nemění.
 
 | práh | definice | splněno, když |
@@ -31,7 +31,7 @@ Rozhodnutí o zapnutí do `recommended()`: jen přepínač, který na držených
 
 ### Případ 1: `app_layer_flood_api`, seed 20267402, síť 5 (Smb M, 30 dní), základ `off` a všech 11 ramen
 
-Z forenzní stopy (`F:\claude-tmp\k15\trace\off-402-n5.trace.jsonl`):
+Z forenzní stopy (`F:\work-tmp\k15\trace\off-402-n5.trace.jsonl`):
 
 | cyklus | co engine viděl | co rozhodl |
 |---|---|---|
@@ -48,7 +48,7 @@ Otevřený designový limit (d), který oprava neřeší: distribuovaná záplav
 
 ### Případ 2: čtyři „útoky“ u lhoucího agenta, seed 20267401, síť 7 (Soho S, 14 dní), ramena `elying` a `emimic`
 
-Stopa `F:\claude-tmp\k15\trace\ely-401-n7.trace.jsonl`:
+Stopa `F:\work-tmp\k15\trace\ely-401-n7.trace.jsonl`:
 
 | cyklus | co engine viděl | co rozhodl |
 |---|---|---|
@@ -76,7 +76,7 @@ Starší dumpy (k13h, k13m, k13mix) mají jiný základ (bez `strict_close` nebo
 
 ## P2: rodiny pod 100 %, příčiny po případech (držené seedy kroku 14, základ `off`)
 
-Rozklad minutých útoků z `networks.jsonl` (útok = pravda s emitovanými toky a kontrafaktuálem) a stopa pravd (`F:\claude-tmp\k15\trace\t-101-n2`, `t-101-n7`: toky a bajty po cyklech, nálezy na hostu útočníka):
+Rozklad minutých útoků z `networks.jsonl` (útok = pravda s emitovanými toky a kontrafaktuálem) a stopa pravd (`F:\work-tmp\k15\trace\t-101-n2`, `t-101-n7`: toky a bajty po cyklech, nálezy na hostu útočníka):
 
 | rodina | n | detekce | bez jediného nálezu | nález skrytý (otevřený klíč) | zobrazen i bez útoku | ztráta senzoru | příčina a zařazení |
 |---|---:|---:|---:|---:|---:|---:|---|
@@ -95,7 +95,7 @@ Ověření artefaktu připsání: u 14 až 29 pravd na síť se klíčové vnit�
 
 ## P3: provozní telemetrie, příčiny
 
-Z diagnostického dumpu kroku 14 (`F:\claude-tmp\k14\diag.jsonl`, 1 464 nálezů s diagnózou) a katalogu:
+Z diagnostického dumpu kroku 14 (`F:\work-tmp\k14\diag.jsonl`, 1 464 nálezů s diagnózou) a katalogu:
 
 | jev | pozorování | příčina | zařazení |
 |---|---|---|---|
@@ -125,7 +125,7 @@ Binárka kroku 15 bez nových přepínačů (`off`, seed 20261102, 2 sítě) dá
 
 ### Ladicí seedy (5 seedů x 8 sítí, základ = běhy kroku 14)
 
-Odchylka od plánu: seed 20266106 má v bloku 3 dvě sítě XXL, jejichž běh trvá hodiny (rameno `elying` kroku 14 je také nemá); kandidáti se u tohoto seedu měří na 6 sítích, párování je po sítích, takže je to 38 párů místo 40. Výstupy `F:\Projekty\bakula-soak\k15\tune`, souhrn `F:\claude-tmp\k15\report15.sh tune`.
+Odchylka od plánu: seed 20266106 má v bloku 3 dvě sítě XXL, jejichž běh trvá hodiny (rameno `elying` kroku 14 je také nemá); kandidáti se u tohoto seedu měří na 6 sítích, párování je po sítích, takže je to 38 párů místo 40. Výstupy `F:\Projekty\bakula-soak\k15\tune`, souhrn `F:\work-tmp\k15\report15.sh tune`.
 
 **`k15` (`refute_episode` + `upload_horizon`) proti `off`, 38 párů:**
 
@@ -138,7 +138,7 @@ Odchylka od plánu: seed 20266106 má v bloku 3 dvě sítě XXL, jejichž běh t
 | `exfil_cloud_storage_upload` | 55,6 (n = 9) | 55,6 | +0,0 | cíl ≥ +10 p. b. **nesplněn**: minuté exfiltrace ladicích seedů mají 2,8 až 13 MB za okno, tedy i součet 6 oken je pod `min_bytes` 50 MB nebo pod poměrem 10× k historii hostu; horizont pomůže jen pásmu 20 až 30 MB za okno, které je na držených seedech (3 z 11 minutých), ne na ladicích |
 | autonomně vyvráceno žebříkem | 8 z 22 823 | 1 z 22 966 | | epizodové vyvrácení posílá opakované epizody zpět do žebříku; zavírá se ještě méně než dřív, omylem 0 |
 
-Co `upload_horizon` změnil (`F:\claude-tmp\k15\horizoncheck.py`): nálezů `egress_volume_anomaly` 2 783 → 3 505; nově zachyceno 5 nočních záloh (hn) a 0 nových exfiltrací; 1 exfiltrace už zachycená získala druhý typ nálezu. Závěr: oprava mezery je správná co do mechanismu (test), ale v simulaci je v tomto pásmu objemu víc legitimních záloh než exfiltrací; **nedoporučuje se zapnout**, LOFO `k15b` níže.
+Co `upload_horizon` změnil (`F:\work-tmp\k15\horizoncheck.py`): nálezů `egress_volume_anomaly` 2 783 → 3 505; nově zachyceno 5 nočních záloh (hn) a 0 nových exfiltrací; 1 exfiltrace už zachycená získala druhý typ nálezu. Závěr: oprava mezery je správná co do mechanismu (test), ale v simulaci je v tomto pásmu objemu víc legitimních záloh než exfiltrací; **nedoporučuje se zapnout**, LOFO `k15b` níže.
 
 **`k15e` (`elying` + `endpoint_weak` + `refute_episode`) proti `elying`, 38 párů:** detekce 82,3 = 82,3 (+0,0), FP poměr 1,000, hn_* +0,0, omylem zavřeno 0 z 2692 v obou (horní mez 0,14 %), autonomně vyvráceno 13 → 2 (lhoucí agent už nevyvrací s historií sám). Na ladicích seedech se mechanismus případu 2 nevyskytl; test K15-1 pro `k15e` rozhodnou držené seedy.
 
@@ -152,7 +152,7 @@ Co `upload_horizon` změnil (`F:\claude-tmp\k15\horizoncheck.py`): nálezů `egr
 | C5 porucha maskovaná jako útok | 10,8 | **20,2** | ≤ 10: **nesplněno, horší** |
 | C7 správná kategorie celkem | 83,7 | 72,3 | ≥ 85: nesplněno |
 
-Rozbor na jedné síti (seed 20261102, síť 2, dump diagnóz `F:\claude-tmp\k15\diag`): `ops_symptoms` převedl nálezy poruch na útok tam, kde simulovaná porucha vyvolá typ nálezu, který její mechanismus podle katalogu nevyvolává (první verze `explains`: `port_crc_errors` → `unexpected_traffic`; po doplnění skupin z autorského textu katalogu už ne), a `ops_blast` naopak vysvětlil útoky signálem o infrastruktuře v celé síti (`ddos_volume`/`connection_timeout_burst`, `ddos_ntp_amplification`/`packet_rate_spike`, `c2_doh_resolver`/`tls_novel_burst` → porucha): rozšířený dosah bez časové vazby mezi signálem a nálezem (okno 3 h) vysvětlí každý dostupnostní nález v síti. Obě opravy míří na skutečné příčiny C4 a C5, ale v tomto simulátoru si jdou proti sobě a bez přesnějšího modelu (kdy přesně signál platí a kterých hostů se týká) celkový výsledek zhoršují. **Ani jedna se nedoporučuje zapnout.** LOFO `k15opsA` a `k15opsB` níže; ramena `k15noise` a `k15mix` se po tomto výsledku nepouštějí (složka neprošla ladicím prahem K15-4/K15-5), což je odchylka od předregistrace zapsaná zde.
+Rozbor na jedné síti (seed 20261102, síť 2, dump diagnóz `F:\work-tmp\k15\diag`): `ops_symptoms` převedl nálezy poruch na útok tam, kde simulovaná porucha vyvolá typ nálezu, který její mechanismus podle katalogu nevyvolává (první verze `explains`: `port_crc_errors` → `unexpected_traffic`; po doplnění skupin z autorského textu katalogu už ne), a `ops_blast` naopak vysvětlil útoky signálem o infrastruktuře v celé síti (`ddos_volume`/`connection_timeout_burst`, `ddos_ntp_amplification`/`packet_rate_spike`, `c2_doh_resolver`/`tls_novel_burst` → porucha): rozšířený dosah bez časové vazby mezi signálem a nálezem (okno 3 h) vysvětlí každý dostupnostní nález v síti. Obě opravy míří na skutečné příčiny C4 a C5, ale v tomto simulátoru si jdou proti sobě a bez přesnějšího modelu (kdy přesně signál platí a kterých hostů se týká) celkový výsledek zhoršují. **Ani jedna se nedoporučuje zapnout.** LOFO `k15opsA` a `k15opsB` níže; ramena `k15noise` a `k15mix` se po tomto výsledku nepouštějí (složka neprošla ladicím prahem K15-4/K15-5), což je odchylka od předregistrace zapsaná zde.
 
 **LOFO na ladicích seedech (součty, 38 párů):** `k15a` (jen `refute_episode`) proti `off`: detekce 83,3 = 83,3, FP poměr 1,000, hn_* +0,0, omylem zavřeno 0 = 0, autonomně vyvráceno 8 = 8, latence 1,70 = 1,70: **beze změny** (na ladicích seedech se epizoda po vyvrácení nikdy neopakovala v útoku; cena nula). `k15opsB` (jen `ops_blast`) proti `ops`: C5 10,8 → 10,3 (zisk v mezích šumu), **C4 8,3 → 30,0**, C1 78,5 → 77,4, C7 83,7 → 67,1: dosah infrastrukturních signálů na celou síť vysvětlí útoky, zamítnuto. `k15b` (jen `upload_horizon`) proti `off`: detekce 83,3 = 83,3 (+0,0 až +0,1), FP poměr 1,005, omylem 0 = 0: celý (malý) efekt `k15` je z horizontu, přínos pro exfiltrace žádný. `k15opsA` (jen `ops_symptoms`) proti `ops`: C2 60,5 → **65,7** (zisk, typ mezi kandidáty se rozlišuje lépe), C4 8,3 → **5,7** (těsně nad prahem 5), ale C1 78,5 → **69,1** a C5 10,8 → **22,6**: příznaková vazba katalogu správně odmítá nesprávná `catalog_id` i špatně vysvětlené útoky, ale u skutečných poruch, jejichž simulovaný projev katalogu neodpovídá, nechá nález jako útok. Zisk C2/C4 nevyváží ztrátu C1/C5; nezapíná se.
 
@@ -162,7 +162,7 @@ Co z toho plyne pro otázku „je simulace nerealistická“: to, které typy n�
 
 ### Držené seedy (20268101 až 20268502, jednou)
 
-Základy `off`, `elying`, `ops` i kandidáti na binárce `k15g`, 10 seedů x 8 sítí = 80 párů, bootstrap po sítích stratifikovaný po seed x konfigurace (B = 2000). Výstupy `F:\Projekty\bakula-soak\k15\held`, souhrn `F:\claude-tmp\k15\report-held.txt`. Po měření se nic neměnilo.
+Základy `off`, `elying`, `ops` i kandidáti na binárce `k15g`, 10 seedů x 8 sítí = 80 párů, bootstrap po sítích stratifikovaný po seed x konfigurace (B = 2000). Výstupy `F:\Projekty\bakula-soak\k15\held`, souhrn `F:\work-tmp\k15\report-held.txt`. Po měření se nic neměnilo.
 
 | test | ukazatel | před | po | výsledek |
 |---|---|---:|---:|---|
