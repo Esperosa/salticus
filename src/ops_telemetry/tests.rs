@@ -76,7 +76,10 @@ fn catalog_signals_are_valid_and_every_type_identifies_itself() {
             "{id}: {got:?} {class} {in_candidates}"
         );
     }
-    assert!(ambiguous.len() <= 20 && ambiguous.iter().all(|a| a.3 || a.2 == "nejednoznacne"), "{ambiguous:?}");
+    assert!(
+        ambiguous.len() <= 20 && ambiguous.iter().all(|a| a.3 || a.2 == "nejednoznacne"),
+        "{ambiguous:?}"
+    );
 }
 
 /// Krok 15 (P3, `ops_symptoms`): porucha infrastruktury (saturace uplinku, OPS-011)
@@ -85,7 +88,11 @@ fn catalog_signals_are_valid_and_every_type_identifies_itself() {
 #[test]
 fn fault_explains_only_the_symptom_groups_of_its_mechanism() {
     let idx = Index::shared();
-    let s = store_with(&["if_util_high", "if_out_discards", "qos_drop"], "10.0.0.0/24", 10_000);
+    let s = store_with(
+        &["if_util_high", "if_out_discards", "qos_drop"],
+        "10.0.0.0/24",
+        10_000,
+    );
     let on = DiagPolicy {
         symptoms: true,
         ..DiagPolicy::default()
@@ -97,8 +104,20 @@ fn fault_explains_only_the_symptom_groups_of_its_mechanism() {
     let d = diagnose(idx, &s, "unexpected_traffic", &ips, false, 10_000, &on);
     assert_eq!(d.class, "utok", "{d:?}");
     assert!(d.explains_partly, "signaly poruchy zustavaji jako poznamka");
-    let d = diagnose(idx, &s, "connection_timeout_burst", &ips, false, 10_000, &on);
-    assert_eq!((d.class.as_str(), d.catalog_id.as_deref()), ("porucha", Some("OPS-011")), "{d:?}");
+    let d = diagnose(
+        idx,
+        &s,
+        "connection_timeout_burst",
+        &ips,
+        false,
+        10_000,
+        &on,
+    );
+    assert_eq!(
+        (d.class.as_str(), d.catalog_id.as_deref()),
+        ("porucha", Some("OPS-011")),
+        "{d:?}"
+    );
 }
 
 /// Krok 15 (P3, `ops_symptoms`): uplna sada signalu typu, jehoz signaly jsou nadmnozinou
@@ -113,11 +132,25 @@ fn superset_type_wins_over_its_dominated_subset_candidate() {
     let small = c.get("OPS-054").unwrap();
     let small_keys: Vec<&str> = small.ops_signals.iter().map(|(k, _)| k.as_str()).collect();
     let big_keys: Vec<&str> = big.ops_signals.iter().map(|(k, _)| k.as_str()).collect();
-    assert!(small_keys.iter().all(|k| big_keys.contains(k)), "predpoklad testu: podmnozina");
+    assert!(
+        small_keys.iter().all(|k| big_keys.contains(k)),
+        "predpoklad testu: podmnozina"
+    );
     let s = store_with(&big_keys, "10.0.0.5", 10_000);
     let ips = vec!["10.0.0.5".to_string()];
-    let off = diagnose(&idx, &s, "service_unreachable", &ips, false, 10_000, &DiagPolicy::default());
-    assert!(off.catalog_id.is_none() && off.candidates.contains(&"OPS-016".to_string()), "puvodni chovani: {off:?}");
+    let off = diagnose(
+        &idx,
+        &s,
+        "service_unreachable",
+        &ips,
+        false,
+        10_000,
+        &DiagPolicy::default(),
+    );
+    assert!(
+        off.catalog_id.is_none() && off.candidates.contains(&"OPS-016".to_string()),
+        "puvodni chovani: {off:?}"
+    );
     let on = diagnose(
         &idx,
         &s,
@@ -154,24 +187,56 @@ fn superset_type_wins_over_its_dominated_subset_candidate() {
 #[test]
 fn infrastructure_signal_reaches_dependent_hosts_only_with_blast_radius() {
     let idx = Index::shared();
-    let s = store_with(&["if_flap", "route_adj_change", "sys_link_down"], "10.0.0.1", 10_000);
+    let s = store_with(
+        &["if_flap", "route_adj_change", "sys_link_down"],
+        "10.0.0.1",
+        10_000,
+    );
     let client = vec!["10.0.0.57".to_string()];
-    let off = diagnose(idx, &s, "connection_timeout_burst", &client, false, 10_000, &DiagPolicy::default());
+    let off = diagnose(
+        idx,
+        &s,
+        "connection_timeout_burst",
+        &client,
+        false,
+        10_000,
+        &DiagPolicy::default(),
+    );
     assert_eq!(off.class, "utok", "{off:?}");
     let on = DiagPolicy {
         blast: true,
         infra: ["10.0.0.1".to_string()].into_iter().collect(),
         ..DiagPolicy::default()
     };
-    let d = diagnose(idx, &s, "connection_timeout_burst", &client, false, 10_000, &on);
-    assert_eq!((d.class.as_str(), d.catalog_id.as_deref()), ("porucha", Some("OPS-002")), "{d:?}");
+    let d = diagnose(
+        idx,
+        &s,
+        "connection_timeout_burst",
+        &client,
+        false,
+        10_000,
+        &on,
+    );
+    assert_eq!(
+        (d.class.as_str(), d.catalog_id.as_deref()),
+        ("porucha", Some("OPS-002")),
+        "{d:?}"
+    );
     // adresa, ktera neni infrastrukturni, dosah nema
     let other = DiagPolicy {
         blast: true,
         infra: ["10.0.0.99".to_string()].into_iter().collect(),
         ..DiagPolicy::default()
     };
-    let d = diagnose(idx, &s, "connection_timeout_burst", &client, false, 10_000, &other);
+    let d = diagnose(
+        idx,
+        &s,
+        "connection_timeout_burst",
+        &client,
+        false,
+        10_000,
+        &other,
+    );
     assert_eq!(d.class, "utok", "{d:?}");
 }
 
@@ -214,10 +279,26 @@ fn missing_telemetry_is_reported_not_guessed() {
     assert!(d.reason.contains("chybí telemetrie"));
     assert!(d.missing.contains(&"snmp".to_string()));
     // typ nedostupnosti bez signálu a bez primárního zdroje: poruchu nelze vyloučit ani bez tokového vzoru
-    let d = diagnose(idx, &s, "service_unreachable", &["10.0.0.5".into()], false, 10_000, &DiagPolicy::default());
+    let d = diagnose(
+        idx,
+        &s,
+        "service_unreachable",
+        &["10.0.0.5".into()],
+        false,
+        10_000,
+        &DiagPolicy::default(),
+    );
     assert_eq!(d.class, "neurceno");
     // objemová anomálie bez tokového vzoru poruchy zůstává podezřením na útok
-    let d = diagnose(idx, &s, "unexpected_traffic", &["10.0.0.5".into()], false, 10_000, &DiagPolicy::default());
+    let d = diagnose(
+        idx,
+        &s,
+        "unexpected_traffic",
+        &["10.0.0.5".into()],
+        false,
+        10_000,
+        &DiagPolicy::default(),
+    );
     assert_eq!(d.class, "utok");
 }
 
@@ -226,15 +307,43 @@ fn behavioral_types_need_strong_match_and_signature_types_never_move() {
     let idx = Index::shared();
     // sken schválený správcem: jediný signál typu s jedním signálem stačí (CHG-011)
     let s = store_with(&["sys_scanner_job"], "10.0.0.5", 10_000);
-    let d = diagnose(idx, &s, "scan_attempts", &["10.0.0.5".into()], false, 10_000, &DiagPolicy::default());
-    assert_eq!((d.class.as_str(), d.catalog_id.as_deref()), ("zmena", Some("CHG-011")), "{d:?}");
+    let d = diagnose(
+        idx,
+        &s,
+        "scan_attempts",
+        &["10.0.0.5".into()],
+        false,
+        10_000,
+        &DiagPolicy::default(),
+    );
+    assert_eq!(
+        (d.class.as_str(), d.catalog_id.as_deref()),
+        ("zmena", Some("CHG-011")),
+        "{d:?}"
+    );
     // slabý jediný signál typu s mnoha signály behaviorální nález nepřeřadí
     let s = store_with(&["uptime_reset"], "10.0.0.5", 10_000);
-    let d = diagnose(idx, &s, "novel_fanout", &["10.0.0.5".into()], false, 10_000, &DiagPolicy::default());
+    let d = diagnose(
+        idx,
+        &s,
+        "novel_fanout",
+        &["10.0.0.5".into()],
+        false,
+        10_000,
+        &DiagPolicy::default(),
+    );
     assert_eq!(d.class, "utok");
     // signaturní typ se nepřeřadí ani při dokonalé shodě
     let s = store_with(&["sys_scanner_job"], "10.0.0.5", 10_000);
-    let d = diagnose(idx, &s, "suricata_alert", &["10.0.0.5".into()], false, 10_000, &DiagPolicy::default());
+    let d = diagnose(
+        idx,
+        &s,
+        "suricata_alert",
+        &["10.0.0.5".into()],
+        false,
+        10_000,
+        &DiagPolicy::default(),
+    );
     assert_eq!(d.class, "utok");
 }
 
@@ -389,6 +498,70 @@ fn adapters_parse_reference_lines() {
         )
         .is_none()
     );
+    // krok 17: skutečné řádky z laboratoře, které adaptéry kroku 14 neznaly
+    assert_eq!(
+        parse_arp(
+            "arpwatch: flip flop 10.77.1.254 2:42:a:1:fe (2:42:a:1:b)",
+            1
+        )
+        .unwrap()
+        .key,
+        "arp_conflict"
+    );
+    let dns = parse_nagios(
+        "[1700000000] SERVICE ALERT: 10.77.2.53;DNS;CRITICAL;HARD;3;DNS CRITICAL - expected '10.77.2.11' but got '10.77.2.10'",
+        1,
+    )
+    .unwrap();
+    assert_eq!(
+        (dns.key.as_str(), dns.scope[0].as_str()),
+        ("dns_stale_record", "10.77.2.53")
+    );
+    let ntp = parse_nagios(
+        "[1700000000] SERVICE ALERT: 10.77.2.123;NTP time;CRITICAL;HARD;3;NTP CRITICAL: Offset 19.000 secs",
+        1,
+    )
+    .unwrap();
+    assert_eq!(ntp.key, "ntp_offset");
+    assert_eq!(ntp.value, 19.0);
+    assert_eq!(
+        parse_nagios(
+            "[1700000000] SERVICE ALERT: 10.77.2.123;NTP time;CRITICAL;HARD;3;NTP CRITICAL: No response from NTP server",
+            1,
+        )
+        .unwrap()
+        .key,
+        "ntp_unreach"
+    );
+    // Zabbix/HOST-RESOURCES zaplnění v procentech se rozpozná
+    assert_eq!(
+        parse_snmp(
+            "10.77.2.10 HOST-RESOURCES-MIB::hrStorageUsedPct.39 = Gauge32: 97.5",
+            9
+        )
+        .unwrap()
+        .key,
+        "disk_high"
+    );
+    // oprava kroku 14: syrové bajty souborového systému NEJSOU procento a nesmí hlásit disk_high
+    assert!(
+        parse_prometheus(
+            "node_filesystem_avail_bytes{instance=\"10.0.0.7:9100\",mountpoint=\"/\"} 8192000000",
+            9
+        )
+        .is_none()
+    );
+    // syslog s IP v poli hosta (sběr přes rsyslog FROMHOST-IP) nese IP jako rozsah
+    assert_eq!(
+        parse_syslog(
+            "<27>1 2026-11-15T10:00:00Z 10.77.2.10 nginx - - - certificate has expired",
+            5,
+            &|_| None,
+        )
+        .unwrap()
+        .scope[0],
+        "10.77.2.10"
+    );
 }
 
 #[test]
@@ -421,8 +594,21 @@ fn fuzz_adapters_never_panic() {
         "NaN",
         "SERVICE ALERT:",
         "no free leases",
+        "flip flop",
+        "NTP time",
+        "DNS",
+        "Offset",
+        "expected",
+        "but got",
+        "secs",
+        "hrStorageUsedPct",
+        "Gauge32:",
+        "node_filesystem_avail_bytes",
     ];
-    let fuzz_n: u64 = std::env::var("SALTICUS_FUZZ_N").ok().and_then(|v| v.parse().ok()).unwrap_or(30_000);
+    let fuzz_n: u64 = std::env::var("SALTICUS_FUZZ_N")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30_000);
     for _ in 0..fuzz_n {
         let n = (next() % 12) as usize;
         let mut line = String::new();

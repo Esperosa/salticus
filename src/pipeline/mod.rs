@@ -488,7 +488,8 @@ fn resort_and_recompute_lane_summary(report: &mut RunReport) {
 /// produkční cestou (`tools/replay_public.py`). Jen pro evaluaci: proměnná
 /// `SALTICUS_REPLAY_NOW` (RFC 3339) nastaví začátek běhu na začátek přehrávaného okna,
 /// aby profil, novost a paměť nálezů běžely v čase dat. Bez proměnné nástěnné hodiny.
-fn replay_clock() -> Option<chrono::DateTime<Utc>> {
+/// Krok 17: stejný čas používá i `ops ingest` a `ops diagnose` (signál nese čas vzniku).
+pub fn replay_clock() -> Option<chrono::DateTime<Utc>> {
     let value = std::env::var("SALTICUS_REPLAY_NOW").ok()?;
     match chrono::DateTime::parse_from_rfc3339(value.trim()) {
         Ok(at) => {

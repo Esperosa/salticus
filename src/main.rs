@@ -7,6 +7,8 @@ use std::{
     time::Duration,
 };
 
+use clap::{Args, Parser, Subcommand};
+use ipnet::IpNet;
 use salticus_program::{
     ai, automation, broker, config, evaluation,
     model::{AppConfig, RunReport},
@@ -16,8 +18,6 @@ use salticus_program::{
     },
     platform, readiness, server, simulation, verification,
 };
-use clap::{Args, Parser, Subcommand};
-use ipnet::IpNet;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -82,6 +82,31 @@ enum SoakCommand {
 enum OpsCommand {
     /// Krok 14 (C2): nacte soubor provozni telemetrie (syslog, snmp, prometheus, nagios, dhcp, arp) do workspace.
     Ingest(OpsIngestArgs),
+    /// Krok 17: diagnóza typu nálezu na hostech proti uložené telemetrii (stejná funkce jako v pipeline).
+    Diagnose(OpsDiagnoseArgs),
+}
+
+#[derive(Args, Debug)]
+struct OpsDiagnoseArgs {
+    #[arg(long)]
+    workspace: PathBuf,
+    /// typ nálezu (např. service_unreachable)
+    #[arg(long = "typ")]
+    finding_type: String,
+    /// adresy hostů, kterých se nález týká (lze opakovat)
+    #[arg(long = "ip")]
+    ips: Vec<String>,
+    /// příznakové skupiny a dominance (krok 15, `ops_symptoms`)
+    #[arg(long)]
+    symptoms: bool,
+    /// dosah infrastrukturních zařízení (krok 15, `ops_blast`); adresy v `--infra`
+    #[arg(long)]
+    blast: bool,
+    #[arg(long = "infra")]
+    infra: Vec<String>,
+    /// tok sám naznačuje poruchu (E1 až E3)
+    #[arg(long)]
+    flow_fault_like: bool,
 }
 
 #[derive(Args, Debug)]
@@ -1093,6 +1118,7 @@ fn main() -> anyhow::Result<()> {
                 &args.workspace.join("engine-state.sqlite"),
             )?;
             let mut total = salticus_program::ops_telemetry::persist::IngestSummary::default();
+            let now = salticus_program::pipeline::replay_clock().unwrap_or_else(chrono::Utc::now);
             for chunk in text
                 .as_bytes()
                 .chunks(salticus_program::ops_telemetry::persist::MAX_BATCH_BYTES)
@@ -1102,7 +1128,7 @@ fn main() -> anyhow::Result<()> {
                     store.conn_mut(),
                     format,
                     &part,
-                    chrono::Utc::now(),
+                    now,
                 )?;
                 total.lines += s.lines;
                 total.signals += s.signals;
@@ -1112,6 +1138,34 @@ fn main() -> anyhow::Result<()> {
                 total.truncated |= s.truncated;
             }
             println!("{}", serde_json::to_string_pretty(&total)?);
+        }
+        Command::Ops(OpsCommand::Diagnose(args)) => {
+            use salticus_program::ops_telemetry as ot;
+            let now = salticus_program::pipeline::replay_clock().unwrap_or_else(chrono::Utc::now);
+            let state = salticus_program::engine_state::EngineStateStore::open(
+                &args.workspace.join("engine-state.sqlite"),
+            )?;
+            let store = ot::persist::load_store(state.conn(), now)?;
+            let policy = ot::DiagPolicy {
+                symptoms: args.symptoms,
+                blast: args.blast,
+                infra: if args.blast {
+                    args.infra.iter().cloned().collect()
+                } else {
+                    Default::default()
+                },
+                ..Default::default()
+            };
+            let d = ot::diagnose(
+                ot::Index::shared(),
+                &store,
+                &args.finding_type,
+                &args.ips,
+                args.flow_fault_like,
+                now.timestamp(),
+                &policy,
+            );
+            println!("{}", serde_json::to_string(&d)?);
         }
         Command::Endpoint(EndpointCommand::ReplayJsonl(args)) => {
             let format: salticus_program::endpoint::Format =
@@ -1172,7 +1226,8 @@ fn main() -> anyhow::Result<()> {
             println!("{}", serde_json::to_string_pretty(&total)?);
         }
         Command::Soak(SoakCommand::Run(args)) => {
-            let mut cfg = salticus_program::soak::runner::SoakConfig::with_defaults(args.out.clone());
+            let mut cfg =
+                salticus_program::soak::runner::SoakConfig::with_defaults(args.out.clone());
             cfg.wall_hours = args.wall_hours;
             cfg.max_networks = args.max_networks;
             cfg.block_offset = args.block_offset;

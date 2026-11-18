@@ -194,8 +194,20 @@ pub fn metric_signal(name: &str, value: f64, at: i64, scope: &str) -> Option<Ops
         (value >= 30.0).then_some("io_wait_high")
     } else if n.contains("memory") || n.contains("mem_used") {
         (value >= t).then_some("mem_high")
-    } else if n.contains("filesystem") || n.contains("disk") {
-        (value >= t).then_some("disk_high")
+    } else if (n.contains("filesystem") || n.contains("disk") || n.contains("storage"))
+        && (n.contains("pct")
+            || n.contains("percent")
+            || n.contains("pused")
+            || n.contains("used_ratio"))
+    {
+        // jen procento zaplnění; syrové bajty (node_filesystem_avail_bytes, hrStorageUsed v blocích)
+        // nejsou procento a nesmí se porovnávat s prahem 90 (chyba kroku 14: vždy nad prahem).
+        let pct = if n.contains("ratio") {
+            value * 100.0
+        } else {
+            value
+        };
+        (pct >= t).then_some("disk_high")
     } else if n.contains("conntrack") {
         (value >= t).then_some("conntrack_high")
     } else if n.contains("sysuptime") || n.contains("node_boot_time") {
@@ -298,10 +310,34 @@ pub fn parse_nagios(line: &str, now: i64) -> Option<OpsSignal> {
         }
         "SERVICE ALERT" if f.get(2).is_some_and(|s| *s == "CRITICAL") => {
             let svc = f.get(1)?.to_ascii_lowercase();
+            let out = f.get(5).map(|s| s.to_ascii_lowercase()).unwrap_or_default();
             if svc.contains("http") || svc.contains("web") {
                 "probe_http_fail"
             } else if svc.contains("dns") {
-                "probe_dns_fail"
+                // check_dns se shodou proti autoritě: „expected X but got Y“ = zastaralý/špatný
+                // záznam resolveru; jinak nedostupnost (timeout, SERVFAIL).
+                if out.contains("expected") && out.contains("but got") {
+                    "dns_stale_record"
+                } else {
+                    "probe_dns_fail"
+                }
+            } else if svc.contains("ntp") || svc.contains("time") {
+                // check_ntp_time: „Offset N secs“ -> ntp_offset s číselnou hodnotou; bez čísla
+                // (žádná odpověď) spadne na nedostupnost.
+                if let Some(v) = out
+                    .split("offset")
+                    .nth(1)
+                    .and_then(|s| s.split_whitespace().next())
+                    .and_then(|s| s.parse::<f64>().ok())
+                {
+                    return Some(OpsSignal {
+                        at,
+                        key: "ntp_offset".to_string(),
+                        value: v,
+                        scope: vec![host.to_string()],
+                    });
+                }
+                "ntp_unreach"
             } else if svc.contains("ping") || svc.contains("icmp") {
                 "probe_icmp_fail"
             } else if svc.contains("cert") {
@@ -380,9 +416,15 @@ pub fn parse_chrony(line: &str, now: i64, host: &str) -> Option<OpsSignal> {
 /// ARP/ND: `ip mac state` řádek; konflikt = dvě MAC pro jednu IP, předává volající po sloučení.
 pub fn parse_arp(line: &str, now: i64) -> Option<OpsSignal> {
     let low = lower_clip(line)?;
-    let key = if low.contains("duplicate") || low.contains("conflict") {
+    // arpwatch: „flip flop“ = jedna IP střídá dvě MAC (duplicitní adresa nebo ARP spoofing);
+    // „changed ethernet address“ = nová MAC pro známou IP.
+    let key = if low.contains("duplicate") || low.contains("conflict") || low.contains("flip flop")
+    {
         "arp_conflict"
-    } else if low.contains("new station") || low.contains("new mac") {
+    } else if low.contains("new station")
+        || low.contains("new mac")
+        || low.contains("changed ethernet address")
+    {
         "arp_new_mac"
     } else {
         return None;
