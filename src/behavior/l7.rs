@@ -27,8 +27,12 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    behavior::{BehaviorFinding, evict_oldest, finding},
-    l7::{DnsMeta, L7Event, TlsMeta, name_entropy, zone_of},
+    behavior::{
+        BehaviorFinding,
+        covert::{self, CovertThresholds},
+        evict_oldest, finding,
+    },
+    l7::{DnsMeta, L7Event, TlsMeta, zone_of},
     model::{Confidence, Severity},
     passive::ConnectionObservation,
 };
@@ -38,6 +42,7 @@ pub const L7_TYPES: &[&str] = &[
     "tls_novel_burst",
     "dns_zone_enumeration",
     "dns_tunnel_names",
+    "doh_suspected",
     "icmp_payload_anomaly",
 ];
 
@@ -53,11 +58,8 @@ pub struct L7Thresholds {
     pub young_cert_s: i64,
     pub enum_names: usize,
     pub enum_nx: f64,
-    /// Tunel pres DNS: nejmene ruznych jmen, delka a entropie nejlevejsi znacky a podil TXT/NULL.
-    pub tunnel_names: usize,
-    pub tunnel_label: f64,
-    pub tunnel_entropy: f64,
-    pub tunnel_txt: f64,
+    /// Tunel přes DNS (v2) a DoH: prahy modulu `covert` (krok 17, dodatek D1).
+    pub covert: CovertThresholds,
     pub max_hosts: usize,
     pub max_snis: usize,
     pub per_host_cap: usize,
@@ -74,10 +76,7 @@ impl Default for L7Thresholds {
             young_cert_s: 30 * 86_400,
             enum_names: 15,
             enum_nx: 0.3,
-            tunnel_names: 8,
-            tunnel_label: 24.0,
-            tunnel_entropy: 3.0,
-            tunnel_txt: 0.6,
+            covert: CovertThresholds::default(),
             max_hosts: 50_000,
             max_snis: 200_000,
             per_host_cap: 512,
@@ -310,9 +309,18 @@ pub fn detect(
                 actor: host.clone(),
             });
         }
+        // DNS přes HTTPS (krok 17, dodatek D1); poplachový pár se neučí
+        let doh_found = covert::doh(&t.covert, events, outbound, internal);
+        let doh_pairs: HashSet<(String, String)> = doh_found
+            .iter()
+            .flat_map(|f| f.targets.iter().map(|(d, _)| (f.actor.clone(), d.clone())))
+            .collect();
+        out.extend(doh_found);
         // učení: jen páry bez poplachu
         for ((host, target), g) in &groups {
-            if alarmed.contains(&(host.clone(), target.clone())) {
+            if alarmed.contains(&(host.clone(), target.clone()))
+                || doh_pairs.contains(&(host.clone(), g.dst.clone()))
+            {
                 continue;
             }
             let h = state.hosts.entry(host.clone()).or_default();
@@ -344,56 +352,8 @@ pub fn detect(
                 by_src.entry(d.src_ip.as_str()).or_default().push(d);
             }
         }
-        for (src, list) in &by_src {
-            // tunel pres DNS: dva nezavisle rysy, tvar jmena (delka a entropie) a typ zaznamu
-            if !internal(src) {
-                continue;
-            }
-            let mut per_zone: BTreeMap<&str, Vec<&DnsMeta>> = BTreeMap::new();
-            for d in list {
-                per_zone.entry(zone_of(&d.qname)).or_default().push(d);
-            }
-            for (zone, items) in per_zone {
-                let names: BTreeSet<&str> = items.iter().map(|d| d.qname.as_str()).collect();
-                if names.len() < t.tunnel_names {
-                    continue;
-                }
-                let label = |d: &&DnsMeta| d.qname.split('.').next().unwrap_or("").to_string();
-                let avg_len =
-                    items.iter().map(|d| label(d).len() as f64).sum::<f64>() / items.len() as f64;
-                let avg_ent =
-                    items.iter().map(|d| name_entropy(&label(d))).sum::<f64>() / items.len() as f64;
-                let txt = items
-                    .iter()
-                    .filter(|d| matches!(d.qtype.as_str(), "TXT" | "NULL" | "PRIVATE"))
-                    .count() as f64
-                    / items.len() as f64;
-                if avg_len >= t.tunnel_label && avg_ent >= t.tunnel_entropy && txt >= t.tunnel_txt {
-                    let server = items[0].dst_ip.as_str();
-                    out.push(BehaviorFinding {
-                        finding: finding(
-                            "dns_tunnel_names",
-                            src,
-                            &format!("dns/{zone}"),
-                            Severity::Medium,
-                            Confidence::Medium,
-                            format!("Host {src}: {} dlouhych nahodnych jmen pod {zone} (TXT {:.0} %)", names.len(), txt * 100.0),
-                            format!(
-                                "Prumerna delka znacky {avg_len:.0}, entropie {avg_ent:.1} bitu/znak, podil TXT/NULL {:.0} %: \
-                                 tvar jmen i typ zaznamu odpovidaji DNS tunelu. Pravidlo heuristika-behavior:l7-dns-tunnel@v1.",
-                                txt * 100.0
-                            ),
-                            vec![format!("{src} -> {server}: {} jmen pod {zone}", names.len())],
-                            "Overit proces a ucel dotazu; omezit TXT a NULL dotazy z klientu.",
-                        ),
-                        sources: vec![server.to_string()],
-                        targets: vec![(server.to_string(), 53)],
-                        count: names.len() as u32,
-                        actor: src.to_string(),
-                    });
-                }
-            }
-        }
+        // tunel pres DNS: v2 (krok 17, dodatek D1) v modulu covert
+        out.extend(covert::dns_tunnel(&t.covert, events, internal));
         for (src, list) in by_src {
             let mut zones: BTreeMap<&str, (BTreeSet<&str>, u32, u32, bool, &str)> = BTreeMap::new();
             for d in &list {
@@ -591,7 +551,7 @@ mod tests {
     }
 
     #[test]
-    fn dns_tunnel_needs_label_shape_and_txt_type() {
+    fn dns_tunnel_needs_label_shape_and_data_type() {
         let mk = |qtype: &str, n: usize| -> Vec<L7Event> {
             (0..n)
                 .map(|i| {

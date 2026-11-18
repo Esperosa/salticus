@@ -19,6 +19,7 @@
 
 pub mod beacon;
 pub mod breadth;
+pub mod covert;
 pub mod egress_volume;
 pub mod graph;
 pub mod icmp;
@@ -132,6 +133,7 @@ pub const BEHAVIOR_TYPES: &[&str] = &[
     "tls_novel_burst",
     "dns_zone_enumeration",
     "dns_tunnel_names",
+    "doh_suspected",
     "icmp_payload_anomaly",
 ];
 

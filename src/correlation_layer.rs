@@ -56,7 +56,7 @@ pub const MAX_CASE_FOLDERS: usize = 2000;
 pub fn tactic_of(finding_type: &str) -> Option<&'static str> {
     Some(match finding_type {
         "scan_attempts" | "port_scan" | "dns_zone_enumeration" | "network_discovery" => "discovery",
-        "beacon_periodic" | "dns_tunnel_names" | "icmp_payload_anomaly" => "command-and-control",
+        "beacon_periodic" | "dns_tunnel_names" | "doh_suspected" | "icmp_payload_anomaly" => "command-and-control",
         "tls_rare_transfer"
         | "novel_bulk_transfer"
         | "egress_volume_anomaly"
