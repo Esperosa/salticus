@@ -55,7 +55,7 @@ def main():
                 name = f"{P}-cli-{label}"
                 sh(["docker", "rm", "-f", name])
                 run = ["docker", "run", "-d", "--name", name, "--network", NET, "--cap-add", "NET_ADMIN",
-                       "--cap-add", "NET_RAW", "-e", f"ROUNDS=1", "-v", f"{os.path.join(LAB, 'rolesb')}:/lab:ro",
+                       "--cap-add", "NET_RAW", "--device", "/dev/net/tun", "-e", "ROUNDS=1", "-v", f"{os.path.join(LAB, 'rolesb')}:/lab:ro",
                        "-v", f"{os.path.abspath(args.out)}:/out", "k17labb:1", "sh", "/lab/tunnel_client.sh", mode, label]
                 t0 = time.time()
                 r = sh(run)

@@ -7,6 +7,7 @@ x-node: &node
     - ./rolesb:/lab:ro
     - ${LOGDIR:-/tmp/k17b-nolog}:/out
   cap_add: [NET_ADMIN, NET_RAW]
+  devices: ["/dev/net/tun:/dev/net/tun"]
 
 networks:
   labb:

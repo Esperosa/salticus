@@ -8,7 +8,7 @@ CAP=$!
 sleep 6
 case "$MODE" in
   iodine)
-    iodine -f -P labpass -r 10.88.0.53 t1.lab.test >/tmp/iodine.log 2>&1 &
+    iodine -f -T NULL -P labpass -r 10.88.0.53 t1.lab.test >/tmp/iodine.log 2>&1 &
     sleep 10
     for i in $(seq 1 "${ROUNDS:-1}"); do
       iperf3 -c 10.99.1.1 -t 60 -b 300k -l 1024 >/dev/null 2>&1 || true
@@ -24,9 +24,9 @@ case "$MODE" in
   doh)
     for i in $(seq 1 "${ROUNDS:-1}"); do
       for n in $(seq 1 300); do
-        curl -s -k --doh-url https://10.88.0.70/dns-query "https://web.lab.test/" -o /dev/null \
+        curl -s -k --doh-insecure --doh-url https://10.88.0.70/dns-query "https://web.lab.test/" -o /dev/null \
           --resolve web.lab.test:443:10.88.0.10 2>/dev/null
-        curl -s -k --doh-url https://10.88.0.70/dns-query -o /dev/null "http://api.lab.test/" 2>/dev/null
+        curl -s -k --doh-insecure --doh-url https://10.88.0.70/dns-query -o /dev/null "http://api.lab.test/" 2>/dev/null
       done
     done
     ;;
