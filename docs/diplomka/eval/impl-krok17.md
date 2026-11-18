@@ -159,3 +159,29 @@ Nezachycené varianty se zapíší do registru slepých míst (níže) s mechani
 ### Hrozby validity dodatku
 
 Varianty i kontroly staví autor detektoru; kontroly napodobují tvar skutečného provozu (CDN, AV reputace, mDNS), ale nejsou to záznamy skutečných zařízení. Jedna relace na režim v ladicí sadě. Seznam známých DoH resolverů se v laboratoři neověří provozem. Okno detekce je délka relace (180 s nebo 600 s); v provozu s jinou délkou okna se mění hlavně T2 a pomalé tunely.
+
+## Ladicí běhy a změny (zapsáno před drženými běhy)
+
+### Laboratoř B, ladicí sada (seed 17001, `debugB5`, 26 relací)
+
+Vady laboratoře a vyhodnocení nalezené při ladění (opraveny, nejde o ladění detektoru):
+
+1. Převod konců řádků v PowerShellu jednou vyprázdnil `composeb.yml`, `tunnel_client.sh` a `k17_labb.py` (čtení relativní cestou selhalo a zapsal se prázdný řetězec); obnoveno z původního obsahu, první pokus o běh B5 se tím nespustil.
+2. Vyhodnocení bez `SALTICUS_REPLAY_NOW`: motor bral skutečný čas, takže relace starší než okno motoru vypadly a měly nula nálezů (doh, doh-keep, dnscat-aaaa, exfil-multi vypadaly jako minuté). Nyní čas přehrávání = konec relace, stejně jako v laboratoři A.
+3. Opakované vyhodnocení ve stejném pracovním prostoru: paměť nálezů z minulého běhu potlačila nové. Nyní má každá relace čistý pracovní prostor.
+4. dns2tcp přes resolver unbound relaci nenaváže (klient jen opakuje „auth“, 346 dotazů za 150 s, žádná data); přímo na autoritu stáhne 5,4 MB za pár sekund. Relace se proto vede přímo na autoritu (jako iodine) a byla znovu zachycena (`debugB5x`). Původní relace se do výsledků nepočítá.
+5. Vyhodnocení DoH počítalo zásah i za nález na špatný cíl; nyní se počítá jen nález na DoH server laboratoře (10.88.0.70) a nálezy na jiné cíle se hlásí zvlášť (`doh_misattributed_findings`).
+
+Výsledek předregistrovaného detektoru (D1 beze změn prahů) po opravách vyhodnocení: iodine 5/5, dnscat2 5/5, exfil 1/3 (exfil-multi ano, exfil-slow a exfil-short ne), dns2tcp 0/1 (relace ještě přes resolver, bez dat), DoH 2/2, ale **každá DoH relace dala navíc dva nálezy na weby** (10.88.0.10 a 10.88.0.11), na které klient po DoH přistupoval: rys C2 byl pravdivý pro každý cíl hosta. Kontroly 0/10.
+
+Změny detektoru na ladicí sadě (commit `08c4210`), každá s důvodem:
+
+| změna | důvod (mechanismus) | dopad na ladicí sadě |
+|---|---|---|
+| T3 `tunnel_slow_*`: ≥ 30 různých jmen, podíl různých ≥ 0,9, délka ≥ 40, entropie ≥ 4,2, bez ohledu na typ a tempo | exfil-slow (1 dotaz za 5 až 10 s, typ A, base32) nesplní T1 (typ) ani T2 (objem). Hustá kódování (base32, base64) mají při délce ≥ 40 entropii nad 4,2, hex (hashe AV, dnscat2) nejvýš 4,0 | exfil-slow zachycen (78 jmen, entropie 4,58); control-av (hex, 3,75) a avburst zůstávají tiché |
+| T4 `tunnel_card_*`: ≥ 1 000 různých jmen, podíl různých ≥ 0,9, podíl typů nesoucích data ≥ 0,5, entropie ≥ 3,0, délka ≥ 8 | dns2tcp (přímo na autoritu) posílá krátká jména (12 znaků) a data nese v TXT odpovědích; tvar jména T1 až T3 nesplní | dns2tcp zachycen (555 447 jmen za 150 s) |
+| `tunnel_allow_zones`: reputační zóny (Sophos, McAfee GTI, ESET, Spamhaus včetně HBL, SURBL, URIBL, DNSWL, Mailspike, Team Cymru) | T3 by jinak zachytil i legitimní hashe v base32 (Spamhaus HBL kóduje SHA-256 v base32, 52 znaků). Útočník tyto zóny neovládá, takže seznam nevytváří cestu pro tunel | v laboratoři žádný (kontroly používají vlastní zóny) |
+| DoH C2 zpřesněno: kandidát musí být „bootstrapovaný“ (bez SNI, nebo jeho SNI host přeložil obyčejným DNS) a další cíle hosta musí mít SNI, které obyčejným DNS nepřeložil | bez toho se jako DoH resolver označí i weby, na které klient po DoH přistupuje (chybné přiřazení cíle) | DoH 2/2 na správný cíl, 0 nálezů na weby |
+
+Po změnách (binárka z `08c4210`): iodine 5/5, dnscat2 5/5, dns2tcp 1/1 (`debugB5x`), exfil 2/3, DoH 2/2 se správným cílem, kontroly 0/10, chybně přiřazené DoH nálezy 0. Nezachyceno: exfil-short (12 znaků base32, typ A, 4 dotazy/s, 625 jmen za 150 s). Dalším snižováním prahů by se dostal do pásma DNSBL a CDN kontrol (control-names: 304 jmen DNSBL, délka 12,8, entropie 2,97), proto se nemění a jde do registru slepých míst.
+
