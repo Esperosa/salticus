@@ -185,3 +185,7 @@ Změny detektoru na ladicí sadě (commit `08c4210`), každá s důvodem:
 
 Po změnách (binárka z `08c4210`): iodine 5/5, dnscat2 5/5, dns2tcp 1/1 (`debugB5x`), exfil 2/3, DoH 2/2 se správným cílem, kontroly 0/10, chybně přiřazené DoH nálezy 0. Nezachyceno: exfil-short (12 znaků base32, typ A, 4 dotazy/s, 625 jmen za 150 s). Dalším snižováním prahů by se dostal do pásma DNSBL a CDN kontrol (control-names: 304 jmen DNSBL, délka 12,8, entropie 2,97), proto se nemění a jde do registru slepých míst.
 
+
+### Zmrazení pro držený běh laboratoře B (zapsáno před během)
+
+Detektory `dns_tunnel_names` v2 a `doh_suspected` ve stavu commitu `08c4210` (binárka `salticus-k17-d4.exe` postavená z tohoto stromu), laboratoř a vyhodnocení ve stavu `b3661dd`. Držená sada (seed 17101): každý z 26 režimů jednou a navíc druhá relace iodine, dnscat, doh a control (30 relací), dns2tcp přímo na autoritu. Zachycení běží souběžně s ladicím během laboratoře A (stejně jako ladicí běh B5). Výsledek se hlásí, ať je jakýkoli; po něm se prahy nemění.
