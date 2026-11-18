@@ -25,7 +25,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::Severity,
 };
 
@@ -219,7 +219,8 @@ impl StaticCalendar {
             return Ok(Self::default());
         }
         let text = std::fs::read_to_string(path)?;
-        let entries: Vec<ContextEntry> = serde_json::from_str(&text).map_err(SalticusError::Json)?;
+        let entries: Vec<ContextEntry> =
+            serde_json::from_str(&text).map_err(SalticusError::Json)?;
         Ok(Self::new(entries))
     }
 }
@@ -995,7 +996,13 @@ mod tests {
         let calendar = StaticCalendar::new(vec![entry(ContextKind::Backup, "10.0.0.5", 0, 10)]);
         let host = vec!["10.0.0.5".to_string()];
         let none: Vec<String> = Vec::new();
-        let case = input("inductive_volume_anomaly", &host, &none, 1, Severity::Medium);
+        let case = input(
+            "inductive_volume_anomaly",
+            &host,
+            &none,
+            1,
+            Severity::Medium,
+        );
         let mut loose = ContextGate::new(GatePolicy {
             require_identified_source: true,
             ..GatePolicy::default()

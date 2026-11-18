@@ -27,7 +27,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     behavior::{BehaviorInput, BehaviorState, BehaviorSwitches, BehaviorThresholds, run_window},
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     eval::{
         ground_truth::LabeledDataset,
         source::ScenarioSource,
@@ -134,9 +134,11 @@ pub fn scenarios_k5(part: Part, unlock: bool) -> Result<&'static [&'static str]>
         Part::Test if !unlock => Err(SalticusError::Processing(
             "testovaci cast kotvy kroku 5 je zamcena (jen zaverecne mereni)".into(),
         )),
-        Part::Test if list_sha256(ANCHOR_K5_TEST) != ANCHOR_K5_TEST_SHA256 => Err(
-            SalticusError::Processing("seznam testovaci casti kotvy k5 nesouhlasi s otiskem".into()),
-        ),
+        Part::Test if list_sha256(ANCHOR_K5_TEST) != ANCHOR_K5_TEST_SHA256 => {
+            Err(SalticusError::Processing(
+                "seznam testovaci casti kotvy k5 nesouhlasi s otiskem".into(),
+            ))
+        }
         Part::Test => Ok(ANCHOR_K5_TEST),
     }
 }

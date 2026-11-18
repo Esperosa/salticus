@@ -19,8 +19,8 @@ fn bin_path() -> &'static str {
 }
 
 fn test_config() -> RedisBrokerConfig {
-    let uri =
-        env::var("SALTICUS_TEST_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let uri = env::var("SALTICUS_TEST_REDIS_URL")
+        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
     RedisBrokerConfig {
         uri,
         stream_key: format!("salticus.twoproc.{}", Uuid::new_v4()),

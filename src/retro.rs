@@ -100,7 +100,9 @@ impl History {
 
     /// První výskyt (pacient nula): nejstarší host s indikátorem.
     pub fn patient_zero(&self, indicator: &str) -> Option<(&str, i64)> {
-        self.hits(indicator).first().map(|e| (e.host.as_str(), e.ts))
+        self.hits(indicator)
+            .first()
+            .map(|e| (e.host.as_str(), e.ts))
     }
 
     /// Surové události (jen pro export měření v soaku).
@@ -129,24 +131,23 @@ impl History {
     pub fn incidents_v2(&self, max_gap_s: i64) -> Vec<Incident> {
         self.incidents_by(max_gap_s, |e| {
             let mut keys = vec![format!("hk:{}|{}", e.host, e.kind)];
-            keys.extend(
-                e.indicators
-                    .iter()
-                    .filter(|x| **x != e.host)
-                    .map(|x| {
-                        // krok 14: společná příčina z provozní telemetrie (`ops:<podsíť>`) spojuje i různé hosty
-                        if x.starts_with("ops:") {
-                            x.clone()
-                        } else {
-                            format!("hp:{}|{x}", e.host)
-                        }
-                    }),
-            );
+            keys.extend(e.indicators.iter().filter(|x| **x != e.host).map(|x| {
+                // krok 14: společná příčina z provozní telemetrie (`ops:<podsíť>`) spojuje i různé hosty
+                if x.starts_with("ops:") {
+                    x.clone()
+                } else {
+                    format!("hp:{}|{x}", e.host)
+                }
+            }));
             keys
         })
     }
 
-    fn incidents_by(&self, max_gap_s: i64, keys_of: impl Fn(&Event) -> Vec<String>) -> Vec<Incident> {
+    fn incidents_by(
+        &self,
+        max_gap_s: i64,
+        keys_of: impl Fn(&Event) -> Vec<String>,
+    ) -> Vec<Incident> {
         let n = self.events.len();
         let mut parent: Vec<usize> = (0..n).collect();
         fn find(p: &mut Vec<usize>, x: usize) -> usize {
@@ -228,7 +229,14 @@ impl History {
 mod tests {
     use super::*;
 
-    fn ev(ts: i64, host: &str, id: &str, ind: &[&str], tactic: Option<&str>, cause: Cause) -> Event {
+    fn ev(
+        ts: i64,
+        host: &str,
+        id: &str,
+        ind: &[&str],
+        tactic: Option<&str>,
+        cause: Cause,
+    ) -> Event {
         Event {
             ts,
             host: host.into(),
@@ -243,7 +251,11 @@ mod tests {
     #[test]
     fn v2_does_not_link_through_a_shared_host_alone() {
         let mut h = History::new(100);
-        for (ts, id, peer, kind) in [(0, "a", "9.9.9.9", "scan"), (60, "b", "8.8.8.8", "dos"), (120, "c", "9.9.9.9", "dos")] {
+        for (ts, id, peer, kind) in [
+            (0, "a", "9.9.9.9", "scan"),
+            (60, "b", "8.8.8.8", "dos"),
+            (120, "c", "9.9.9.9", "dos"),
+        ] {
             let mut e = ev(ts, "srv", id, &["srv", peer], None, Cause::Unknown);
             e.kind = kind.into();
             h.add(e);
@@ -266,19 +278,56 @@ mod tests {
     #[test]
     fn indicator_search_finds_patient_zero_timeline_chain_and_incident_cause() {
         let mut h = History::new(1000);
-        h.add(ev(300, "10.0.0.7", "f-c2", &["ja4:tool", "x1.rare.example"], Some("command-and-control"), Cause::Attack));
-        h.add(ev(100, "10.0.0.5", "f-scan", &["198.51.100.4"], Some("discovery"), Cause::Attack));
-        h.add(ev(200, "10.0.0.5", "f-lat", &["ja4:tool"], Some("lateral-movement"), Cause::Attack));
+        h.add(ev(
+            300,
+            "10.0.0.7",
+            "f-c2",
+            &["ja4:tool", "x1.rare.example"],
+            Some("command-and-control"),
+            Cause::Attack,
+        ));
+        h.add(ev(
+            100,
+            "10.0.0.5",
+            "f-scan",
+            &["198.51.100.4"],
+            Some("discovery"),
+            Cause::Attack,
+        ));
+        h.add(ev(
+            200,
+            "10.0.0.5",
+            "f-lat",
+            &["ja4:tool"],
+            Some("lateral-movement"),
+            Cause::Attack,
+        ));
         h.add(ev(250, "10.0.9.9", "f-dns", &[], None, Cause::Fault));
-        h.add(ev(900_000, "10.0.3.3", "f-far", &["other"], None, Cause::Unknown));
+        h.add(ev(
+            900_000,
+            "10.0.3.3",
+            "f-far",
+            &["other"],
+            None,
+            Cause::Unknown,
+        ));
         let (host, ts) = h.patient_zero("ja4:tool").unwrap();
         assert_eq!((host, ts), ("10.0.0.5", 200));
         assert_eq!(h.hits("ja4:tool").len(), 2);
         assert_eq!(h.host_timeline("10.0.0.5").len(), 2);
         let incidents = h.incidents(3600);
-        let main = incidents.iter().find(|i| i.findings.contains(&"f-c2".to_string())).unwrap();
-        assert!(main.findings.contains(&"f-scan".to_string()) && main.findings.contains(&"f-lat".to_string()));
-        assert_eq!(main.phases, vec!["discovery", "lateral-movement", "command-and-control"]);
+        let main = incidents
+            .iter()
+            .find(|i| i.findings.contains(&"f-c2".to_string()))
+            .unwrap();
+        assert!(
+            main.findings.contains(&"f-scan".to_string())
+                && main.findings.contains(&"f-lat".to_string())
+        );
+        assert_eq!(
+            main.phases,
+            vec!["discovery", "lateral-movement", "command-and-control"]
+        );
         assert_eq!(main.cause, Cause::Attack);
         assert_eq!(main.first_finding, "f-scan");
         // porucha na jinem hostu bez sdileni nepatri k incidentu a vzdaleny nalez take ne

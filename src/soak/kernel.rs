@@ -15,7 +15,7 @@ use std::{
 use chrono::{DateTime, Utc};
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     ops::NftExecutor,
     soak::{rng::Rng, traffic::BlockOracle, traffic::ts},
 };
@@ -162,7 +162,9 @@ impl NftExecutor for SimKernel {
         let target_set = args.get(4).map(String::as_str).unwrap_or("");
         if !target_set.starts_with("blocked_ips") {
             state.commands_failed += 1;
-            return Err(SalticusError::Processing(format!("neznamy set {target_set}")));
+            return Err(SalticusError::Processing(format!(
+                "neznamy set {target_set}"
+            )));
         }
         let Some((ip, timeout)) = args.last().and_then(|a| parse_element(a)) else {
             state.commands_failed += 1;

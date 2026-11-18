@@ -9,7 +9,7 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, params};
 
-use crate::error::{SalticusError, Result};
+use crate::error::{Result, SalticusError};
 
 pub const MAX_DAYS: i64 = 30;
 

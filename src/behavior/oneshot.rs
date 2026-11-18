@@ -82,7 +82,12 @@ pub fn detect(
             continue;
         };
         let rel = rels
-            .entry((src.to_string(), flow.dst_ip.clone(), flow.proto.clone(), port))
+            .entry((
+                src.to_string(),
+                flow.dst_ip.clone(),
+                flow.proto.clone(),
+                port,
+            ))
             .or_default();
         let o = flow.orig_bytes.unwrap_or(0) as f64;
         let r = flow.resp_bytes.unwrap_or(0) as f64;
@@ -247,7 +252,19 @@ mod tests {
         // zname vztah mlci
         let mut learned = profile.clone();
         learned.learn(many.iter(), &Default::default(), now, &Default::default());
-        assert!(detect(&learned, &prevalence, &t, &many, now + 1800, true, false, true).is_empty());
+        assert!(
+            detect(
+                &learned,
+                &prevalence,
+                &t,
+                &many,
+                now + 1800,
+                true,
+                false,
+                true
+            )
+            .is_empty()
+        );
         // mlady host se nehodnoti
         let young = HostProfiles::default();
         assert!(detect(&young, &prevalence, &t, &big, now, true, false, true).is_empty());

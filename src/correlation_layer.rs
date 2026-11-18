@@ -57,9 +57,10 @@ pub fn tactic_of(finding_type: &str) -> Option<&'static str> {
     Some(match finding_type {
         "scan_attempts" | "port_scan" | "dns_zone_enumeration" | "network_discovery" => "discovery",
         "beacon_periodic" | "dns_tunnel_names" | "icmp_payload_anomaly" => "command-and-control",
-        "tls_rare_transfer" | "novel_bulk_transfer" | "egress_volume_anomaly" | "novel_persistent_peer" => {
-            "exfiltration"
-        }
+        "tls_rare_transfer"
+        | "novel_bulk_transfer"
+        | "egress_volume_anomaly"
+        | "novel_persistent_peer" => "exfiltration",
         "lateral_movement" | "novel_fanout" => "lateral-movement",
         "exploit_attempt" | "suricata_alert" | "ids_alert" => "initial-access",
         "credential_stuffing" | "ssh_bruteforce" => "credential-access",
@@ -71,7 +72,10 @@ pub fn tactic_of(finding_type: &str) -> Option<&'static str> {
 pub fn is_fault(finding_type: &str) -> bool {
     matches!(
         finding_type,
-        "service_unreachable" | "connection_timeout_burst" | "service_overload_risk" | "identification_gap"
+        "service_unreachable"
+            | "connection_timeout_burst"
+            | "service_overload_risk"
+            | "identification_gap"
     )
 }
 
@@ -135,7 +139,9 @@ pub fn run(
     let lik = competing::measured_static();
     let costs = Costs::default();
     for f in findings {
-        let Some(host) = f.host_key.clone() else { continue };
+        let Some(host) = f.host_key.clone() else {
+            continue;
+        };
         let mut indicators = ips_in(&f.title);
         for e in &f.evidence {
             for ip in ips_in(e) {
@@ -165,7 +171,11 @@ pub fn run(
         // nova rozhodnuti se zapisuji, pozdejsi se starsim rozhodnutim se prehodnoti
         if ledger.get(&d.finding_id).is_some() {
             let known = ledger.get(&d.finding_id).map_or(0, |r| r.evidence.len());
-            let added: Vec<Obs> = evidence.iter().skip(known.min(evidence.len())).copied().collect();
+            let added: Vec<Obs> = evidence
+                .iter()
+                .skip(known.min(evidence.len()))
+                .copied()
+                .collect();
             if let Some(entry) = ledger.reassess(
                 &d.finding_id,
                 &added,
@@ -183,20 +193,37 @@ pub fn run(
             let observations: Vec<(CheckKind, Result3, String)> = d
                 .steps
                 .iter()
-                .filter_map(|(c, tag)| competing_kind(*c).map(|k| (k, result_of(tag), format!("{} {tag}", c.label()))))
+                .filter_map(|(c, tag)| {
+                    competing_kind(*c).map(|k| (k, result_of(tag), format!("{} {tag}", c.label())))
+                })
                 .collect();
             let all_kinds: Vec<CheckKind> = CheckKind::ALL.to_vec();
             let tried: Vec<CheckKind> = observations.iter().map(|o| o.0).collect();
             let unavailable: Vec<(CheckKind, String)> = all_kinds
                 .into_iter()
-                .filter(|k| !tried.contains(k) && matches!(k, CheckKind::TlsFingerprint | CheckKind::DnsPivot | CheckKind::EndpointTelemetry))
-                .map(|k| (k, "bez dat (zdroj neni pripojen nebo nema pokryti)".to_string()))
+                .filter(|k| {
+                    !tried.contains(k)
+                        && matches!(
+                            k,
+                            CheckKind::TlsFingerprint
+                                | CheckKind::DnsPivot
+                                | CheckKind::EndpointTelemetry
+                        )
+                })
+                .map(|k| {
+                    (
+                        k,
+                        "bez dat (zdroj neni pripojen nebo nema pokryti)".to_string(),
+                    )
+                })
                 .collect();
             let obs: Vec<Obs> = obs_of(&d.steps);
             let assessment = competing::assess(prior, &obs, &|_| true, lik, &costs, None);
             let blind = coverage.silent_hosts.iter().any(|h| *h == d.host_ip)
                 || coverage.dark_segments.iter().any(|s| {
-                    d.host_ip.rsplit_once('.').is_some_and(|(p, _)| s.starts_with(p))
+                    d.host_ip
+                        .rsplit_once('.')
+                        .is_some_and(|(p, _)| s.starts_with(p))
                 });
             out.case_files.push(case_file::build(
                 &d.finding_id,
@@ -248,9 +275,24 @@ mod tests {
             finding("b", "beacon_periodic", "10.0.0.7", "na 198.51.100.4"),
             finding("c", "service_unreachable", "10.0.9.9", "cil 10.0.9.1"),
         ];
-        let out = run(&mut h, &mut l, &f, &[], &CoverageStatus::default(), 0.2, 1000);
-        assert_eq!(out.incidents.len(), 1, "porucha na jinem hostu bez sdileni je mimo");
-        assert_eq!(out.incidents[0].phases, vec!["discovery", "command-and-control"]);
+        let out = run(
+            &mut h,
+            &mut l,
+            &f,
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            1000,
+        );
+        assert_eq!(
+            out.incidents.len(),
+            1,
+            "porucha na jinem hostu bez sdileni je mimo"
+        );
+        assert_eq!(
+            out.incidents[0].phases,
+            vec!["discovery", "command-and-control"]
+        );
         assert_eq!(out.incidents[0].cause, Cause::Attack);
     }
 }

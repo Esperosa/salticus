@@ -232,7 +232,9 @@ pub fn attach_x509(tls: &mut [TlsMeta], x509: &[HashMap<String, String>]) {
 /// Zeek `dns.log`. Jeden řádek = jedna výměna (dotaz s odpovědí, nebo bez ní).
 pub fn dns_from_zeek(row: &HashMap<String, String>) -> Option<DnsMeta> {
     let ts = parse_ts(row.get("ts")?)?;
-    let qname = field(row, &["query"])?.trim_end_matches('.').to_ascii_lowercase();
+    let qname = field(row, &["query"])?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
     let answers = field(row, &["answers"])
         .map(|a| a.split(',').filter(|s| !s.is_empty()).count() as u32)
         .unwrap_or(0);
@@ -241,7 +243,9 @@ pub fn dns_from_zeek(row: &HashMap<String, String>) -> Option<DnsMeta> {
         src_ip: field(row, &["id.orig_h"])?,
         dst_ip: field(row, &["id.resp_h"])?,
         qname,
-        qtype: field(row, &["qtype_name"]).unwrap_or_else(|| "?".into()).to_ascii_uppercase(),
+        qtype: field(row, &["qtype_name"])
+            .unwrap_or_else(|| "?".into())
+            .to_ascii_uppercase(),
         rcode: field(row, &["rcode_name"]),
         answers,
     })
@@ -316,7 +320,9 @@ pub fn from_eve_line(line: &str) -> Option<L7Event> {
             dst_ip: dst,
             host: field(&row, &["http.hostname"]).map(|s| s.to_ascii_lowercase()),
             method: field(&row, &["http.http_method"]),
-            uri_len: field(&row, &["http.url"]).map(|u| u.len() as u32).unwrap_or(0),
+            uri_len: field(&row, &["http.url"])
+                .map(|u| u.len() as u32)
+                .unwrap_or(0),
             user_agent: field(&row, &["http.http_user_agent"]),
             status: field(&row, &["http.status"]).and_then(|s| s.parse().ok()),
             resp_len: field(&row, &["http.length"]).and_then(|s| s.parse().ok()),
@@ -446,24 +452,42 @@ mod tests {
     /// pres `cert_chain_fps` a DNS. Zachycuje rozdil proti dokumentaci (fuid vs. fingerprint).
     #[test]
     fn real_zeek_logs_parse_and_join_certificates() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/zeek_real");
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/zeek_real");
         let tls = load_zeek_dir(&root.join("chrome-34-google"), 0, i64::MAX / 4);
         let handshakes: Vec<&TlsMeta> = tls
             .iter()
-            .filter_map(|e| if let L7Event::Tls(t) = e { Some(t) } else { None })
+            .filter_map(|e| {
+                if let L7Event::Tls(t) = e {
+                    Some(t)
+                } else {
+                    None
+                }
+            })
             .collect();
         assert!(!handshakes.is_empty());
-        assert!(handshakes.iter().any(|t| t.sni.as_deref() == Some("google.de")));
         assert!(
-            handshakes.iter().any(|t| t.not_before.is_some() && t.not_after.is_some()),
+            handshakes
+                .iter()
+                .any(|t| t.sni.as_deref() == Some("google.de"))
+        );
+        assert!(
+            handshakes
+                .iter()
+                .any(|t| t.not_before.is_some() && t.not_after.is_some()),
             "x509 se musi spojit pres fingerprint"
         );
         let dns = load_zeek_dir(&root.join("dns-edns-ecs"), 0, i64::MAX / 4);
-        assert!(dns.iter().any(|e| matches!(e, L7Event::Dns(d) if d.qname == "ns1.weberdns.de")));
+        assert!(
+            dns.iter()
+                .any(|e| matches!(e, L7Event::Dns(d) if d.qname == "ns1.weberdns.de"))
+        );
         let txt = load_zeek_dir(&root.join("tcp-txt-character-strings-cap"), 0, i64::MAX / 4);
-        assert!(txt.iter().any(|e| matches!(e, L7Event::Dns(d) if d.qtype == "TXT")));
+        assert!(
+            txt.iter()
+                .any(|e| matches!(e, L7Event::Dns(d) if d.qtype == "TXT"))
+        );
     }
-
 
     const EVE_TLS: &str = r#"{"timestamp":"2026-01-05T10:00:01.000000+0000","event_type":"tls","src_ip":"10.0.0.5","src_port":50000,"dest_ip":"203.0.113.9","dest_port":443,"tls":{"sni":"Files.Example.net","version":"TLS 1.3","notbefore":"2026-01-01T00:00:00","notafter":"2026-04-01T00:00:00","issuerdn":"CN=Test CA","ja3":{"hash":"abcdef"},"ja4":"t13d1516h2_x_y"}}"#;
     const EVE_DNS3: &str = r#"{"timestamp":"2026-01-05T10:00:02+00:00","event_type":"dns","src_ip":"198.51.100.4","dest_ip":"10.0.0.2","dns":{"type":"answer","rcode":"NXDOMAIN","queries":[{"rrname":"A1.corp.example.","rrtype":"AXFR"}],"answers":[]}}"#;
@@ -486,13 +510,19 @@ mod tests {
         let Some(L7Event::Dns(d)) = from_eve_line(old) else {
             panic!("dns2");
         };
-        assert_eq!((d.qname.as_str(), d.qtype.as_str()), ("x.example.com", "TXT"));
+        assert_eq!(
+            (d.qname.as_str(), d.qtype.as_str()),
+            ("x.example.com", "TXT")
+        );
     }
 
     #[test]
     fn zeek_rows_and_x509_join() {
         let row = |pairs: &[(&str, &str)]| -> HashMap<String, String> {
-            pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
         };
         let ssl = row(&[
             ("ts", "1767607200.5"),
@@ -526,7 +556,10 @@ mod tests {
             ("answers", "1.2.3.4,5.6.7.8"),
         ]);
         let d = dns_from_zeek(&dns).unwrap();
-        assert_eq!((d.qname.as_str(), d.qtype.as_str(), d.answers), ("www.example.com", "A", 2));
+        assert_eq!(
+            (d.qname.as_str(), d.qtype.as_str(), d.answers),
+            ("www.example.com", "A", 2)
+        );
     }
 
     #[test]
@@ -548,13 +581,19 @@ mod tests {
             state
         };
         let seeds = [EVE_TLS, EVE_DNS3, r#"{"ts":1.5,"id.orig_h":"1.1.1.1"}"#];
-        let alphabet: Vec<char> = "{}[]\":,.-_0123456789abcXYZ \t\\\u{e9}\u{4e2d}".chars().collect();
+        let alphabet: Vec<char> = "{}[]\":,.-_0123456789abcXYZ \t\\\u{e9}\u{4e2d}"
+            .chars()
+            .collect();
         let mut parsed = 0u32;
         for round in 0..20_000u32 {
             let mut text: Vec<char> = if round % 3 == 0 {
-                (0..(next() % 200)).map(|_| alphabet[(next() % alphabet.len() as u64) as usize]).collect()
+                (0..(next() % 200))
+                    .map(|_| alphabet[(next() % alphabet.len() as u64) as usize])
+                    .collect()
             } else {
-                seeds[(next() % seeds.len() as u64) as usize].chars().collect()
+                seeds[(next() % seeds.len() as u64) as usize]
+                    .chars()
+                    .collect()
             };
             if round % 3 != 0 && !text.is_empty() {
                 for _ in 0..(next() % 6) {
@@ -582,7 +621,11 @@ mod tests {
                 let _ = from_zeek_json_line(log, &line);
             }
             if let Some(map) = flatten_json_line(&line) {
-                let _ = (tls_from_zeek(&map), dns_from_zeek(&map), http_from_zeek(&map));
+                let _ = (
+                    tls_from_zeek(&map),
+                    dns_from_zeek(&map),
+                    http_from_zeek(&map),
+                );
             }
         }
         assert!(parsed > 0, "fuzz ma obcas zachovat platny radek");

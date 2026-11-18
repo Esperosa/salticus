@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 
-use crate::error::{SalticusError, Result};
+use crate::error::{Result, SalticusError};
 use crate::findings::generate_findings;
 use crate::hypothesis::{SecurityHypothesis, build_hypothesis};
 use crate::identity::IdentityMatch;

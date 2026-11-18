@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use ipnet::IpNet;
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::{HostReport, NormalizedEvent},
 };
 
@@ -145,9 +145,11 @@ pub(crate) fn load_and_normalize_with_behavior(
         flows.sample_level = split.sample_level;
     }
     if let Some(path) = &sources.suricata_eve {
-        flows
-            .l7
-            .extend(crate::l7::load_eve_file(path, start.timestamp(), end.timestamp()));
+        flows.l7.extend(crate::l7::load_eve_file(
+            path,
+            start.timestamp(),
+            end.timestamp(),
+        ));
     }
     let known_services = hosts
         .iter()

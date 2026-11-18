@@ -732,7 +732,12 @@ fn plan_for(input: &CaseInput, secret: u64, policy: &LadderPolicy) -> VecDeque<C
                     )
                 })
                 .unwrap_or(0.0);
-            return (wait_last, 0u8, std::cmp::Reverse((score * 1e9) as u64), mix(salt ^ hash_text(check.label())));
+            return (
+                wait_last,
+                0u8,
+                std::cmp::Reverse((score * 1e9) as u64),
+                mix(salt ^ hash_text(check.label())),
+            );
         }
         (
             wait_last,
@@ -1514,9 +1519,13 @@ fn evaluate(
             // chráněný nález: provozní vysvětlení není důkaz neškodnosti
             Some(d) if policy.protect && input.is_protected() => {
                 let _ = d;
-                Outcome::Undetermined("chraneny nalez: provozni telemetrie neni dukaz neskodnosti".into())
+                Outcome::Undetermined(
+                    "chraneny nalez: provozni telemetrie neni dukaz neskodnosti".into(),
+                )
             }
-            Some(d) if matches!(d.class.as_str(), "porucha" | "zmena") && d.catalog_id.is_some() => {
+            Some(d)
+                if matches!(d.class.as_str(), "porucha" | "zmena") && d.catalog_id.is_some() =>
+            {
                 Outcome::Evidence {
                     lr: lr.ops_fault,
                     detail: format!(
@@ -1540,7 +1549,9 @@ fn evaluate(
                     detail: format!("TLS a DNS: {detail}"),
                 },
                 L7Signal::Benign(_) if policy.protect && input.is_protected() => {
-                    Outcome::Undetermined("chraneny nalez: metadata nejsou dukaz neskodnosti".into())
+                    Outcome::Undetermined(
+                        "chraneny nalez: metadata nejsou dukaz neskodnosti".into(),
+                    )
                 }
                 L7Signal::Benign(detail) => Outcome::Evidence {
                     lr: lr.l7_benign,
@@ -2220,7 +2231,11 @@ mod tests {
         let decision = run_until_decided(&mut ladder, &mut env);
         assert_ne!(decision.status, Status::Refuted, "{}", decision.reason);
         assert_eq!(decision.status, Status::Escalated);
-        assert!(decision.reason.contains("pozitivni dukaz"), "{}", decision.reason);
+        assert!(
+            decision.reason.contains("pozitivni dukaz"),
+            "{}",
+            decision.reason
+        );
         assert_eq!(ladder.stats.strict_escalated, 1);
         // s kontextem (kalendar) je dukaz ze dvou nezavislych skupin, jedna silna
         let mut ladder = Ladder::new(
@@ -2268,7 +2283,10 @@ mod tests {
     /// a plan v rezimu `competing` zacina kontrolou s nejvyssi informaci na cenu.
     #[test]
     fn l7_check_is_planned_only_when_enabled_and_competing_orders_by_information() {
-        let off = checks_for(&input("tls_rare_transfer", "10.0.0.5", &[]), &LadderPolicy::default());
+        let off = checks_for(
+            &input("tls_rare_transfer", "10.0.0.5", &[]),
+            &LadderPolicy::default(),
+        );
         assert!(!off.contains(&CheckId::L7));
         let policy = LadderPolicy {
             l7: true,
@@ -2285,7 +2303,11 @@ mod tests {
         let mut env = Env::default();
         ladder.open(input("tls_rare_transfer", "10.0.0.5", &[]), 0);
         let d = run_until_decided(&mut ladder, &mut env);
-        assert!(d.steps.iter().any(|(c, tag)| *c == CheckId::L7 && *tag == "unavailable"));
+        assert!(
+            d.steps
+                .iter()
+                .any(|(c, tag)| *c == CheckId::L7 && *tag == "unavailable")
+        );
     }
 
     #[test]
@@ -2542,7 +2564,13 @@ mod tests {
         };
         let d = decide(ops_policy(), "service_unreachable", &mut env);
         assert_ne!(d.status, Status::Refuted, "{}", d.reason);
-        assert!(d.steps.iter().any(|(c, t)| *c == CheckId::Ops && *t == "benign"), "{:?}", d.steps);
+        assert!(
+            d.steps
+                .iter()
+                .any(|(c, t)| *c == CheckId::Ops && *t == "benign"),
+            "{:?}",
+            d.steps
+        );
     }
 
     /// Chybejici telemetrie je nedostupna (nic neznamena), neurceny nebo bez dukazu se neuzna.
@@ -2556,7 +2584,9 @@ mod tests {
             let d = decide(ops_policy(), "service_unreachable", &mut env);
             assert_ne!(d.status, Status::Refuted, "{}", d.reason);
             assert!(
-                d.steps.iter().any(|(c, t)| *c == CheckId::Ops && *t == "unavailable"),
+                d.steps
+                    .iter()
+                    .any(|(c, t)| *c == CheckId::Ops && *t == "unavailable"),
                 "{:?}",
                 d.steps
             );
@@ -2578,7 +2608,11 @@ mod tests {
         };
         let d = decide(ops_policy(), "suricata_alert", &mut env);
         assert_ne!(d.status, Status::Refuted, "{}", d.reason);
-        assert!(!d.steps.iter().any(|(c, t)| *c == CheckId::Ops && *t == "benign"));
+        assert!(
+            !d.steps
+                .iter()
+                .any(|(c, t)| *c == CheckId::Ops && *t == "benign")
+        );
     }
 
     /// Krok 14: proces ze seznamu povolenych (schvaleni vlastnikem + potvrzeni procesem) jsou dve
@@ -2593,7 +2627,9 @@ mod tests {
             ..Default::default()
         };
         let mk = || Env {
-            endpoint: Some(EndpointSignal::Allowed("a: veeamagent.exe (vlastnik sprava-it, do 1)".into())),
+            endpoint: Some(EndpointSignal::Allowed(
+                "a: veeamagent.exe (vlastnik sprava-it, do 1)".into(),
+            )),
             ..Env::default()
         };
         let d = decide(strict, "inductive_volume_anomaly", &mut mk());

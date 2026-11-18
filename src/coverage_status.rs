@@ -150,7 +150,10 @@ impl SensorCoverage {
         let known: std::collections::BTreeSet<&str> =
             inventory.iter().map(String::as_str).collect();
         for ip in active {
-            if !known.contains(ip) && !self.seen.contains_key(ip) && self.seen.len() >= self.max_hosts {
+            if !known.contains(ip)
+                && !self.seen.contains_key(ip)
+                && self.seen.len() >= self.max_hosts
+            {
                 continue;
             }
             let e = self.seen.entry(ip.to_string()).or_insert((0, 0));
@@ -189,7 +192,6 @@ impl SensorCoverage {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,7 +226,6 @@ mod tests {
         let (s, _) = cov.observe(["10.0.2.1"].into_iter(), &["10.0.9.9".to_string()]);
         assert!(s.is_empty());
     }
-
 
     #[test]
     fn full_coverage_is_not_degraded_and_gaps_are_named() {

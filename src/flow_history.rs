@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use rusqlite::{Connection, params};
 
-use crate::error::{SalticusError, Result};
+use crate::error::{Result, SalticusError};
 
 pub const SLOTS: usize = 168;
 const MAX_KEYS: usize = 60_000;

@@ -9,7 +9,7 @@ use ipnet::IpNet;
 use roxmltree::Document;
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::{Confidence, HostReport},
 };
 

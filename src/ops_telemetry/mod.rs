@@ -238,9 +238,7 @@ impl OpsStore {
 
 /// Krok 15 (P3, `ops_blast`): adresy zařízení, na nichž závisí ostatní hosté (brána,
 /// přepínač, AP, DNS, VPN): signál o nich platí pro celou síť.
-pub fn infra_hosts(
-    classes: &HashMap<String, crate::device_class::DeviceClass>,
-) -> HashSet<String> {
+pub fn infra_hosts(classes: &HashMap<String, crate::device_class::DeviceClass>) -> HashSet<String> {
     use crate::device_class::DeviceKind as K;
     classes
         .iter()
@@ -601,7 +599,13 @@ pub fn diagnose(
                 continue;
             }
             let coverage = keys.len() as f64 / known_present;
-            ranked.push((hit / (hit + miss), e.id.as_str(), e.category.as_str(), keys, coverage));
+            ranked.push((
+                hit / (hit + miss),
+                e.id.as_str(),
+                e.category.as_str(),
+                keys,
+                coverage,
+            ));
         }
     }
     if ranked.is_empty() && symptom_excluded {

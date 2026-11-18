@@ -64,12 +64,24 @@ impl Hypothesis {
     /// Testovatelná předpověď: co musí platit v telemetrii, když hypotéza platí.
     pub fn prediction(self) -> &'static str {
         match self {
-            Hypothesis::Attack => "cil nebo klient je pro hosta novy; novy otisk klienta; chybi zaznam v kalendari",
-            Hypothesis::Backup => "stabilni cil s historii hosta; nahrani v okne zalohy; zaznam v kalendari",
-            Hypothesis::Update => "cil zna vice hostu (flotila); stazeni; podepsany proces na hostu",
-            Hypothesis::ScheduledScan => "zdroj je v registru skeneru; okno schvaleno; vsechny zdroje nalezu patri skeneru",
-            Hypothesis::Fault => "vice klientu selhava naraz; sluzba nebo linka nedostupna; zadny novy protejsek",
-            Hypothesis::Misconfig => "jeden host opakuje stejny nezdareny vzor; bez noveho protejsku",
+            Hypothesis::Attack => {
+                "cil nebo klient je pro hosta novy; novy otisk klienta; chybi zaznam v kalendari"
+            }
+            Hypothesis::Backup => {
+                "stabilni cil s historii hosta; nahrani v okne zalohy; zaznam v kalendari"
+            }
+            Hypothesis::Update => {
+                "cil zna vice hostu (flotila); stazeni; podepsany proces na hostu"
+            }
+            Hypothesis::ScheduledScan => {
+                "zdroj je v registru skeneru; okno schvaleno; vsechny zdroje nalezu patri skeneru"
+            }
+            Hypothesis::Fault => {
+                "vice klientu selhava naraz; sluzba nebo linka nedostupna; zadny novy protejsek"
+            }
+            Hypothesis::Misconfig => {
+                "jeden host opakuje stejny nezdareny vzor; bez noveho protejsku"
+            }
         }
     }
 }
@@ -356,19 +368,28 @@ mod tests {
         let base = posterior_attack(0.3, &[], &lik);
         let nothing = posterior_attack(
             0.3,
-            &[obs(CheckKind::Reputation, Result3::Nothing), obs(CheckKind::CaseHistory, Result3::Nothing)],
+            &[
+                obs(CheckKind::Reputation, Result3::Nothing),
+                obs(CheckKind::CaseHistory, Result3::Nothing),
+            ],
             &lik,
         );
         assert!((base - nothing).abs() < 1e-12);
         // dva podezrele dukazy ze stejne skupiny (Behaviour) mene nez ze dvou ruznych
         let same = posterior_attack(
             0.3,
-            &[obs(CheckKind::PeerCompare, Result3::Suspicious), obs(CheckKind::CaseHistory, Result3::Suspicious)],
+            &[
+                obs(CheckKind::PeerCompare, Result3::Suspicious),
+                obs(CheckKind::CaseHistory, Result3::Suspicious),
+            ],
             &lik,
         );
         let diff = posterior_attack(
             0.3,
-            &[obs(CheckKind::PeerCompare, Result3::Suspicious), obs(CheckKind::Reputation, Result3::Suspicious)],
+            &[
+                obs(CheckKind::PeerCompare, Result3::Suspicious),
+                obs(CheckKind::Reputation, Result3::Suspicious),
+            ],
             &lik,
         );
         assert!(diff > same, "{diff} > {same}");
@@ -382,7 +403,10 @@ mod tests {
         assert_eq!(best_action(0.001, &costs).0, Action::CloseBenign);
         assert_eq!(best_action(0.95, &costs).0, Action::ConfirmAttack);
         // levnejsi omyl zmeni hranici
-        let lenient = Costs { miss: 20.0, ..costs };
+        let lenient = Costs {
+            miss: 20.0,
+            ..costs
+        };
         assert_eq!(best_action(0.02, &lenient).0, Action::CloseBenign);
     }
 
@@ -407,11 +431,19 @@ mod tests {
         let avail = |_k: CheckKind| true;
         let lik = sharp();
         // nejisty pripad (posterior 0,01): jedine ostra kontrola ma kladne EVOI
-        let (kind, gain) = next_by_evoi(0.01, &[], &avail, &lik, &costs).expect("kontrola se vyplati");
+        let (kind, gain) =
+            next_by_evoi(0.01, &[], &avail, &lik, &costs).expect("kontrola se vyplati");
         assert_eq!(kind, CheckKind::ConfigContext);
         assert!(gain > 0.3, "{gain}");
         // kontrola bez rozlisovaci schopnosti (neutralni tabulka) EVOI nema
-        let neutral = evoi(0.01, &[], CheckKind::Timing, &lik, &costs, CheckKind::Timing.cost().0);
+        let neutral = evoi(
+            0.01,
+            &[],
+            CheckKind::Timing,
+            &lik,
+            &costs,
+            CheckKind::Timing.cost().0,
+        );
         assert!(neutral < 1e-9, "{neutral}");
         // zmerene tabulky: pri cene omylu 200 : 1 se zadna z beznych kontrol nevyplati,
         // program se zastavi a predava cloveku (poctivy vysledek, ne chyba)
@@ -423,7 +455,14 @@ mod tests {
     #[test]
     fn assessment_reports_all_hypotheses_and_the_deciding_check() {
         let lik = sharp();
-        let a = assess(0.01, &[], &|_| true, &lik, &Costs::default(), Some(Hypothesis::Backup));
+        let a = assess(
+            0.01,
+            &[],
+            &|_| true,
+            &lik,
+            &Costs::default(),
+            Some(Hypothesis::Backup),
+        );
         assert_eq!(a.hypotheses.len(), 1 + Hypothesis::BENIGN.len());
         let total: f64 = a.hypotheses.iter().map(|(_, p)| p).sum();
         assert!((total - 1.0).abs() < 1e-9);

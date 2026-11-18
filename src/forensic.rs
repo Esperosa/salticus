@@ -170,14 +170,34 @@ impl Broker {
     pub fn execute(&mut self, id: u64, exec: &dyn Executor, now: i64) -> Result<String, String> {
         let (request, ok) = {
             let req = self.find(id).ok_or("neznama zadost")?;
-            (req.clone(), req.status == Status::Approved && now <= req.expires)
+            (
+                req.clone(),
+                req.status == Status::Approved && now <= req.expires,
+            )
         };
         if !ok {
-            self.log(now, id, "execute_refused", "engine", "bez schvaleni nebo po expiraci");
+            self.log(
+                now,
+                id,
+                "execute_refused",
+                "engine",
+                "bez schvaleni nebo po expiraci",
+            );
             return Err("provedeni odmitnuto: neni schvaleno nebo vyprselo".into());
         }
-        if !self.policy.allowed_artifacts.iter().any(|a| *a == request.artifact) {
-            self.log(now, id, "execute_refused", "engine", "artefakt mimo katalog");
+        if !self
+            .policy
+            .allowed_artifacts
+            .iter()
+            .any(|a| *a == request.artifact)
+        {
+            self.log(
+                now,
+                id,
+                "execute_refused",
+                "engine",
+                "artefakt mimo katalog",
+            );
             return Err("artefakt mimo katalog".into());
         }
         let result = exec.run(&request);
@@ -214,8 +234,17 @@ mod tests {
     }
 
     fn open(b: &mut Broker) -> u64 {
-        b.request(Kind::PcapSlice, vec!["10.0.0.5".into()], 0, 600, "pcap_ring_slice", "analytik-a", 3600, 10)
-            .unwrap()
+        b.request(
+            Kind::PcapSlice,
+            vec!["10.0.0.5".into()],
+            0,
+            600,
+            "pcap_ring_slice",
+            "analytik-a",
+            3600,
+            10,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -225,9 +254,15 @@ mod tests {
         let id = open(&mut b);
         assert!(b.execute(id, &exec, 20).is_err());
         assert_eq!(exec.0.get(), 0, "bez schvaleni se nic nespusti");
-        assert!(b.approve(id, "analytik-a", 20).is_err(), "zadatel neschvaluje sam sebe");
+        assert!(
+            b.approve(id, "analytik-a", 20).is_err(),
+            "zadatel neschvaluje sam sebe"
+        );
         b.approve(id, "vedouci-b", 20).unwrap();
-        assert!(b.execute(id, &exec, 10 + 3601).is_err(), "po expiraci se nespusti");
+        assert!(
+            b.execute(id, &exec, 10 + 3601).is_err(),
+            "po expiraci se nespusti"
+        );
         assert_eq!(exec.0.get(), 0);
         let id2 = open(&mut b);
         b.approve(id2, "vedouci-b", 30).unwrap();
@@ -242,10 +277,58 @@ mod tests {
     fn free_text_commands_and_out_of_policy_scopes_are_rejected() {
         let mut b = Broker::default();
         // obsah logu nelze pouzit jako prikaz: artefakt musi byt z katalogu
-        assert!(b.request(Kind::EdrTriage, vec!["h".into()], 0, 10, "rm -rf /; curl evil", "a", 60, 0).is_err());
-        assert!(b.request(Kind::PcapSlice, vec![], 0, 10, "pcap_ring_slice", "a", 60, 0).is_err());
-        assert!(b.request(Kind::PcapSlice, vec!["h".into()], 0, 10 * 86_400, "pcap_ring_slice", "a", 60, 0).is_err());
-        assert!(b.request(Kind::PcapSlice, vec!["h".into()], 0, 10, "pcap_ring_slice", " ", 60, 0).is_err());
+        assert!(
+            b.request(
+                Kind::EdrTriage,
+                vec!["h".into()],
+                0,
+                10,
+                "rm -rf /; curl evil",
+                "a",
+                60,
+                0
+            )
+            .is_err()
+        );
+        assert!(
+            b.request(
+                Kind::PcapSlice,
+                vec![],
+                0,
+                10,
+                "pcap_ring_slice",
+                "a",
+                60,
+                0
+            )
+            .is_err()
+        );
+        assert!(
+            b.request(
+                Kind::PcapSlice,
+                vec!["h".into()],
+                0,
+                10 * 86_400,
+                "pcap_ring_slice",
+                "a",
+                60,
+                0
+            )
+            .is_err()
+        );
+        assert!(
+            b.request(
+                Kind::PcapSlice,
+                vec!["h".into()],
+                0,
+                10,
+                "pcap_ring_slice",
+                " ",
+                60,
+                0
+            )
+            .is_err()
+        );
         assert!(b.audit.is_empty());
     }
 }

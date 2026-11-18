@@ -200,7 +200,9 @@ pub fn detect(
     for flow in outbound.iter().chain(internal.iter()) {
         if is_special_dst(&flow.dst_ip) || is_directed_broadcast(&flow.dst_ip) {
             storm_total += 1;
-            *by_src.entry(flow.src_ip.as_deref().unwrap_or("?")).or_default() += 1;
+            *by_src
+                .entry(flow.src_ip.as_deref().unwrap_or("?"))
+                .or_default() += 1;
         }
     }
     let x = (1.0 + storm_total as f64).ln();
@@ -214,7 +216,10 @@ pub fn detect(
     if storm_alarm {
         let mut top: Vec<(&&str, &u32)> = by_src.iter().collect();
         top.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
-        let actor = top.first().map(|(s, _)| (**s).to_string()).unwrap_or_default();
+        let actor = top
+            .first()
+            .map(|(s, _)| (**s).to_string())
+            .unwrap_or_default();
         let evidence: Vec<String> = top
             .iter()
             .take(6)
@@ -440,7 +445,9 @@ pub fn detect(
             let mut by_host: BTreeMap<&str, f64> = BTreeMap::new();
             for f in outbound {
                 let (o, r) = bytes_of(f);
-                *by_host.entry(f.src_ip.as_deref().unwrap_or("?")).or_default() += o + r;
+                *by_host
+                    .entry(f.src_ip.as_deref().unwrap_or("?"))
+                    .or_default() += o + r;
             }
             let mut top: Vec<(&&str, &f64)> = by_host.iter().collect();
             top.sort_by(|a, b| b.1.total_cmp(a.1).then(a.0.cmp(b.0)));
@@ -528,7 +535,15 @@ mod tests {
     #[test]
     fn empty_window_neither_learns_nor_reports() {
         let mut state = BreadthState::default();
-        let out = detect(&mut state, &BreadthThresholds::default(), &[], &[], 100, &no_habit, true);
+        let out = detect(
+            &mut state,
+            &BreadthThresholds::default(),
+            &[],
+            &[],
+            100,
+            &no_habit,
+            true,
+        );
         assert!(out.is_empty() && state.link.history.is_empty());
     }
 
@@ -548,7 +563,10 @@ mod tests {
             .collect();
         let before = state.storm.history.len();
         let out = detect(&mut state, &t, &burst, &[], 1800 * 11, &no_habit, true);
-        assert!(out.iter().any(|f| f.finding.finding_type == "broadcast_storm"));
+        assert!(
+            out.iter()
+                .any(|f| f.finding.finding_type == "broadcast_storm")
+        );
         assert_eq!(state.storm.history.len(), before, "poplach se neuci");
         assert!(
             out[0]
@@ -586,7 +604,16 @@ mod tests {
         let mut got = 0;
         for w in 40..52 {
             let flows = vec![flow("10.0.0.7", "203.0.113.9", 443, 900_000, 1_000)];
-            got += detect(&mut habitual, &t, &flows, &[], 1800 * w, &|_, _, _, _| true, true).len();
+            got += detect(
+                &mut habitual,
+                &t,
+                &flows,
+                &[],
+                1800 * w,
+                &|_, _, _, _| true,
+                true,
+            )
+            .len();
         }
         assert_eq!(got, 0);
     }
@@ -604,7 +631,13 @@ mod tests {
             // sluzba site: na stejny cil odesila pet hostu
             let mut flows = vec![flow("10.0.0.7", "203.0.113.9", 443, 900_000, 1_000)];
             for h in 1..5 {
-                flows.push(flow(&format!("10.0.1.{h}"), "203.0.113.9", 443, 1_000, 1_000));
+                flows.push(flow(
+                    &format!("10.0.1.{h}"),
+                    "203.0.113.9",
+                    443,
+                    1_000,
+                    1_000,
+                ));
             }
             got += detect(&mut state, &t, &flows, &[], 1800 * w, &no_habit, true)
                 .iter()

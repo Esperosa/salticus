@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::{
-    SalticusError, Result, ai, intel,
+    Result, SalticusError, ai, intel,
     model::{
         CveRecord, Finding, HostReport, MonitoringLane, NetworkAsset, RunReport, ServiceReport,
         Severity, TriageAction,
@@ -862,7 +862,9 @@ async fn answer_with_chat_completions(
         .json()
         .await?;
     extract_chat_completion_text(&response).ok_or_else(|| {
-        SalticusError::Processing("OpenAI-compatible helpdesk nevrátil textovou odpověď.".to_string())
+        SalticusError::Processing(
+            "OpenAI-compatible helpdesk nevrátil textovou odpověď.".to_string(),
+        )
     })
 }
 

@@ -22,7 +22,7 @@ use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::Severity,
 };
 
@@ -1180,7 +1180,10 @@ mod tests {
             // novy zdroj u zaznamu, ktery zadny zdroj nemel
             let d = memory.observe(&obs(&k, 10, Severity::Low, 3, &src), None);
             if strict {
-                assert!(d.displayed(), "novy zdroj musi vyvraceny klic znovu otevrit: {d:?}");
+                assert!(
+                    d.displayed(),
+                    "novy zdroj musi vyvraceny klic znovu otevrit: {d:?}"
+                );
             } else {
                 assert_eq!(d, Disposition::Suppressed, "puvodni chovani");
             }
@@ -1197,7 +1200,11 @@ mod tests {
             Disposition::Suppressed,
             "kratce po vyvraceni zustava potlaceno"
         );
-        assert!(memory.observe(&obs(&k, 26 * 60, Severity::Low, 3, &none), None).displayed());
+        assert!(
+            memory
+                .observe(&obs(&k, 26 * 60, Severity::Low, 3, &none), None)
+                .displayed()
+        );
     }
 
     /// Krok 15 (P1): vyvraceni plati pro epizodu. Stejny klic, stejne zdroje a objem po
@@ -1226,7 +1233,11 @@ mod tests {
                 assert_eq!(d, Disposition::Escalated(Escalation::Episode), "{d:?}");
                 assert_eq!(memory.get(&k).unwrap().state, FindingState::Reopened);
             } else {
-                assert_eq!(d, Disposition::Suppressed, "puvodni chovani: potlaceno do 24 h");
+                assert_eq!(
+                    d,
+                    Disposition::Suppressed,
+                    "puvodni chovani: potlaceno do 24 h"
+                );
             }
         }
     }
@@ -1240,12 +1251,19 @@ mod tests {
             redisplay_age_s: 6 * 3600,
             ..MemoryConfig::default()
         });
-        assert_eq!(memory.observe(&obs(&k, 0, Severity::Low, 3, &none), None), Disposition::First);
+        assert_eq!(
+            memory.observe(&obs(&k, 0, Severity::Low, 3, &none), None),
+            Disposition::First
+        );
         assert_eq!(
             memory.observe(&obs(&k, 60, Severity::Low, 3, &none), None),
             Disposition::Suppressed
         );
-        assert!(memory.observe(&obs(&k, 7 * 60, Severity::Low, 3, &none), None).displayed());
+        assert!(
+            memory
+                .observe(&obs(&k, 7 * 60, Severity::Low, 3, &none), None)
+                .displayed()
+        );
         assert_eq!(
             memory.observe(&obs(&k, 7 * 60 + 5, Severity::Low, 3, &none), None),
             Disposition::Suppressed,

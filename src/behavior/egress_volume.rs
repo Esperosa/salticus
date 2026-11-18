@@ -323,8 +323,16 @@ pub fn detect_horizon(
             .push_str(" Pravidlo heuristika-behavior:egress_volume_horizon@v1.");
         out.push(BehaviorFinding {
             finding: f,
-            sources: if top.is_empty() { Vec::new() } else { vec![top.clone()] },
-            targets: if top.is_empty() { Vec::new() } else { vec![(top, port)] },
+            sources: if top.is_empty() {
+                Vec::new()
+            } else {
+                vec![top.clone()]
+            },
+            targets: if top.is_empty() {
+                Vec::new()
+            } else {
+                vec![(top, port)]
+            },
             count: (sum / 1e6).min(u32::MAX as f64) as u32,
             actor: host.clone(),
         });
@@ -429,7 +437,11 @@ mod tests {
             let mut state = EgressVolumeState::default();
             let mut found = Vec::new();
             for w in 0..24 {
-                let bytes = if w >= 21 { 30_000_000 } else { 1_000_000 + w * 1000 };
+                let bytes = if w >= 21 {
+                    30_000_000
+                } else {
+                    1_000_000 + w * 1000
+                };
                 let now = w as i64 * 1800;
                 let single = detect(&mut state, &t, &[up("10.0.0.5", "203.0.113.9", bytes)], now);
                 assert!(single.is_empty(), "okno {w}: jednotlive okno pod prahem");

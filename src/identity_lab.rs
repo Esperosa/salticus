@@ -13,7 +13,7 @@
 use std::process::Command;
 use std::time::Duration;
 
-use crate::error::{SalticusError, Result};
+use crate::error::{Result, SalticusError};
 use crate::model::HostReport;
 
 const SUBNET: &str = "172.31.9.0/24";

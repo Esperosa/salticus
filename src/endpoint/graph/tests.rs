@@ -303,7 +303,9 @@ fn extended_indicators_fire_on_cloud_dns_and_drop_and_run_patterns() {
     }
     let a2 = assess(host, s2.events_of(host), T0 + 60, &p);
     assert!(
-        a2.indicators.iter().any(|i| i.code == "cloud_cli_discovery"),
+        a2.indicators
+            .iter()
+            .any(|i| i.code == "cloud_cli_discovery"),
         "{:?}",
         a2.indicators
     );

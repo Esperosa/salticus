@@ -359,8 +359,10 @@ pub fn detect(
                     continue;
                 }
                 let label = |d: &&DnsMeta| d.qname.split('.').next().unwrap_or("").to_string();
-                let avg_len = items.iter().map(|d| label(d).len() as f64).sum::<f64>() / items.len() as f64;
-                let avg_ent = items.iter().map(|d| name_entropy(&label(d))).sum::<f64>() / items.len() as f64;
+                let avg_len =
+                    items.iter().map(|d| label(d).len() as f64).sum::<f64>() / items.len() as f64;
+                let avg_ent =
+                    items.iter().map(|d| name_entropy(&label(d))).sum::<f64>() / items.len() as f64;
                 let txt = items
                     .iter()
                     .filter(|d| matches!(d.qtype.as_str(), "TXT" | "NULL" | "PRIVATE"))
@@ -508,23 +510,79 @@ mod tests {
         let mut state = L7State::default();
         let now = 1_800_000_000;
         // historie: host zna cil a svuj otisk
-        let hist = vec![tls("10.0.0.5", "198.51.100.1", Some("updates.vendor.example"), "browser", now - 9000, 40000)];
+        let hist = vec![tls(
+            "10.0.0.5",
+            "198.51.100.1",
+            Some("updates.vendor.example"),
+            "browser",
+            now - 9000,
+            40000,
+        )];
         assert!(run(&mut state, &hist, &[], now - 9000).is_empty());
         // znamy cil, velky prenos: ticho (zadny novy cil)
-        let known = vec![tls("10.0.0.5", "198.51.100.1", Some("updates.vendor.example"), "browser", now, 40001)];
-        let big = vec![flow("10.0.0.5", 40001, "198.51.100.1", 500, 30_000_000, now)];
+        let known = vec![tls(
+            "10.0.0.5",
+            "198.51.100.1",
+            Some("updates.vendor.example"),
+            "browser",
+            now,
+            40001,
+        )];
+        let big = vec![flow(
+            "10.0.0.5",
+            40001,
+            "198.51.100.1",
+            500,
+            30_000_000,
+            now,
+        )];
         assert!(run(&mut state, &known, &big, now).is_empty());
         // novy cil, ale otisk hosta a siroce sdileny cil: ticho (zadny druhy rys)
         for h in 0..6 {
-            let other = vec![tls(&format!("10.0.1.{h}"), "198.51.100.7", Some("cdn.popular.example"), "browser", now - 100, 41000)];
+            let other = vec![tls(
+                &format!("10.0.1.{h}"),
+                "198.51.100.7",
+                Some("cdn.popular.example"),
+                "browser",
+                now - 100,
+                41000,
+            )];
             run(&mut state, &other, &[], now - 100);
         }
-        let shared = vec![tls("10.0.0.5", "198.51.100.7", Some("cdn.popular.example"), "browser", now, 40002)];
-        let big2 = vec![flow("10.0.0.5", 40002, "198.51.100.7", 500, 30_000_000, now)];
+        let shared = vec![tls(
+            "10.0.0.5",
+            "198.51.100.7",
+            Some("cdn.popular.example"),
+            "browser",
+            now,
+            40002,
+        )];
+        let big2 = vec![flow(
+            "10.0.0.5",
+            40002,
+            "198.51.100.7",
+            500,
+            30_000_000,
+            now,
+        )];
         assert!(run(&mut state, &shared, &big2, now).is_empty());
         // novy vzacny cil + novy otisk + velky prenos: poplach
-        let evil = vec![tls("10.0.0.5", "203.0.113.50", Some("x8k2.rare.example"), "scripted", now, 40003)];
-        let big3 = vec![flow("10.0.0.5", 40003, "203.0.113.50", 500, 30_000_000, now)];
+        let evil = vec![tls(
+            "10.0.0.5",
+            "203.0.113.50",
+            Some("x8k2.rare.example"),
+            "scripted",
+            now,
+            40003,
+        )];
+        let big3 = vec![flow(
+            "10.0.0.5",
+            40003,
+            "203.0.113.50",
+            500,
+            30_000_000,
+            now,
+        )];
         let found = run(&mut state, &evil, &big3, now);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].finding.finding_type, "tls_rare_transfer");
@@ -541,7 +599,11 @@ mod tests {
                         ts: 1_800_000_000 + i as i64,
                         src_ip: "10.0.0.5".into(),
                         dst_ip: "10.0.0.2".into(),
-                        qname: format!("{:x}q8x2kz9pw1msv7b3n5c4d6f0{}.tun.example", 0x5eed_u64 * (i as u64 + 7), i),
+                        qname: format!(
+                            "{:x}q8x2kz9pw1msv7b3n5c4d6f0{}.tun.example",
+                            0x5eed_u64 * (i as u64 + 7),
+                            i
+                        ),
                         qtype: qtype.into(),
                         rcode: Some("NOERROR".into()),
                         answers: 1,
@@ -551,7 +613,10 @@ mod tests {
         };
         let mut state = L7State::default();
         let txt = run(&mut state, &mk("TXT", 20), &[], 1_800_000_100);
-        assert!(txt.iter().any(|f| f.finding.finding_type == "dns_tunnel_names"));
+        assert!(
+            txt.iter()
+                .any(|f| f.finding.finding_type == "dns_tunnel_names")
+        );
         // dlouha hashovana jmena typu A (CDN) nejsou tunel
         assert!(run(&mut state, &mk("A", 20), &[], 1_800_000_100).is_empty());
         // malo jmen
@@ -576,13 +641,19 @@ mod tests {
                 .collect()
         };
         let mut state = L7State::default();
-        assert_eq!(run(&mut state, &mk(30, true, "A"), &[], 1_800_000_100).len(), 1);
+        assert_eq!(
+            run(&mut state, &mk(30, true, "A"), &[], 1_800_000_100).len(),
+            1
+        );
         // mnoho jmen bez NXDOMAIN a bez prenosu: bezny prekladac
         assert!(run(&mut state, &mk(30, false, "A"), &[], 1_800_000_100).is_empty());
         // malo jmen: ticho
         assert!(run(&mut state, &mk(5, true, "A"), &[], 1_800_000_100).is_empty());
         // AXFR od vnejsiho zdroje: poplach i s jednim dotazem
-        assert_eq!(run(&mut state, &mk(1, false, "AXFR"), &[], 1_800_000_100).len(), 1);
+        assert_eq!(
+            run(&mut state, &mk(1, false, "AXFR"), &[], 1_800_000_100).len(),
+            1
+        );
     }
 }
 
@@ -627,10 +698,11 @@ pub fn view(
             e.2 += 1;
             continue;
         }
-        let new_print = print_of(tls).is_some_and(|p| {
-            host.is_some_and(|h| !h.prints.is_empty() && !h.prints.contains(p))
-        });
-        let young = tls.not_before.is_some_and(|nb| tls.ts - nb < t.young_cert_s);
+        let new_print = print_of(tls)
+            .is_some_and(|p| host.is_some_and(|h| !h.prints.is_empty() && !h.prints.contains(p)));
+        let young = tls
+            .not_before
+            .is_some_and(|nb| tls.ts - nb < t.young_cert_s);
         let selfsigned = matches!((&tls.issuer, &tls.subject), (Some(i), Some(s)) if i == s);
         let _ = now;
         if new_print || young || selfsigned || tls.sni.is_none() {

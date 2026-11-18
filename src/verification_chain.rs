@@ -269,8 +269,7 @@ pub fn next_check(
     if !matches!(current.verdict, Verdict::Undetermined(_)) {
         return None;
     }
-    let done: std::collections::BTreeSet<CheckKind> =
-        observations.iter().map(|o| o.kind).collect();
+    let done: std::collections::BTreeSet<CheckKind> = observations.iter().map(|o| o.kind).collect();
     let used_groups: std::collections::BTreeSet<Group> = observations
         .iter()
         .filter(|o| matches!(o.result, CheckResult::Evidence { .. }))
@@ -282,7 +281,11 @@ pub fn next_check(
         .filter(|k| !done.contains(k) && availability.available(*k))
         .filter(|k| current.spent + k.cost().0 <= policy.budget + 1e-9)
         .map(|k| {
-            let novelty = if used_groups.contains(&k.group()) { 0.5 } else { 1.0 };
+            let novelty = if used_groups.contains(&k.group()) {
+                0.5
+            } else {
+                1.0
+            };
             (k, novelty * k.prior_gain() / (k.cost().0 + 0.05))
         })
         .max_by(|a, b| a.1.total_cmp(&b.1).then(b.0.cmp(&a.0)))
@@ -346,9 +349,15 @@ mod tests {
     #[test]
     fn two_independent_groups_decide() {
         let policy = ChainPolicy::default();
-        let sus = [ev(CheckKind::DnsPivot, 3.0), ev(CheckKind::EndpointTelemetry, 3.0)];
+        let sus = [
+            ev(CheckKind::DnsPivot, 3.0),
+            ev(CheckKind::EndpointTelemetry, 3.0),
+        ];
         assert_eq!(assess(&sus, &policy).verdict, Verdict::Confirmed);
-        let ben = [ev(CheckKind::HostBaseline, -4.0), ev(CheckKind::ConfigContext, -4.0)];
+        let ben = [
+            ev(CheckKind::HostBaseline, -4.0),
+            ev(CheckKind::ConfigContext, -4.0),
+        ];
         assert_eq!(assess(&ben, &policy).verdict, Verdict::Refuted);
     }
 

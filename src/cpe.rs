@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use serde::Deserialize;
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::{Confidence, CpeCandidate, HostReport},
 };
 

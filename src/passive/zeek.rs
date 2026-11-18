@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use ipnet::IpNet;
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::{NormalizedEvent, Severity},
     passive::{
         ConnectionObservation,

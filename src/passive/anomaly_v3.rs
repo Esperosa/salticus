@@ -2077,12 +2077,33 @@ mod tests {
             .map(|(ip, port)| flow("198.51.100.4", ip, *port, 1, 0.0, "S0", 0))
             .collect();
         let has = |out: &V3Output| out.events.iter().any(|e| e.event_type == "scan_attempts");
-        assert!(!has(&run(&scan, &known, &mut DetectorState::default(), RECALL, 0, &none)));
-        assert!(has(&run(&scan, &known, &mut DetectorState::default(), fresh, 0, &none)));
+        assert!(!has(&run(
+            &scan,
+            &known,
+            &mut DetectorState::default(),
+            RECALL,
+            0,
+            &none
+        )));
+        assert!(has(&run(
+            &scan,
+            &known,
+            &mut DetectorState::default(),
+            fresh,
+            0,
+            &none
+        )));
         // zdroj s uspesnym spojenim v okne neni cisty sken
         let mut with_success = scan.clone();
         with_success.push(flow("198.51.100.4", "10.0.0.2", 443, 10, 1.0, "SF", 900));
-        assert!(!has(&run(&with_success, &known, &mut DetectorState::default(), fresh, 0, &none)));
+        assert!(!has(&run(
+            &with_success,
+            &known,
+            &mut DetectorState::default(),
+            fresh,
+            0,
+            &none
+        )));
         // vnitrni (znamy) zdroj se nesnizuje
         let internal: Vec<_> = open
             .iter()
@@ -2091,7 +2112,14 @@ mod tests {
         let mut hosts2 = known.1.clone();
         hosts2.insert("10.0.0.5".into());
         let known2 = (known.0.clone(), hosts2);
-        assert!(!has(&run(&internal, &known2, &mut DetectorState::default(), fresh, 0, &none)));
+        assert!(!has(&run(
+            &internal,
+            &known2,
+            &mut DetectorState::default(),
+            fresh,
+            0,
+            &none
+        )));
     }
 
     /// Krok 2D: studeny start srovnava sluzbu se stejnym typem zarizeni a podsiti.

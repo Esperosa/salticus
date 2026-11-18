@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{SalticusError, Result, intel};
+use crate::{Result, SalticusError, intel};
 
 pub const SKOKY_MODEL: &str = "salticus-skoky:latest";
 pub const SKOKY_BASE_MODEL: &str = "qwen3:8b";

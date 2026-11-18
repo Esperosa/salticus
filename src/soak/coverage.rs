@@ -185,7 +185,10 @@ impl FlowDiag {
         if o.proto == "udp" {
             self.udp += 1;
         }
-        if matches!(o.conn_state.as_deref(), Some("S0" | "REJ" | "RSTO" | "RSTR" | "RSTOS0")) {
+        if matches!(
+            o.conn_state.as_deref(),
+            Some("S0" | "REJ" | "RSTO" | "RSTR" | "RSTOS0")
+        ) {
             self.failed += 1;
         }
         self.bytes += o.total_bytes.unwrap_or(0);

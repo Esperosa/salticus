@@ -342,7 +342,11 @@ impl EndpointSim {
     pub fn silenced(&self, device: u32) -> bool {
         self.world.agent == AgentMode::Silent
             && self.covered(device)
-            && self.compromised.get(device as usize).copied().unwrap_or(false)
+            && self
+                .compromised
+                .get(device as usize)
+                .copied()
+                .unwrap_or(false)
     }
 
     pub fn covered(&self, device: u32) -> bool {
@@ -721,21 +725,19 @@ impl EndpointSim {
                             vendor: vendor.map(str::to_string),
                         })
                     };
-                    let conn_to = |image: &str,
-                                   signed: Option<bool>,
-                                   vendor: Option<&str>,
-                                   dst: &str| {
-                        EventKind::NetConnect(Conn {
-                            image: Some(image.to_string()),
-                            proto: "tcp".into(),
-                            src_ip: None,
-                            src_port: None,
-                            dst_ip: dst.to_string(),
-                            dst_port: 443,
-                            vendor: vendor.map(str::to_string),
-                            signed,
-                        })
-                    };
+                    let conn_to =
+                        |image: &str, signed: Option<bool>, vendor: Option<&str>, dst: &str| {
+                            EventKind::NetConnect(Conn {
+                                image: Some(image.to_string()),
+                                proto: "tcp".into(),
+                                src_ip: None,
+                                src_port: None,
+                                dst_ip: dst.to_string(),
+                                dst_port: 443,
+                                vendor: vendor.map(str::to_string),
+                                signed,
+                            })
+                        };
                     const PS: &str =
                         "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
                     const MS: &str = "Microsoft Corporation";

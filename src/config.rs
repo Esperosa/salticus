@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::AppConfig,
 };
 
@@ -27,8 +27,9 @@ pub fn write(path: &Path, config: &AppConfig) -> Result<()> {
         fs::create_dir_all(parent)?;
     }
     validate(config)?;
-    let content = toml::to_string_pretty(config)
-        .map_err(|error| SalticusError::Config(format!("Nelze serializovat konfiguraci: {error}")))?;
+    let content = toml::to_string_pretty(config).map_err(|error| {
+        SalticusError::Config(format!("Nelze serializovat konfiguraci: {error}"))
+    })?;
     fs::write(path, content)?;
     Ok(())
 }

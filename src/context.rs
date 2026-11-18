@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::{Confidence, HostReport, MonitoringLane, NetworkAsset, Severity, TopologyEdge},
 };
 
@@ -860,7 +860,9 @@ fn fetch_librenms_snapshot(
             "Promenna prostredi {api_key_env} s LibreNMS API tokenem neni nastavena."
         ))
     })?;
-    let client = Client::builder().user_agent("salticus-program/0.1").build()?;
+    let client = Client::builder()
+        .user_agent("salticus-program/0.1")
+        .build()?;
     let headers = vec![("X-Auth-Token", api_key)];
 
     let devices_value = fetch_json(
@@ -913,7 +915,9 @@ fn fetch_meraki_snapshot(
             "Promenna prostredi {api_key_env} s Meraki API klicem neni nastavena."
         ))
     })?;
-    let client = Client::builder().user_agent("salticus-program/0.1").build()?;
+    let client = Client::builder()
+        .user_agent("salticus-program/0.1")
+        .build()?;
 
     let devices: Vec<MerakiDevice> = client
         .get(format!(
@@ -1012,7 +1016,9 @@ fn fetch_generic_controller_snapshot(
             "Promenna prostredi {token_env} pro connector {source} neni nastavena."
         ))
     })?;
-    let client = Client::builder().user_agent("salticus-program/0.1").build()?;
+    let client = Client::builder()
+        .user_agent("salticus-program/0.1")
+        .build()?;
     let headers = vec![
         ("Authorization", format!("Bearer {token}")),
         ("X-API-Key", token.clone()),
@@ -1061,7 +1067,9 @@ fn fetch_aruba_snapshot(
             "Promenna prostredi {token_env} pro Aruba Central bearer token neni nastavena."
         ))
     })?;
-    let client = Client::builder().user_agent("salticus-program/0.1").build()?;
+    let client = Client::builder()
+        .user_agent("salticus-program/0.1")
+        .build()?;
     let headers = vec![("Authorization", format!("Bearer {token}"))];
     let base = base_url.trim_end_matches('/');
 

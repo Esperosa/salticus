@@ -111,6 +111,9 @@ mod tests {
             .map(|i| icmp("10.0.0.5", "198.51.100.9", 64, i))
             .collect();
         assert!(detect(&pings, 8, 200).is_empty(), "monitoring echo");
-        assert!(detect(&big[..3], 8, 200).is_empty(), "jeden velky ping nebo par");
+        assert!(
+            detect(&big[..3], 8, 200).is_empty(),
+            "jeden velky ping nebo par"
+        );
     }
 }

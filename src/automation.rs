@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::{Confidence, MonitoringLane, RunReport},
 };
 

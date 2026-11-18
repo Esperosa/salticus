@@ -24,7 +24,7 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     platform,
 };
 
@@ -257,7 +257,9 @@ fn move_to_dead_letter(
         .arg(&message.stream_id)
         .ignore()
         .query(conn)
-        .map_err(|error| SalticusError::Processing(format!("Redis presun do DLQ chyba: {error}")))?;
+        .map_err(|error| {
+            SalticusError::Processing(format!("Redis presun do DLQ chyba: {error}"))
+        })?;
 
     Ok(())
 }

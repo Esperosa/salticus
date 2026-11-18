@@ -39,7 +39,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     storage::write_atomic,
     verification_exec::VerificationResult,
 };

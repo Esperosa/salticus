@@ -25,7 +25,7 @@ use crate::{
     correlation, decision,
     enforcement::{BlockIpRequest, ProtectedRanges},
     engine::{EngineConfig, EngineMode},
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     finding_memory::{
         Disposition, Escalation, FindingKey, FindingState, Observation, key_for_finding,
         split_service_key,
@@ -537,7 +537,11 @@ fn k15_trace(line: serde_json::Value) {
     static SINK: OnceLock<Option<Mutex<std::io::BufWriter<std::fs::File>>>> = OnceLock::new();
     let Some(sink) = SINK.get_or_init(|| {
         let path = std::env::var("K15_TRACE").ok()?;
-        let f = std::fs::OpenOptions::new().create(true).append(true).open(path).ok()?;
+        let f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .ok()?;
         Some(Mutex::new(std::io::BufWriter::new(f)))
     }) else {
         return;
@@ -2359,8 +2363,11 @@ fn run_episode_inner(
                 if cycle < t.start_cycle || cycle > t.end_cycle {
                     continue;
                 }
-                let mut targets: Vec<String> =
-                    t.cycle_targets.iter().map(|(ip, p)| format!("{ip}:{p}")).collect();
+                let mut targets: Vec<String> = t
+                    .cycle_targets
+                    .iter()
+                    .map(|(ip, p)| format!("{ip}:{p}"))
+                    .collect();
                 targets.sort();
                 let mut sources: Vec<String> = t.cycle_sources.iter().cloned().collect();
                 sources.sort();
@@ -2572,7 +2579,10 @@ fn run_episode_inner(
                                         )
                                     };
                                     if let Some(root) = &d.root {
-                                        ops_roots.insert(finding.finding_id.clone(), format!("ops:{root}"));
+                                        ops_roots.insert(
+                                            finding.finding_id.clone(),
+                                            format!("ops:{root}"),
+                                        );
                                     }
                                     if k16_dump_on() {
                                         k16_ops.insert(finding.finding_id.clone(), d.clone());
@@ -3827,7 +3837,11 @@ fn run_episode_inner(
         if let Ok(path) = std::env::var("K13_INC_DUMP") {
             // krok 13: export událostí a štítků pro offline ladění seskupení
             use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
                 let evs: Vec<_> = inc_hist
                     .events()
                     .iter()
@@ -3856,7 +3870,11 @@ fn run_episode_inner(
             (3600, "v2-1h", true),
             (1800, "v2-30m", true),
         ] {
-            let incidents = if v2 { inc_hist.incidents_v2(gap) } else { inc_hist.incidents(gap) };
+            let incidents = if v2 {
+                inc_hist.incidents_v2(gap)
+            } else {
+                inc_hist.incidents(gap)
+            };
             for inc in incidents {
                 if inc.findings.len() < 2 {
                     continue;
@@ -3867,7 +3885,12 @@ fn run_episode_inner(
                     *counts.entry(label).or_default() += 1;
                 }
                 let none = counts.remove(&None).unwrap_or(0);
-                let best = counts.values().copied().max().unwrap_or(0).max(u64::from(none > 0));
+                let best = counts
+                    .values()
+                    .copied()
+                    .max()
+                    .unwrap_or(0)
+                    .max(u64::from(none > 0));
                 if tag == "6h" {
                     out.incident_n += 1;
                     out.incident_findings += inc.findings.len() as u64;

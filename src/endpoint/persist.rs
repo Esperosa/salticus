@@ -13,7 +13,7 @@ use super::{
     correlate::{Limits, Policy},
     parse_batch,
 };
-use crate::error::{SalticusError, Result};
+use crate::error::{Result, SalticusError};
 
 /// Nejvíc řádků v tabulce; starší se mažou (krok 8, A2 bod 3).
 pub const MAX_ROWS: i64 = 500_000;

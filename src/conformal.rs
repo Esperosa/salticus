@@ -58,7 +58,11 @@ impl Abstainer {
 
     /// Kalibrace z dvojic (posterior útoku, byl to útok).
     pub fn fit(&mut self, pairs: &[(f64, bool)]) {
-        self.attack = pairs.iter().filter(|(_, a)| *a).map(|(p, _)| 1.0 - p).collect();
+        self.attack = pairs
+            .iter()
+            .filter(|(_, a)| *a)
+            .map(|(p, _)| 1.0 - p)
+            .collect();
         self.benign = pairs.iter().filter(|(_, a)| !*a).map(|(p, _)| *p).collect();
         self.attack.sort_by(f64::total_cmp);
         self.benign.sort_by(f64::total_cmp);
@@ -118,7 +122,9 @@ mod tests {
 
     /// Deterministicky generator jednotkovych cisel.
     fn lcg(state: &mut u64) -> f64 {
-        *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        *state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((*state >> 11) as f64) / ((1u64 << 53) as f64)
     }
 

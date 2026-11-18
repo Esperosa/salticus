@@ -22,7 +22,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::HostReport,
     scope_policy::ScopePolicy,
     verification_planner::HypothesisVerificationPlan,

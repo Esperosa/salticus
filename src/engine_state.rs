@@ -14,7 +14,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::HostReport,
 };
 

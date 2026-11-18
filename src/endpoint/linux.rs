@@ -100,7 +100,8 @@ pub fn parse_tetragon(map: &Map<String, Value>) -> ParseResult {
     let host = host_ref(field(map, &["node_name"]))?;
     if let Some(exec) = child(map, "process_exec") {
         let process = child(exec, "process").ok_or_else(|| ParseError("chybi process".into()))?;
-        let binary = field(process, &["binary"]).ok_or_else(|| ParseError("chybi binary".into()))?;
+        let binary =
+            field(process, &["binary"]).ok_or_else(|| ParseError("chybi binary".into()))?;
         let args = field(process, &["arguments"]).unwrap_or_default();
         return Ok(Some(EndpointEvent {
             source: EndpointSource::Tetragon,
@@ -142,7 +143,8 @@ pub fn parse_tetragon(map: &Map<String, Value>) -> ParseResult {
                 src_ip: field(sock, &["saddr"]).and_then(|s| valid_ip(&s)),
                 src_port: port(field(sock, &["sport"])),
                 dst_ip: dst,
-                dst_port: port(field(sock, &["dport"])).ok_or_else(|| ParseError("chybi port".into()))?,
+                dst_port: port(field(sock, &["dport"]))
+                    .ok_or_else(|| ParseError("chybi port".into()))?,
                 vendor: None,
                 signed: None,
             }),
@@ -332,7 +334,10 @@ mod tests {
         ))
         .unwrap()
         .unwrap();
-        assert!(matches!(&c.kind, EventKind::NetConnect(Conn { dst_port: 4444, .. })));
+        assert!(matches!(
+            &c.kind,
+            EventKind::NetConnect(Conn { dst_port: 4444, .. })
+        ));
         assert!(parse_falco(&obj(r#"{"rule":"x"}"#)).is_err());
     }
 
@@ -355,7 +360,10 @@ mod tests {
         ))
         .unwrap()
         .unwrap();
-        assert!(matches!(&c.kind, EventKind::NetConnect(Conn { dst_port: 443, .. })));
+        assert!(matches!(
+            &c.kind,
+            EventKind::NetConnect(Conn { dst_port: 443, .. })
+        ));
         assert!(parse_tetragon(&obj(r#"{"process_kprobe":{"function_name":"other"},"node_name":"n","time":"2026-11-15T10:00:00Z"}"#)).unwrap().is_none());
     }
 
@@ -366,11 +374,16 @@ type=SYSCALL msg=audit(1700000000.100:10): arch=c000003e syscall=59 success=yes 
 type=EXECVE msg=audit(1700000000.100:10): argc=3 a0=\"sh\" a1=\"-c\" a2=\"id\"\n\
 type=SYSCALL msg=audit(1700000001.200:11): arch=c000003e syscall=42 success=yes exit=0 uid=33 comm=\"curl\" exe=\"/usr/bin/curl\" node=web1\n\
 type=SOCKADDR msg=audit(1700000001.200:11): saddr=0200115CC6336407\n";
-        let events: Vec<_> = parse_auditd(text, None).into_iter().map(Result::unwrap).collect();
+        let events: Vec<_> = parse_auditd(text, None)
+            .into_iter()
+            .map(Result::unwrap)
+            .collect();
         assert_eq!(events.len(), 2);
         assert!(matches!(&events[0].kind, EventKind::ProcessCreate(p) if p.cmdline == "sh -c id"));
         match &events[1].kind {
-            EventKind::NetConnect(c) => assert_eq!((c.dst_ip.as_str(), c.dst_port), ("198.51.100.7", 4444)),
+            EventKind::NetConnect(c) => {
+                assert_eq!((c.dst_ip.as_str(), c.dst_port), ("198.51.100.7", 4444))
+            }
             other => panic!("{other:?}"),
         }
         // bez node= a bez hostitele od volajícího je to chyba, ne panika
@@ -382,8 +395,24 @@ type=SOCKADDR msg=audit(1700000001.200:11): saddr=0200115CC6336407\n";
     #[test]
     fn fuzz_linux_adapters_never_panic() {
         let mut x: u64 = 0xDEAD_BEEF_CAFE_F00D;
-        let words = ["type=SYSCALL", "msg=audit(", "1700000000.1:2)", "a0=\"", "saddr=0200", "node=", "{", "}", "\"", "process_exec", "time", "\u{1F600}"];
-        let fuzz_n: u64 = std::env::var("SALTICUS_FUZZ_N").ok().and_then(|v| v.parse().ok()).unwrap_or(30_000);
+        let words = [
+            "type=SYSCALL",
+            "msg=audit(",
+            "1700000000.1:2)",
+            "a0=\"",
+            "saddr=0200",
+            "node=",
+            "{",
+            "}",
+            "\"",
+            "process_exec",
+            "time",
+            "\u{1F600}",
+        ];
+        let fuzz_n: u64 = std::env::var("SALTICUS_FUZZ_N")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30_000);
         for _ in 0..fuzz_n {
             x ^= x << 13;
             x ^= x >> 7;

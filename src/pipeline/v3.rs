@@ -198,7 +198,10 @@ impl crate::verify_ladder::LadderEvidence for ProdEvidence<'_> {
         case_verdict(profiles, policy, case, group, self.now.timestamp())
     }
 
-    fn ops(&self, case: &crate::verify_ladder::CaseInput) -> Option<crate::ops_telemetry::OpsDiagnosis> {
+    fn ops(
+        &self,
+        case: &crate::verify_ladder::CaseInput,
+    ) -> Option<crate::ops_telemetry::OpsDiagnosis> {
         let store = self.ops?;
         let mut ips: Vec<String> = vec![case.host_ip.clone()];
         ips.extend(case.sources.iter().take(8).cloned());
@@ -452,7 +455,10 @@ impl V3Session {
         };
         // krok 14 (C2): provozni telemetrie pro zebricek (sklad z ulozeni)
         let ops_ladder_store = if self.engine.ops_telemetry() {
-            Some(crate::ops_telemetry::persist::load_store(self.store.conn(), now)?)
+            Some(crate::ops_telemetry::persist::load_store(
+                self.store.conn(),
+                now,
+            )?)
         } else {
             None
         };

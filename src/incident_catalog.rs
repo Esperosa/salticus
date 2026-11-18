@@ -179,10 +179,9 @@ mod tests {
         let c = Catalog::embedded();
         assert!(c.incidents.len() >= 60, "{}", c.incidents.len());
         let mut ids = std::collections::HashSet::new();
-        let labels: std::collections::HashSet<&str> =
-            (0..crate::soak::variants::count() as u8)
-                .map(|i| crate::soak::variants::spec(i).label)
-                .collect();
+        let labels: std::collections::HashSet<&str> = (0..crate::soak::variants::count() as u8)
+            .map(|i| crate::soak::variants::spec(i).label)
+            .collect();
         let mut with_gen = 0;
         for e in &c.incidents {
             assert!(ids.insert(e.id.clone()), "duplicitní id {}", e.id);

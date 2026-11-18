@@ -50,11 +50,22 @@ pub struct CaseFile {
 /// Kontrola → log a senzor, které potřebuje (k žádosti o chybějící data).
 fn log_for(kind: CheckKind) -> Option<(&'static str, &'static str)> {
     match kind {
-        CheckKind::TlsFingerprint => Some(("ssl.log, x509.log (Zeek) nebo tls (Suricata EVE)", "tap nebo SPAN na uplinku, vidi oba smery")),
-        CheckKind::DnsPivot => Some(("dns.log (Zeek) nebo dns (Suricata EVE)", "tap nebo SPAN u resolveru a na uplinku")),
+        CheckKind::TlsFingerprint => Some((
+            "ssl.log, x509.log (Zeek) nebo tls (Suricata EVE)",
+            "tap nebo SPAN na uplinku, vidi oba smery",
+        )),
+        CheckKind::DnsPivot => Some((
+            "dns.log (Zeek) nebo dns (Suricata EVE)",
+            "tap nebo SPAN u resolveru a na uplinku",
+        )),
         CheckKind::EndpointTelemetry => Some(("Sysmon, Wazuh nebo osquery", "agent na hostu")),
-        CheckKind::GeoAsn | CheckKind::Reputation => Some(("zdroj reputace a ASN", "konfigurace zdroje znalosti, ne senzor")),
-        CheckKind::Timing | CheckKind::RepeatMeasure => Some(("conn.log (Zeek)", "tap nebo SPAN v segmentu hosta")),
+        CheckKind::GeoAsn | CheckKind::Reputation => Some((
+            "zdroj reputace a ASN",
+            "konfigurace zdroje znalosti, ne senzor",
+        )),
+        CheckKind::Timing | CheckKind::RepeatMeasure => {
+            Some(("conn.log (Zeek)", "tap nebo SPAN v segmentu hosta"))
+        }
         _ => None,
     }
 }
@@ -75,7 +86,10 @@ pub fn data_requests(
             format!("{}.{}.{}.0/24", o[0], o[1], o[2])
         })
         .unwrap_or_else(|_| host.to_string());
-    if blind || coverage.silent_hosts.iter().any(|h| h == host) || coverage.dark_segments.contains(&segment) {
+    if blind
+        || coverage.silent_hosts.iter().any(|h| h == host)
+        || coverage.dark_segments.contains(&segment)
+    {
         out.push(DataRequest {
             log: "conn.log (Zeek) nebo flow (Suricata EVE)".into(),
             scope: if coverage.dark_segments.contains(&segment) {
@@ -134,7 +148,10 @@ pub fn build(
             assessment.posterior_attack
         ));
         if !unverified.is_empty() {
-            why.push(format!("{} kontrol bez vysledku (chybi data)", unverified.len()));
+            why.push(format!(
+                "{} kontrol bez vysledku (chybi data)",
+                unverified.len()
+            ));
         }
         if blind {
             why.push("slepe misto: host nebo segment nema telemetrii".into());
@@ -142,10 +159,17 @@ pub fn build(
     }
     let mut would = Vec::new();
     if let Some(next) = assessment.next_check {
-        would.push(format!("dalsi kontrola s nejvyssi ocekavanou informaci na cenu: {next:?}"));
+        would.push(format!(
+            "dalsi kontrola s nejvyssi ocekavanou informaci na cenu: {next:?}"
+        ));
     }
     for (h, p) in assessment.hypotheses.iter().take(3) {
-        would.push(format!("hypoteza {} ({:.2}): {}", h.label(), p, h.prediction()));
+        would.push(format!(
+            "hypoteza {} ({:.2}): {}",
+            h.label(),
+            p,
+            h.prediction()
+        ));
     }
     let unavailable_kinds: Vec<CheckKind> = unverified.iter().map(|(k, _)| *k).collect();
     CaseFile {
@@ -180,7 +204,11 @@ mod tests {
             "f1",
             "10.0.4.7",
             vec![(1, "nalez vznikl".into())],
-            &[(CheckKind::CaseHistory, Result3::Benign, "videno 3 dny".into())],
+            &[(
+                CheckKind::CaseHistory,
+                Result3::Benign,
+                "videno 3 dny".into(),
+            )],
             &[(CheckKind::TlsFingerprint, "bez ssl.log".into())],
             &a,
             &coverage,
@@ -189,8 +217,16 @@ mod tests {
         assert_eq!(file.verified.len(), 1);
         assert_eq!(file.unverified.len(), 1);
         assert!(!file.why_undecided.is_empty());
-        assert!(file.data_requests.iter().any(|r| r.scope == "10.0.4.0/24" && r.log.contains("conn.log")));
-        assert!(file.data_requests.iter().any(|r| r.log.contains("ssl.log") && r.sensor.contains("tap")));
+        assert!(
+            file.data_requests
+                .iter()
+                .any(|r| r.scope == "10.0.4.0/24" && r.log.contains("conn.log"))
+        );
+        assert!(
+            file.data_requests
+                .iter()
+                .any(|r| r.log.contains("ssl.log") && r.sensor.contains("tap"))
+        );
         assert!(!file.would_decide.is_empty());
     }
 

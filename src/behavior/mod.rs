@@ -98,7 +98,16 @@ impl BehaviorSwitches {
     }
 
     pub fn any(&self) -> bool {
-        self.egress || self.graph || self.profile || self.breadth || self.bulk_novel || self.bulk_clear || self.peer_burst || self.l7_tls || self.l7_dns || self.icmp_payload
+        self.egress
+            || self.graph
+            || self.profile
+            || self.breadth
+            || self.bulk_novel
+            || self.bulk_clear
+            || self.peer_burst
+            || self.l7_tls
+            || self.l7_dns
+            || self.icmp_payload
     }
 }
 

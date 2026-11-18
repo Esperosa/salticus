@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::{RunIndex, RunIndexEntry, RunReport},
     narrative,
 };

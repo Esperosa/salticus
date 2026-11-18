@@ -31,7 +31,7 @@ use std::path::Path;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 
-use crate::error::{SalticusError, Result};
+use crate::error::{Result, SalticusError};
 use crate::eval::ground_truth::{GroundTruthLabel, LabeledDataset};
 use crate::eval::source::{DatasetSourceInfo, ScenarioSource};
 use crate::passive::ConnectionObservation;

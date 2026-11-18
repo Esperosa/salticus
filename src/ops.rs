@@ -27,7 +27,7 @@ use crate::{
         BlockIpRequest, EnforcementRejection, ProtectedRanges, plan_block,
         render_nft_delete_element, render_setup_ruleset,
     },
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,7 +56,8 @@ pub struct OpsConfig {
 
 impl OpsConfig {
     pub fn from_env() -> Self {
-        let mode = EnforcementMode::parse(std::env::var("SALTICUS_ENFORCEMENT_MODE").ok().as_deref());
+        let mode =
+            EnforcementMode::parse(std::env::var("SALTICUS_ENFORCEMENT_MODE").ok().as_deref());
         let additional = std::env::var("SALTICUS_PROTECTED_RANGES")
             .unwrap_or_default()
             .split(',')

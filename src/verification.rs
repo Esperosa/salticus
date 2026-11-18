@@ -9,7 +9,7 @@ use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::RunReport,
 };
 
@@ -101,8 +101,9 @@ pub fn discover_scenarios(root: &Path) -> Result<Vec<PathBuf>> {
 
 pub fn load_manifest(path: &Path) -> Result<ScenarioManifest> {
     let content = fs::read(path)?;
-    serde_json::from_slice(&content)
-        .map_err(|error| SalticusError::Processing(format!("Nelze nacist manifest scenare: {error}")))
+    serde_json::from_slice(&content).map_err(|error| {
+        SalticusError::Processing(format!("Nelze nacist manifest scenare: {error}"))
+    })
 }
 
 pub fn validate_scenario(

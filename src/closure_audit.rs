@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     context_gate::wilson_lower,
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     finding_memory::FindingKey,
 };
 

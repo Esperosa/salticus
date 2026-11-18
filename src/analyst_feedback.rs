@@ -48,10 +48,35 @@ impl Kind {
 
 pub const CLASSES: &[&str] = &["security", "ops_fault", "benign_change", "unknown"];
 pub const PROTOS: &[&str] = &["tcp", "udp", "icmp", "other"];
-pub const PORT_CLASSES: &[&str] = &["web", "dns", "mail", "remote_admin", "file_share", "database", "ics", "iot_messaging", "high", "other", "none"];
-pub const TEMPOS: &[&str] = &["instant", "burst", "periodic_fast", "periodic_slow", "sustained", "trickle"];
+pub const PORT_CLASSES: &[&str] = &[
+    "web",
+    "dns",
+    "mail",
+    "remote_admin",
+    "file_share",
+    "database",
+    "ics",
+    "iot_messaging",
+    "high",
+    "other",
+    "none",
+];
+pub const TEMPOS: &[&str] = &[
+    "instant",
+    "burst",
+    "periodic_fast",
+    "periodic_slow",
+    "sustained",
+    "trickle",
+];
 pub const VOLUMES: &[&str] = &["tiny", "small", "medium", "large", "huge"];
-pub const TOPOLOGIES: &[&str] = &["one_to_one", "one_to_many", "many_to_one", "many_to_many", "internal_chain"];
+pub const TOPOLOGIES: &[&str] = &[
+    "one_to_one",
+    "one_to_many",
+    "many_to_one",
+    "many_to_many",
+    "internal_chain",
+];
 pub const TACTICS: &[&str] = &[
     "reconnaissance",
     "initial-access",
@@ -129,9 +154,9 @@ impl Lesson {
         if let Some(kind) = &self.finding_type
             && (kind.is_empty()
                 || kind.len() > 64
-                || !kind
-                    .bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b':'))
+                || !kind.bytes().all(|b| {
+                    b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b':'
+                }))
         {
             return Err(SalticusError::Processing(
                 "finding_type ma neplatny tvar".into(),
@@ -144,7 +169,13 @@ impl Lesson {
     pub fn behaviour_key(&self) -> String {
         format!(
             "{}|{}|{}|{}|{}|{}|{}",
-            self.tactic, self.proto, self.port_class, self.tempo, self.volume, self.topology, self.sources
+            self.tactic,
+            self.proto,
+            self.port_class,
+            self.tempo,
+            self.volume,
+            self.topology,
+            self.sources
         )
     }
 }
@@ -259,7 +290,9 @@ pub fn active(conn: &Connection) -> Result<Vec<(i64, Lesson)>> {
         )
         .map_err(db_error)?;
     let rows = stmt
-        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(db_error)?;
     let mut out = Vec::new();
     for row in rows {
@@ -364,15 +397,29 @@ mod tests {
         assert!(l.validate().is_err());
         let l = lesson(Kind::WrongClosed, Some("beacon periodic; DROP"));
         assert!(l.validate().is_err());
-        assert!(lesson(Kind::WrongClosed, Some("beacon_periodic")).validate().is_ok());
+        assert!(
+            lesson(Kind::WrongClosed, Some("beacon_periodic"))
+                .validate()
+                .is_ok()
+        );
     }
 
     #[test]
     fn append_only_and_revocable() {
         let c = conn();
-        let id = submit(&c, &lesson(Kind::MissedAttack, None), "ana", "poznamka", Utc::now()).unwrap();
+        let id = submit(
+            &c,
+            &lesson(Kind::MissedAttack, None),
+            "ana",
+            "poznamka",
+            Utc::now(),
+        )
+        .unwrap();
         assert!(c.execute("DELETE FROM analyst_feedback", []).is_err());
-        assert!(c.execute("UPDATE analyst_feedback SET note='x'", []).is_err());
+        assert!(
+            c.execute("UPDATE analyst_feedback SET note='x'", [])
+                .is_err()
+        );
         assert_eq!(active(&c).unwrap().len(), 1);
         assert!(revoke(&c, id, "ana", "omyl", Utc::now()).unwrap());
         assert!(!revoke(&c, id, "ana", "podruhe", Utc::now()).unwrap());

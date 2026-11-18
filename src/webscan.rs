@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use crate::{
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::{ActiveCheckRecord, Confidence, HostReport, Severity, WebProbeRecord},
     paths,
 };

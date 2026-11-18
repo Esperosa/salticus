@@ -13,7 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{SalticusError, Result};
+use crate::error::{Result, SalticusError};
 
 /// Minimální počet (vážených) vzorků pro použitelnou kalibraci.
 pub const MIN_SAMPLES: f64 = 200.0;

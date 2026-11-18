@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     cpe,
-    error::{SalticusError, Result},
+    error::{Result, SalticusError},
     model::{Confidence, CveRecord, CvssRecord, EpssRecord, ExploitContext, HostReport, KevRecord},
 };
 

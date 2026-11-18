@@ -2757,18 +2757,63 @@ pub const MIX_PAIRS: &[(&str, &str, u8)] = &[
 /// Krok 13 (dodatek A): matice rizenych trojic (prvni, druha, treti, vztah druhe a treti k prvni).
 /// Druha i treti udalost zacinaji v okne prvni; `pair` ve stitku = 100 + index trojice.
 pub const MIX_TRIPLES: &[(&str, &str, &str, u8)] = &[
-    ("ddos_syn_flood_distributed", "uplink_saturation", "dns_slow_resolution", 2),
-    ("switch_outage_subnet", "dhcp_server_down", "dns_partial_failure", 0),
-    ("c2_slow_long_interval", "hn_nightly_cloud_backup_upload", "planned_patch_reboot_wave", 1),
-    ("ssh_spray_slow_distributed", "uplink_saturation", "hn_cdn_update_download", 1),
-    ("exfil_cloud_storage_upload", "broadcast_storm_loop", "vpn_tunnel_flapping", 1),
-    ("db_overload_degradation", "app_server_crash_cascade", "load_balancer_partial_outage", 2),
-    ("share_encryption_wave_slow", "backup_window_overrun", "disk_full_backup_failure", 1),
-    ("rdp_bruteforce", "lateral_rdp_hop", "lateral_smb_admin_shares", 2),
+    (
+        "ddos_syn_flood_distributed",
+        "uplink_saturation",
+        "dns_slow_resolution",
+        2,
+    ),
+    (
+        "switch_outage_subnet",
+        "dhcp_server_down",
+        "dns_partial_failure",
+        0,
+    ),
+    (
+        "c2_slow_long_interval",
+        "hn_nightly_cloud_backup_upload",
+        "planned_patch_reboot_wave",
+        1,
+    ),
+    (
+        "ssh_spray_slow_distributed",
+        "uplink_saturation",
+        "hn_cdn_update_download",
+        1,
+    ),
+    (
+        "exfil_cloud_storage_upload",
+        "broadcast_storm_loop",
+        "vpn_tunnel_flapping",
+        1,
+    ),
+    (
+        "db_overload_degradation",
+        "app_server_crash_cascade",
+        "load_balancer_partial_outage",
+        2,
+    ),
+    (
+        "share_encryption_wave_slow",
+        "backup_window_overrun",
+        "disk_full_backup_failure",
+        1,
+    ),
+    (
+        "rdp_bruteforce",
+        "lateral_rdp_hop",
+        "lateral_smb_admin_shares",
+        2,
+    ),
 ];
 
 /// Naplanuje rizene mixy dvojic (jen svet `--mix on`, vlastni proud nahodnosti).
-pub fn plan_mixes(model: &NetworkModel, truths: &mut Vec<Truth>, hours: u32, telemetry: &Telemetry) {
+pub fn plan_mixes(
+    model: &NetworkModel,
+    truths: &mut Vec<Truth>,
+    hours: u32,
+    telemetry: &Telemetry,
+) {
     let pools = Pools::new(model);
     plan_variants(model, &pools, truths, hours, telemetry, false, true);
 }
@@ -3356,7 +3401,12 @@ pub fn features(s: &Spec) -> Features {
     let tempo = match s.pattern {
         Pattern::Periodic if s.period <= 600.0 => "periodic_fast",
         Pattern::Periodic => "periodic_slow",
-        Pattern::Burst | Pattern::Flood | Pattern::Storm | Pattern::Peak | Pattern::BulkOut | Pattern::BulkIn => "burst",
+        Pattern::Burst
+        | Pattern::Flood
+        | Pattern::Storm
+        | Pattern::Peak
+        | Pattern::BulkOut
+        | Pattern::BulkIn => "burst",
         Pattern::Sustained | Pattern::SlowConn | Pattern::Saturate => "sustained",
         Pattern::Trickle => "trickle",
         _ => "instant",
@@ -3404,20 +3454,73 @@ pub fn base_features(label: &str) -> Features {
         port_class,
     };
     match label {
-        "port_scan_vertical" | "slow_scan" => f("discovery", "burst", "small", "one_to_one", "1", "high"),
+        "port_scan_vertical" | "slow_scan" => {
+            f("discovery", "burst", "small", "one_to_one", "1", "high")
+        }
         "port_scan_horizontal" => f("discovery", "burst", "small", "one_to_many", "1", "other"),
-        "ssh_bruteforce" | "credential_stuffing" => f("credential-access", "burst", "small", "one_to_one", "few", "remote_admin"),
-        "c2_beacon" | "fleet_beacon" => f("command-and-control", "periodic_fast", "tiny", "one_to_one", "1", "web"),
-        "dns_tunnel" => f("command-and-control", "sustained", "small", "one_to_one", "1", "dns"),
-        "exfiltration" | "insider_hoarding" => f("exfiltration", "burst", "huge", "one_to_one", "1", "web"),
+        "ssh_bruteforce" | "credential_stuffing" => f(
+            "credential-access",
+            "burst",
+            "small",
+            "one_to_one",
+            "few",
+            "remote_admin",
+        ),
+        "c2_beacon" | "fleet_beacon" => f(
+            "command-and-control",
+            "periodic_fast",
+            "tiny",
+            "one_to_one",
+            "1",
+            "web",
+        ),
+        "dns_tunnel" => f(
+            "command-and-control",
+            "sustained",
+            "small",
+            "one_to_one",
+            "1",
+            "dns",
+        ),
+        "exfiltration" | "insider_hoarding" => {
+            f("exfiltration", "burst", "huge", "one_to_one", "1", "web")
+        }
         "ddos_volume" => f("impact", "burst", "large", "many_to_one", "many", "web"),
         "cryptomining" => f("impact", "sustained", "small", "one_to_one", "1", "high"),
-        "lateral_movement" => f("lateral-movement", "burst", "small", "internal_chain", "1", "remote_admin"),
+        "lateral_movement" => f(
+            "lateral-movement",
+            "burst",
+            "small",
+            "internal_chain",
+            "1",
+            "remote_admin",
+        ),
         "ransomware" => f("impact", "burst", "large", "one_to_many", "1", "file_share"),
-        "rogue_device" => f("initial-access", "instant", "tiny", "one_to_one", "1", "other"),
-        "exploit_attempt" | "web_exploit" => f("initial-access", "instant", "tiny", "one_to_one", "1", "web"),
+        "rogue_device" => f(
+            "initial-access",
+            "instant",
+            "tiny",
+            "one_to_one",
+            "1",
+            "other",
+        ),
+        "exploit_attempt" | "web_exploit" => f(
+            "initial-access",
+            "instant",
+            "tiny",
+            "one_to_one",
+            "1",
+            "web",
+        ),
         "ics_attack" => f("impact", "burst", "tiny", "one_to_one", "1", "ics"),
-        "apt_chain" => f("lateral-movement", "sustained", "medium", "internal_chain", "1", "remote_admin"),
+        "apt_chain" => f(
+            "lateral-movement",
+            "sustained",
+            "medium",
+            "internal_chain",
+            "1",
+            "remote_admin",
+        ),
         _ => f("none", "instant", "tiny", "one_to_one", "1", "other"),
     }
 }
@@ -3555,7 +3658,8 @@ mod tests {
             plan_coverage(&model, &mut k9, 168, &telemetry(), CoverageMode::K9);
             let mut k10 = base.clone();
             plan_coverage(&model, &mut k10, 168, &telemetry(), CoverageMode::K10);
-            let is_hard = |t: &Truth| matches!(t.kind, Kind::Attack(Family::Var(v)) if spec(v).hard);
+            let is_hard =
+                |t: &Truth| matches!(t.kind, Kind::Attack(Family::Var(v)) if spec(v).hard);
             assert!(!k9.iter().any(is_hard), "k9 nesmi mit tvrde zaporne");
             let non_hard: Vec<_> = k10.iter().filter(|t| !is_hard(t)).collect();
             assert_eq!(non_hard.len(), k9.len(), "k10 = k9 + tvrde zaporne");

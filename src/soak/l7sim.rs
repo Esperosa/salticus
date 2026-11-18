@@ -172,13 +172,21 @@ pub fn synthesize(
                 .and_then(|k| tags.get(&k))
                 .and_then(|i| truths.get(*i)),
         );
-        let key = derive(seed, derive(mix(o.timestamp.timestamp() as u64), u64::from(o.src_port.unwrap_or(0))));
+        let key = derive(
+            seed,
+            derive(
+                mix(o.timestamp.timestamp() as u64),
+                u64::from(o.src_port.unwrap_or(0)),
+            ),
+        );
         let mut rng = Rng::new(key);
         let ts = o.timestamp.timestamp();
         if o.proto == "tcp" && tls_port(dport) && internal(src) && !internal(&o.dst_ip) {
             out.push(L7Event::Tls(tls_for(class, src, o, key, &mut rng, ts, cal)));
         } else if o.proto == "udp" && dport == 53 {
-            out.push(L7Event::Dns(dns_for(class, src, o, key, &mut rng, ts, internal, cal)));
+            out.push(L7Event::Dns(dns_for(
+                class, src, o, key, &mut rng, ts, internal, cal,
+            )));
         }
     }
     out
@@ -194,7 +202,12 @@ fn tls_for(
     cal: bool,
 ) -> TlsMeta {
     let day = 86_400i64;
-    let mature_cert = |h: u64| (ts - (200 + (mix(h) % 400) as i64) * day, ts + (30 + (mix(h ^ 1) % 300) as i64) * day);
+    let mature_cert = |h: u64| {
+        (
+            ts - (200 + (mix(h) % 400) as i64) * day,
+            ts + (30 + (mix(h ^ 1) % 300) as i64) * day,
+        )
+    };
     let (sni, print, nb_na, issuer, subject) = match class {
         Class::Background => {
             // adresa urcuje jmeno: mnoho adres sdili jedno jmeno (CDN)
@@ -216,11 +229,35 @@ fn tls_for(
                 let sni = if no_sni { None } else { Some(sni) };
                 if selfsigned {
                     let cn = format!("CN=dev{}.local", h % 997);
-                    return finish_tls(o, src, ts, sni, host_print(src, 1), (ts - 30 * day, ts + 3650 * day), cn.clone(), Some(cn));
+                    return finish_tls(
+                        o,
+                        src,
+                        ts,
+                        sni,
+                        host_print(src, 1),
+                        (ts - 30 * day, ts + 3650 * day),
+                        cn.clone(),
+                        Some(cn),
+                    );
                 }
-                return finish_tls(o, src, ts, sni, host_print(src, 1), mature_cert(h), "CN=Large Public CA".to_string(), None);
+                return finish_tls(
+                    o,
+                    src,
+                    ts,
+                    sni,
+                    host_print(src, 1),
+                    mature_cert(h),
+                    "CN=Large Public CA".to_string(),
+                    None,
+                );
             }
-            (Some(sni), host_print(src, 1), mature_cert(h), "CN=Large Public CA".to_string(), String::new())
+            (
+                Some(sni),
+                host_print(src, 1),
+                mature_cert(h),
+                "CN=Large Public CA".to_string(),
+                String::new(),
+            )
         }
         Class::Benign(id) => {
             // krok 13: 13,4 % spojení reálného hosta míří na jméno, které před tím neviděl
@@ -231,7 +268,13 @@ fn tls_for(
             } else {
                 POPULAR[(mix(id) % POPULAR.len() as u64) as usize].to_string()
             };
-            (Some(name), host_print(src, 1), mature_cert(id), "CN=Large Public CA".to_string(), String::new())
+            (
+                Some(name),
+                host_print(src, 1),
+                mature_cert(id),
+                "CN=Large Public CA".to_string(),
+                String::new(),
+            )
         }
         Class::Attack { id, blend } => {
             let popular = blend || unit(derive(id, 11)) < 0.30;
@@ -248,10 +291,18 @@ fn tls_for(
             };
             let r = unit(derive(id, 17));
             let (nb_na, issuer, subject) = if popular || r < 0.33 {
-                (mature_cert(id), "CN=Large Public CA".to_string(), String::new())
+                (
+                    mature_cert(id),
+                    "CN=Large Public CA".to_string(),
+                    String::new(),
+                )
             } else if r < 0.66 {
                 let age = 1 + (mix(id ^ 9) % 20) as i64;
-                ((ts - age * day, ts + 70 * day), "CN=Free Short CA".to_string(), String::new())
+                (
+                    (ts - age * day, ts + 70 * day),
+                    "CN=Free Short CA".to_string(),
+                    String::new(),
+                )
             } else {
                 let name = format!("CN={sni}");
                 ((ts - day, ts + 3650 * day), name.clone(), name)
@@ -260,7 +311,16 @@ fn tls_for(
         }
     };
     let _ = key;
-    finish_tls(o, src, ts, sni, print, nb_na, issuer, (!subject.is_empty()).then_some(subject))
+    finish_tls(
+        o,
+        src,
+        ts,
+        sni,
+        print,
+        nb_na,
+        issuer,
+        (!subject.is_empty()).then_some(subject),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -316,7 +376,11 @@ fn dns_for(
             } else {
                 "A"
             };
-            let rc = if rng.chance(0.55) { "NXDOMAIN" } else { "NOERROR" };
+            let rc = if rng.chance(0.55) {
+                "NXDOMAIN"
+            } else {
+                "NOERROR"
+            };
             (format!("h{n}.zone{}.example", id % 7), qtype, rc)
         }
         (Class::Attack { .. }, true) => {
@@ -329,12 +393,20 @@ fn dns_for(
         (_, true) => {
             let h = derive(key, 3);
             // krok 13: NXDOMAIN 1 % a pošta (TXT) 0,5 % z reálných zachycení; bez `cal` původní 5 % a 2 %
-            let rc = if rng.chance(if cal { 0.01 } else { 0.05 }) { "NXDOMAIN" } else { "NOERROR" };
+            let rc = if rng.chance(if cal { 0.01 } else { 0.05 }) {
+                "NXDOMAIN"
+            } else {
+                "NOERROR"
+            };
             let t = rng.f64();
             let mail_end = if cal { 0.045 } else { 0.06 };
             if t < 0.04 {
                 // CDN a reklama: dlouha hashovana znacka, ale typ A
-                (format!("{:016x}{:016x}.cdn.example", derive(key, 7), derive(key, 8)), "A", rc)
+                (
+                    format!("{:016x}{:016x}.cdn.example", derive(key, 7), derive(key, 8)),
+                    "A",
+                    rc,
+                )
             } else if t < mail_end {
                 // pošta: SPF, DKIM (typ TXT) na beznych jmenech
                 (format!("mail{}.tail.example", zipf(h, 200)), "TXT", rc)
@@ -346,7 +418,11 @@ fn dns_for(
         }
         (_, false) => {
             // vnejsi resolver dotazuje vnitrni autoritativni DNS
-            let rc = if rng.chance(0.10) { "NXDOMAIN" } else { "NOERROR" };
+            let rc = if rng.chance(0.10) {
+                "NXDOMAIN"
+            } else {
+                "NOERROR"
+            };
             (format!("svc{}.corp.example", derive(key, 5) % 400), "A", rc)
         }
     };

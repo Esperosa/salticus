@@ -58,12 +58,25 @@ impl Ledger {
     }
 
     /// Zapíše rozhodnutí s důkazy.
-    pub fn record(&mut self, finding_id: &str, prior: f64, evidence: Vec<Obs>, lik: &Likelihoods, costs: &Costs, at: i64) -> Action {
+    pub fn record(
+        &mut self,
+        finding_id: &str,
+        prior: f64,
+        evidence: Vec<Obs>,
+        lik: &Likelihoods,
+        costs: &Costs,
+        at: i64,
+    ) -> Action {
         let posterior = posterior_attack(prior, &evidence, lik);
         let action = best_action(posterior, costs).0;
         if self.decisions.len() >= self.max_decisions.max(1) {
             // nejstarší pryč; audit zůstává
-            if let Some(oldest) = self.decisions.iter().min_by_key(|(_, r)| r.at).map(|(k, _)| k.clone()) {
+            if let Some(oldest) = self
+                .decisions
+                .iter()
+                .min_by_key(|(_, r)| r.at)
+                .map(|(k, _)| k.clone())
+            {
                 self.decisions.remove(&oldest);
             }
         }
@@ -198,9 +211,17 @@ mod tests {
             kind: CheckKind::CaseHistory,
             result: Result3::Benign,
         };
-        assert!(ledger.reassess("f2", &[benign], "neskodny dukaz", &lik, &costs, 2).is_none());
+        assert!(
+            ledger
+                .reassess("f2", &[benign], "neskodny dukaz", &lik, &costs, 2)
+                .is_none()
+        );
         assert_eq!(ledger.get("f2").unwrap().action, before);
-        assert!(ledger.reassess("neexistuje", &[benign], "x", &lik, &costs, 3).is_none());
+        assert!(
+            ledger
+                .reassess("neexistuje", &[benign], "x", &lik, &costs, 3)
+                .is_none()
+        );
         assert!(ledger.audit.is_empty());
     }
 }
