@@ -31,7 +31,10 @@ case "$MODE" in
     done
     ;;
   dns2tcp)
-    dns2tcpc -z t3.lab.test -r web -l 8080 10.88.0.53 >/tmp/dns2tcp.log 2>&1 &
+    # přímo na vlastní autoritu (10.88.0.23): přes unbound se relace nenaváže (ladicí běh B5,
+    # klient opakuje jen „auth“); stejně jako iodine
+    echo "nameserver 10.88.0.23" > /etc/resolv.conf
+    dns2tcpc -z t3.lab.test -r web -l 8080 10.88.0.23 >/tmp/dns2tcp.log 2>&1 &
     sleep 4
     while until_end; do
       curl -s -m 60 -o /dev/null -H "Host: web.lab.test" http://127.0.0.1:8080/blob || sleep 2

@@ -16,9 +16,11 @@ import glob
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 
 EMPTY_NMAP = """<?xml version="1.0"?>
 <nmaprun scanner="nmap" args="replay" start="0" version="7.94">
@@ -28,6 +30,7 @@ EMPTY_NMAP = """<?xml version="1.0"?>
 COVERT_TYPES = {"dns_tunnel_names", "dns_zone_enumeration", "doh_suspected"}
 DATA_TYPES = {"TXT", "NULL", "PRIVATE", "CNAME", "MX", "SRV", "KEY", "DNAME"}
 SCOPE = "10.88.1.0/24"
+DOH_SERVER = "10.88.0.70"
 
 
 def category(mode):
@@ -142,7 +145,7 @@ def tls_shape(zdir):
     return out
 
 
-def run_detect(binp, set_dir, zdir, label):
+def run_detect(binp, set_dir, zdir, label, end_ts):
     ws = os.path.join(set_dir, "eval", "ws-" + label)
     os.makedirs(os.path.join(ws, "runs"), exist_ok=True)
     with open(os.path.join(ws, "salticus.toml"), "w", encoding="utf-8") as c:
@@ -151,7 +154,10 @@ def run_detect(binp, set_dir, zdir, label):
     os.makedirs(os.path.dirname(nmap), exist_ok=True)
     with open(nmap, "w", encoding="utf-8") as h:
         h.write(EMPTY_NMAP)
-    env = dict(os.environ, RUST_LOG="error")
+    # čas přehrávání = konec relace (jako živý systém, který okno zpracuje po jeho skončení);
+    # bez něj motor bere skutečný čas a starší relace vypadnou z okna (zjištěno při ladění)
+    now = datetime.fromtimestamp(int(end_ts) + 1, timezone.utc).isoformat()
+    env = dict(os.environ, RUST_LOG="error", SALTICUS_REPLAY_NOW=now)
     r = subprocess.run([binp, "beh", "spust", "--workspace", ws, "--nazev", label, "--scope", SCOPE,
                         "--nmap-xml", nmap, "--zeek-dir", zdir, "--provider", "demo", "--disable-circl"],
                        capture_output=True, text=True, env=env, encoding="utf-8", errors="replace")
@@ -176,13 +182,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--set-dir", required=True)
     ap.add_argument("--bin", required=True)
-    ap.add_argument("--fresh", action="store_true", help="smazat pracovní prostory detekce (Zeek logy zůstanou)")
+    ap.add_argument("--keep", action="store_true", help="ponechat pracovní prostory (jinak každá relace začíná s čistým stavem)")
     args = ap.parse_args()
     with open(os.path.join(args.set_dir, "labels.jsonl"), encoding="utf-8") as h:
         labels = [json.loads(line) for line in h if line.strip()]
     per_mode = defaultdict(lambda: [0, 0])
     per_cat = defaultdict(lambda: [0, 0])
-    fp, controls = 0, 0
+    fp, controls, misattributed = 0, 0, 0
     details = []
     for rec in labels:
         if "pcap" not in rec:
@@ -193,17 +199,19 @@ def main():
         if not os.path.exists(pcap):
             details.append({"relation": label, "error": "pcap chybí"})
             continue
-        if args.fresh:
-            subprocess.run(["cmd", "/c", "rmdir", "/s", "/q", os.path.join(args.set_dir, "eval", "ws-" + label)],
-                           capture_output=True)
+        if not args.keep:
+            # čistý stav motoru na relaci: opakované vyhodnocení nesmí vidět paměť minulého běhu
+            shutil.rmtree(os.path.join(args.set_dir, "eval", "ws-" + label), ignore_errors=True)
         zdir = zeek(pcap, os.path.join(args.set_dir, "eval", "zeek-" + label))
-        det = run_detect(args.bin, args.set_dir, zdir, label)
+        det = run_detect(args.bin, args.set_dir, zdir, label, rec["end"])
         cov = det.get("covert", [])
         cat = category(mode)
         if cat == "tunnel":
             hit = any(c["type"] in ("dns_tunnel_names", "dns_zone_enumeration") for c in cov)
         elif cat == "doh":
-            hit = any(c["type"] == "doh_suspected" for c in cov)
+            # správný cíl = DoH server laboratoře; nález na jiný cíl (web) je chybné přiřazení
+            hit = any(c["type"] == "doh_suspected" and DOH_SERVER in c["title"] for c in cov)
+            misattributed += sum(c["type"] == "doh_suspected" and DOH_SERVER not in c["title"] for c in cov)
         else:
             hit = bool(cov)
             controls += 1
@@ -213,8 +221,9 @@ def main():
         if cat != "control":
             per_cat[family(mode)][0] += hit
             per_cat[family(mode)][1] += 1
-            per_cat[cat][0] += hit
-            per_cat[cat][1] += 1
+            if cat != family(mode):
+                per_cat[cat][0] += hit
+                per_cat[cat][1] += 1
         details.append({"relation": label, "mode": mode, "category": cat, "hit": hit,
                         "covert": cov, "other_displayed": det.get("other_displayed"),
                         "dns_shape": dns_shape(zdir), "tls_shape": tls_shape(zdir),
@@ -223,6 +232,7 @@ def main():
         "per_mode": {m: f"{k}/{n}" for m, (k, n) in sorted(per_mode.items())},
         "per_family": {m: {"k": k, "n": n, "wilson95": wilson(k, n)} for m, (k, n) in sorted(per_cat.items())},
         "false_positives_controls": f"{fp}/{controls}", "fp_wilson95": wilson(fp, controls),
+        "doh_misattributed_findings": misattributed,
         "detaily": details,
     }
     with open(os.path.join(args.set_dir, "eval", "covert.json"), "w", encoding="utf-8") as h:
