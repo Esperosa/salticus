@@ -69,7 +69,7 @@ def scenario(sid, rnd, out):
         p.update(victim=v, victim_ip=CLIENTS[v], extra=6)
         inj = ("for i in 1 2 3 4 5 6; do ip link add m$i link eth0 type macvlan mode bridge; ip link set m$i up; "
                "udhcpc -i m$i -s /tmp/noop.sh -S -b -t 5 -T 3 -A 10 >/dev/null 2>&1; done")
-        rst = "pkill -f 'udhcpc -i m'; for i in 1 2 3 4 5 6; do ip link del m$i 2>/dev/null; done"
+        rst = "pkill -f 'udhcpc -i [m]'; for i in 1 2 3 4 5 6; do ip link del m$i 2>/dev/null; done"
         # odpojeně: sekvenční udhcpc by jinak blokovaly slot o desítky sekund
         return p, lambda: dx(v, inj, detach=True), lambda: dx(v, rst)
     if sid == "S03":
@@ -122,7 +122,7 @@ def scenario(sid, rnd, out):
         return p, lambda: dx("router", inj), lambda: dx("router", rst)
     if sid == "S09":
         p.update(kill_every_s=12)
-        loop = f"timeout {PHASE - 5} sh -c 'while true; do sleep 12; pkill -9 -f \"python3 /lab/app.py\"; done'"
+        loop = f"timeout {PHASE - 5} sh -c 'while true; do sleep 12; pkill -9 -f \"[p]ython3 /lab/app.py\"; done'"
         return p, lambda: dx("web", loop, detach=True), noop
     if sid == "S10":
         sw = "cp /tmp/tls/{c}.crt /tmp/tls/cur.crt; cp /tmp/tls/{c}.key /tmp/tls/cur.key; nginx -s reload"
@@ -134,8 +134,8 @@ def scenario(sid, rnd, out):
         def inj():
             dx("ntp", "touch /tmp/stop; pkill chronyd")
             time.sleep(1)
-            dx("ntp", f"python3 /lab/fakentp.py {off}", detach=True)
-        return p, inj, lambda: dx("ntp", "pkill -f fakentp.py; rm -f /tmp/stop")
+            dx("ntp", f"timeout {PHASE} python3 /lab/fakentp.py {off}", detach=True)
+        return p, inj, lambda: dx("ntp", "pkill -f [f]akentp.py; sleep 1; pkill -9 -f [f]akentp.py; rm -f /tmp/stop")
     if sid == "S12":
         return p, lambda: dx("ntp", "touch /tmp/stop; pkill chronyd"), lambda: dx("ntp", "rm -f /tmp/stop")
     if sid == "S13":

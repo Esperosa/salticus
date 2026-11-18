@@ -29,6 +29,10 @@ else:
           .public_key(ca_key.public_key()).serial_number(x509.random_serial_number())
           .not_valid_before(now - dt.timedelta(days=30)).not_valid_after(now + dt.timedelta(days=365))
           .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+          .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False, key_encipherment=False,
+                                       data_encipherment=False, key_agreement=False, key_cert_sign=True,
+                                       crl_sign=True, encipher_only=False, decipher_only=False), critical=True)
+          .add_extension(x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()), critical=False)
           .sign(ca_key, hashes.SHA256()))
     open("/out/ca/ca.key.tmp", "wb").write(kpem(ca_key)); os.replace("/out/ca/ca.key.tmp", "/out/ca/ca.key")
     open(ca_path + ".tmp", "wb").write(pem(ca)); os.replace(ca_path + ".tmp", ca_path)
@@ -39,6 +43,11 @@ def leaf(start, end, out):
     c = (x509.CertificateBuilder().subject_name(name("web.lab.test")).issuer_name(ca.subject)
          .public_key(k.public_key()).serial_number(x509.random_serial_number())
          .not_valid_before(start).not_valid_after(end).add_extension(san, critical=False)
+         # Python 3.13+ ověřuje přísně (VERIFY_X509_STRICT): list musí mít AKI, jinak
+         # „Missing Authority Key Identifier“ a selže i platný certifikát (ladicí běh debug2)
+         .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False)
+         .add_extension(x509.SubjectKeyIdentifier.from_public_key(k.public_key()), critical=False)
+         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
          .sign(ca_key, hashes.SHA256()))
     open(f"/tmp/tls/{out}.crt", "wb").write(pem(c)); open(f"/tmp/tls/{out}.key", "wb").write(kpem(k))
 
