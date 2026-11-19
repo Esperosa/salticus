@@ -3044,4 +3044,82 @@ mod tests {
             "potvrzeno {confirmed}, drzeno {held}"
         );
     }
+
+    // --- krok 20 (audit jadra): sondy puvodniho chovani bez jedine brany zavreni ---
+
+    fn low_prior(kind: &str, prior: f64) -> CaseInput {
+        CaseInput {
+            prior,
+            ..input(kind, "10.0.0.5", &[])
+        }
+    }
+
+    /// Audit K20: bez `strict_refute` (preset `recommended()`) vyvrati pripad samotna historie
+    /// toku (zavisly zdroj, tyz tok dat jako detektor) i samotne srovnani s peery (neni ani
+    /// skupina neskodneho dukazu), kdyz apriorni P je nizka. Tak vznikla vetsina omylem
+    /// zavrenych utoku kroku 19 (`docs/diplomka/eval/audit-jadra.md`).
+    #[test]
+    fn audit_k20_dependent_or_groupless_evidence_alone_refutes_without_strict() {
+        let history = decide_input(
+            LadderPolicy::default(),
+            low_prior("unexpected_traffic", 0.08),
+            &mut Env {
+                recurrence: Some(Recurrence::Seen { days: 4 }),
+                ..Env::default()
+            },
+        );
+        assert_eq!(history.status, Status::Refuted, "{}", history.reason);
+        let peers = decide_input(
+            LadderPolicy::default(),
+            low_prior("unexpected_traffic", 0.08),
+            &mut Env {
+                peers: Some((2, 4)),
+                ..Env::default()
+            },
+        );
+        assert_eq!(peers.status, Status::Refuted, "{}", peers.reason);
+        assert!(peers.steps.iter().all(|(c, t)| *t != "benign" || benign_group(*c).is_none()));
+    }
+
+    /// Audit K20: `endpoint_weak` meni jen skupinu dukazu, kterou cte pouze `strict_refute`
+    /// (a rezim konkurencnich hypotez); bez nich je prepinac bez ucinku.
+    #[test]
+    fn audit_k20_endpoint_weak_is_inert_without_strict_refute() {
+        use crate::endpoint::correlate::EndpointSignal;
+        let run = |weak: bool| {
+            decide_input(
+                LadderPolicy {
+                    endpoint: true,
+                    protect: true,
+                    endpoint_weak: weak,
+                    ..Default::default()
+                },
+                input("scan_attempts", "10.0.0.5", &["203.0.113.9"]),
+                &mut Env {
+                    recurrence: Some(Recurrence::Seen { days: 3 }),
+                    endpoint: Some(EndpointSignal::Benign("vse v poradku".into())),
+                    ..Env::default()
+                },
+            )
+        };
+        let (off, on) = (run(false), run(true));
+        assert_eq!(off.status, Status::Refuted, "{}", off.reason);
+        assert_eq!(on.status, off.status, "{}", on.reason);
+    }
+
+    /// Audit K20: rezim konkurencnich hypotez bez `strict_refute` zavre pripad jen z nizke
+    /// apriorni P, bez jedineho neskodneho vysledku kontroly (zavreni na nepritomnost dukazu).
+    #[test]
+    fn audit_k20_competing_without_strict_closes_on_prior_alone() {
+        let d = decide_input(
+            LadderPolicy {
+                competing: true,
+                ..Default::default()
+            },
+            low_prior("unexpected_traffic", 0.004),
+            &mut Env::default(),
+        );
+        assert_eq!(d.status, Status::Refuted, "{}", d.reason);
+        assert!(d.steps.iter().all(|(_, t)| *t != "benign"), "{}", d.reason);
+    }
 }
