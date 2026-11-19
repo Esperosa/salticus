@@ -405,17 +405,14 @@ fn gate_invariant_holds_under_random_operations_fuzz() {
                         ["secops", "", " "][next(3) as usize],
                         next(2) == 0,
                     );
-                    let ticket = admit_explanation(
-                        &e,
-                        kind,
-                        &sources,
-                        at(minute),
-                        Subject {
-                            protected: next(5) == 0,
-                            high_impact: high,
-                        },
-                    )
-                    .ok();
+                    let subject = Subject {
+                        protected: next(5) == 0,
+                        high_impact: high,
+                    };
+                    let ticket = admit_explanation(&e, kind, &sources, at(minute), subject).ok();
+                    // krok 22: stin rozhoduje stejne jako brana a pamet nevidi
+                    let shadow = shadow_context(&e, kind, &sources, at(minute), subject);
+                    assert_eq!(shadow.admitted, ticket.is_some(), "{run}");
                     let d = memory.observe_gated(&obs(&key, minute, severity, &sources), ticket);
                     if matches!(d, Disposition::AutoResolved(_)) {
                         closures += 1;
@@ -439,6 +436,12 @@ fn gate_invariant_holds_under_random_operations_fuzz() {
                     d.status =
                         [Status::Refuted, Status::Confirmed, Status::Escalated][next(3) as usize];
                     d.prior_hold = d.status == Status::Escalated && next(2) == 0;
+                    let shadow = shadow_ladder(&d);
+                    assert_eq!(
+                        shadow.refusal,
+                        admit_ladder(&d).err().map(Refusal::label),
+                        "{run}"
+                    );
                     let settled = settle(&mut memory, d, &sources, at(minute));
                     if settled.status == Status::Refuted {
                         closures += 1;
