@@ -51,3 +51,42 @@ Ramena (párově, stejný seed a síť): **R** = `recommended()`, **RG** = R + `
 Rozhodnutí: `close_gate` se navrhne do presetu jen tehdy, když rameno (RG nebo FG) splní K20-1 až K20-4 ve všech třech konfiguracích na držených seedech. `recommended()` se v tomto kroku nemění; návrh co ve `V3Features` smazat a sloučit je v závěru.
 
 Omezení předem: council, sol-loop a delegování se podle zadání nespouštějí (odchylka od `CLAUDE.md` daná zadáním); review dělá autor. Simulace je jediný zdroj pravdy o tom, co je útok; definice „vlastníka“ pozitivního důkazu je volba autora (schvalovatel záznamu kontextu nebo položky seznamu povolených).
+
+## 4. Implementace (commit `fb1546c`)
+
+- `closure_gate.rs` (nový modul): `CloseTicket` (soukromá pole, vzniká jen v `admit_context`, `admit_explanation`, `admit_ladder`), `Refusal` s čitelným důvodem, `settle` (jediný zápis rozhodnutí žebříku do paměti v režimu brány; vrací skutečný výsledek, odmítnuté vyvrácení je eskalace „brana zavreni: …“). Pozitivní důkaz žebříku se pozná z kroku: schválený kontext („schvalil X“, ne výpadek senzoru) nebo seznam povolených („vlastnik X“, jedna skupina 4, ne {1, 4}).
+- `finding_memory.rs`: `MemoryConfig::gate`; `Entry::ticket` a `Entry::suspected`; `observe_gated`, `refute_gated`, `mark_suspected`, `gate_violations` (kontrola invariantu na stavu), `reset_unticketed` (lístek se do SQLite neukládá, po načtení se zavřená položka bez lístku převede na `Closed`, tedy bezpečným směrem). V režimu brány `observe` s textem a `refute` nic nezavřou (`gate_bypass`); zavřený klíč pohltí jen výskyt se zdroji z lístku (jinak eskalace `NewSource`) a jen souvislou epizodu (odmlka < 1 h, jinak `Episode`).
+- `context_gate.rs`: `Explanation` nese schvalovatele, expiraci a `sources_proven` (přísný důkaz zdroje počítaný vždy, `strictly_proven`); `GatePolicy::for_engine` zapne přísné zavírání i s branou.
+- `engine.rs`: přepínač `close_gate` (vyžaduje `memory`), `strict_refute()` = `strict_close || close_gate`, `endpoint_weak_effective()`, paměť s branou má `escalate_first_source` a `refute_episode_s = 3600`.
+- `soak/episode.rs` a `pipeline/v3.rs`: v režimu brány kontext → `admit_explanation` → `observe_gated`, žebřík → `settle`; zobrazení, `verification_decisions` a čítače se řídí vráceným rozhodnutím. V produkci se s branou obnovuje `strict_refute` i u uloženého žebříku (audit M11). Soak hlásí `k7.gate_bypass`, `gate_refused`, `gate_violations`.
+- Testy: `closure_gate::tests` (7 testů, mezi nimi property/fuzz `gate_invariant_holds_under_random_operations_fuzz`: 20 000 náhodných posloupností operací paměti a rozhodnutí žebříku včetně obchvatů starými vstupy, kontrola `gate_violations` po každé operaci, vysoký dopad a chráněný typ nikdy v zavřeném stavu; generátor musí vytvořit > 500 zavření), `engine::tests::close_gate_is_opt_in_needs_memory_and_subsumes_combinations`, sondy auditu `verify_ladder::tests::audit_k20_*`. `cargo test --lib`: 673 prošlo, 6 selhalo (5 `broker::*` bez Redis jako dřív; `engine::tests::parse_mode_and_disable_list` kvůli novému jménu v popisku, opraveno a znovu prošlo). Clippy bez nových varování ve změněných řádcích.
+
+## 5. Výsledky
+
+### K20-6 regrese bez přepínače
+
+Binárka `salticus-k20-fb1546c.exe` bez `close_gate`, rameno R, seedy 20269701 a 20269703, 3 konfigurace, 4 sítě: `networks.jsonl` shodný s během kroku 19 (`salticus-k18-17bbd7e.exe`) ve **24 z 24 sítí** ve všech polích kromě časů. **Splněno.** Rameno R ladicí sady se proto nepouštělo znovu; použity běhy kroku 19 (`F:\work-tmp\k19\held-a`, `--alias base=R`).
+
+### Ladicí seedy 20269701 až 20269710 (40 párů sítí na konfiguraci, 3 443 útoků)
+
+Výstupy `F:\work-tmp\k20\tune`, souhrn `F:\work-tmp\k20\report-tune.txt` (`tools/k20_gate.py`). Všech 96 běhů doběhlo (kód 0), 0 nespárovaných sítí.
+
+| srovnání | konfigurace | omylem zavřeno (rozhodnutí) | útoky s omylem zavřeným | útoky s pohlceným výskytem | detekce | rodiny s poklesem > 1 p. b. | zobrazené FP | případy pro člověka |
+|---|---|---|---|---|---|---|---|---|
+| RG / R | `off` | 39 → **0** | 51 → **0** | 110 → **0** | 81,88 → 81,88 % [−0,15; +0,13] | `c2_beacon` −1,0 (1 útok), `hn_mail_newsletter_burst` −2,9 (1) | ×1,0178 [+0,68; +3,27] % | +0,43 % |
+| RG / R | `ops` | 42 → **0** | 51 → **0** | 124 → **0** | 82,05 → 81,99 % [−0,19; +0,07] | `c2_beacon` (1), `credential_stuffing` −1,2 (1), `hn_mail_newsletter_burst` (1) | ×1,0182 [+0,72; +3,32] % | +0,67 % |
+| RG / R | `elying` | 39 → **0** | 52 → **0** | 107 → **0** | 82,02 → 81,96 % [−0,18; +0,06] | `c2_beacon` (1), `hn_mail_newsletter_burst` (1) | ×1,0179 [+0,78; +3,13] % | +0,77 % |
+| FG / F | `off` | 0 → 0 | 0 → 0 | 1 → **0** | 84,17 → 84,20 % | žádná | ×1,0000 | +0,00 % |
+| FG / F | `ops` | 0 → 0 | 0 → 0 | 1 → **0** | 84,26 → 84,26 % | žádná | ×1,0000 | +0,02 % |
+| FG / F | `elying` | 0 → 0 | 0 → 0 | 8 → **0** | 84,26 → 84,29 % | žádná | ×0,9998 | +0,05 % |
+
+Wilson 95 % horní mez pro 0 z 3 443 je 0,111 %. Obchvat brány 0, porušení invariantu 0, paniky 0 ve všech ramenech s branou. Brána odstranila 286 až 367 vyvrácení a 13 automatických zavření v R a 5 až 24 vyvrácení v F.
+
+Rozbor poklesů po útocích (`F:\work-tmp\k20\diffatt.py`; v každé konfiguraci se změní 7 až 10 útoků oběma směry):
+
+- `c2_beacon` (seed 20269707, síť 0, útok 59, ve všech třech konfiguracích): v R „detekován“ jen přes nález skenu autorizovaného skeneru, který kontext automaticky zavřel a po konci okna kontextu znovu otevřel (zobrazil); kontrafaktuálně útokem způsobeno **ne** v R ani v RG. Jde o artefakt připsání (sdílená adresa), ne o ztrátu detekce.
+- `hn_mail_newsletter_burst` je neškodný vzor (hard negative): pokles jeho „detekce“ je pokles FP, ne ztráta.
+- `credential_stuffing` (20269705, síť 2, útok 25, `ops`): vlastní nálezy útoku jsou v obou ramenech pohlceny otevřeným klíčem z cyklu 0 (dedup C7, „suppressed“, stopa `F:\work-tmp\k20\rca2`); v R se útok zobrazil jen přes pozdní eskalaci jiného nálezu se sdílenou adresou, která v RG vyšla jinak (běhy se po prvních rozdílných rozhodnutích rozcházejí, viz i jiná čísla `asset:N`). 
+- Ostatní ztráty (`clicks_to_rare_destination`, `uplink_saturation`) a zisky (`disk_full_backup_failure`, `dns_ttl_misconfig`, `data_destruction_smb_wave`, `c2_dns_txt_beacon`, `ssh_bruteforce`) mají týž mechanismus: když se klíč nevyvrátí, zůstane otevřený a dedup (C7) pohltí pozdější výskyt bez eskalace; opačně zmizí pohlcení pod vyvráceným klíčem.
+
+Podle předregistrace se po ladicím běhu kód **nemění**: K20-2 neprošlo jen kvůli jednotlivým útokům s výše uvedeným mechanismem (dedup otevřeného klíče, cesta C7, kterou krok 20 neřeší) a kvůli neškodné rodině `hn_*`, kterou kritérium kroku 19 počítá mezi „rodiny“. Definice kritéria se nemění; na držených seedech se hlásí tak, jak byla předregistrována, a pokles `hn_*` se uvede zvlášť. Předpověď z auditu (FP u RG o několik procent) se nepotvrdila: zobrazené FP rostou o 1,8 %, protože většina vyvrácených nálezů s vysokým dopadem se zobrazovala už při otevření případu a eskalace přidá zobrazení jen u zbytku.
