@@ -88,4 +88,55 @@ Ověřeno čtením a sondami (`cargo test --lib audit_k20`), ne domněnkou. „M
 
 Mrtvý nebo nedosažitelný kód: pole `Shown.memory_contradicted` se nastavuje jen z `shown_for` (bez pozdějšího přepisu), větev `(None, Some(reason))` pozdního zobrazení nikdy nenese vyvrácení; `Status::Open` z `finish` nevzniká (žádný volající ho nepředá). Ani jedno nemění rozhodnutí.
 
-<!-- sekce 3 doplněna po dokončení stop -->
+## 3. Forenzní rozbor omylem zavřených útoků kroku 19
+
+Data: držené běhy kroku 19 (`F:\work-tmp\k19\held-a`, binárka `salticus-k18-17bbd7e.exe`). Všech 17 sítí, kde se v některém rameni objevilo omylem zavřené rozhodnutí, bylo přehráno jednotlivě se stopou `K15_TRACE` ve všech šesti ramenech (98 běhů, `F:\work-tmp\k20\rca`, seznam `rca-jobs.txt`). Přehrání je bajtově shodné s původním během (98 z 98 sítí, `cmp.py`) a stopy obsahují **všech** 39 až 59 omylem zavřených rozhodnutí z kroku 19 (počty sedí na rameno). Rozbor: `F:\work-tmp\k20\rca.py`, `refev.py`; řádky po případech `rca\rca-rows.json`.
+
+### 3.1 Tabulka příčin (počet omylem zavřených rozhodnutí podle metriky kroku 19)
+
+| příčina | cesta v kódu | `off` základ / kandidát | `ops` | `elying` | rodiny (součet přes ramena) |
+|---|---|---|---|---|---|
+| **A. kontext: záznam autorizovaného skeneru bez rozsahu cílů zavře `scan_attempts` svého zdroje** | C1: `context_gate::explain_decision` bez `strict_close` (`source_proven` = true, `host_match` přes `entry.sources`) → `FindingMemory::observe` → `AutoResolved` | 12 / 12 | 12 / 12 | 12 / 12 | v každém rameni stejných 12: zmíněná pravda `c2_beacon` 5, `lateral_cautious_one_target` 1, `cryptomining` 1, a 5 ne-bezpečnostních (`hn_*` 2, `kerberos_dc_failure` 2, `planned_patch_reboot_wave` 1); kontrafaktuálně způsobené útokem jen 3 z 12 |
+| **B1. žebřík vyvrátil jen na historii nebo profil hostu** (skupina 3, týž tok dat jako detektor) | C2: `Ladder::run_check`, větev `posterior ≤ refute_at && benign_evidence && !shielded` bez `strict_refute` → `memory.refute` | 17 / 17 | 14 / 23 | 17 / 22 | `c2_beacon` 37, `dns_tunnel` 14, `update_channel_compromise_fleet` 13, `share_encryption_wave_slow` 11, `slow_scan` 6, … |
+| **B2. žebřík vyvrátil jen na srovnání s peery, přetrvání nebo profil zařízení** (žádná skupina neškodného důkazu) | totéž; `benign_evidence` nastaví každý výsledek s LR < 1 | 10 / 15 | 16 / 23 | 10 / 15 | `rogue_device_in_network` 75, `c2_beacon` 8, … |
+| B3. historie + peeři | totéž | 0 / 0 | 0 / 1 | 0 / 0 | |
+| B4. agent „vše v pořádku“ + závislý důkaz | totéž (`endpoint_weak` bez `strict_refute` mrtvý, M1) | 0 / 0 | 0 / 0 | 0 / 1 | `dns_tunnel` |
+| **celkem** | | **39 / 44** | **42 / 59** | **39 / 50** | |
+
+Průřezové vlastnosti omylem vyvrácených (základ / kandidát): **žádné nemá silnou skupinu** (kontext, živost, koncová telemetrie) ve všech 6 ramenech (27/32, 30/47, 27/37 z 27/32, 30/47, 27/38); s vysokým dopadem (R2) 8/3, 8/6, 8/7; opakované vyvrácení klíče, který už byl vyvrácen, 6/18, 4/22, 8/19. Apriorní P odvozená z posteriory a LR kroků má medián 0,077 (rozsah 0,02 až 0,16): naučená apriorní P z paměti případů (M10) je pod výchozí 0,15, takže na vyvrácení (P ≤ 0,03) stačí jediný výsledek s LR 0,25.
+
+Mezi **všemi** vyvráceními ve stopách (i neškodnými) je obraz stejný: v základu 794 z 820 vyvrácení (97 %) nemá silnou skupinu (z toho 425 s vysokým dopadem); se silnou skupinou a dvěma skupinami (pravidlo `strict_refute`) jen 26, z toho 12 jen díky živosti „výpadek“ (R4) a 14 díky agentovi „vše v pořádku“ u vysokého dopadu. Všech 84 omylem vyvrácených (všechny konfigurace) je ve třídě bez silné skupiny.
+
+### 3.2 Proč kandidát kroku 19 „zhoršil“
+
+Kandidát = `recommended()` + `endpoint_weak`, `refute_episode`, `confirm_evidence`. Rozdíl po případech (`off`, klíč a cyklus): 20 omylem vyvrácených je v obou ramenech, 7 jen v základu, 12 jen v kandidátovi. **Všech 12 přírůstků je opakované vyvrácení klíče, který byl vyvrácen už v základu** (5× `asset:*|unexpected_traffic|host-only` u `rogue_device_in_network` jen na peery, 6× `src:*|scan_attempts` u `c2_beacon` a 1× `source_volume_outlier` u `dns_tunnel` jen na historii). Mechanismus:
+
+1. `refute_episode` po odmlce ≥ 1 h označí výskyt vyvráceného klíče jako novou epizodu (`Escalation::Episode`) a pošle ho znovu do žebříku (M2).
+2. Žebřík bez `strict_refute` epizodu znovu vyvrátí na tutéž historii nebo peery (B1, B2); každé takové rozhodnutí metrika kroku 19 počítá znovu.
+3. V základu tytéž výskyty zmizely **tiše**: pohltil je vyvrácený klíč (C4, `Suppressed`), což metrika rozhodnutí nepočítá vůbec (M17).
+
+Kvantifikace na týchž stopách (výskyty útoku v okně, skryté pod vyvráceným klíčem bez nového rozhodnutí):
+
+| | `off` | `ops` | `elying` |
+|---|---|---|---|
+| výskyty pohlcené pod vyvráceným klíčem, základ → kandidát | 100 → 19 | 78 → 47 | 131 → 31 |
+| klíče s takovým pohlcením | 33 → 10 | 33 → 13 | 34 → 15 |
+
+A na úrovni útoků v celých držených bězích kroku 19 (pole `attacks[]` v `networks.jsonl`, 3 451 útoků na konfiguraci):
+
+| | `off` | `ops` | `elying` |
+|---|---|---|---|
+| útoky s omylem zavřeným nálezem (`k7.wrong_closed > 0`) | 51 → 36 | 51 → 53 | 52 → 43 |
+| útoky s výskytem pohlceným pod vyvráceným klíčem (`diag.hidden.state_refuted > 0`) | 101 → 65 | 115 → 96 | 98 → 71 |
+
+**Závěr 3.2:** „zhoršení“ kandidáta v kroku 19 je z velké části artefakt metriky (počítá rozhodnutí, ne útoky, a nevidí tiché pohlcení). Na úrovni útoků kandidát skrývá méně (`off` −15, `elying` −9 útoků s omylem zavřeným nálezem; pohlcení −36 až −27 útoků), v `ops` je přibližně beze změny (+2). Kořen obou čísel je ale týž: žebřík v `recommended()` vyvrací na závislý důkaz (B1, B2) a kandidát mu jen dává víc příležitostí. Ani jedna z obou konfigurací nesplňuje R1.
+
+`confirm_evidence` (M3): v základu ani v kandidátovi nebyl ve stopách žádný omylem vyvrácený klíč dříve potvrzený (`ever_confirmed` 0 ve všech ramenech) a držení `held` neodmítlo ani jedno vyvrácení (krok 19); příspěvek M3 k přírůstku je tedy nulový. Hypotéza kroku 19 („po 48 cyklech se dá vyvrátit dřív potvrzený klíč“) se nepotvrdila; skutečná příčina je M2.
+
+`endpoint_weak` (M1): bez `strict_refute` nic nemění; jediné rozhodnutí „agent + závislý“ v `elying` kandidátovi je toho důsledek.
+
+### 3.3 Co z toho plyne pro opravu
+
+- Všechna omylem zavřená rozhodnutí (A, B1–B4) by zastavila pravidla R1 a R2 vynucená **na jednom místě**: kontext jen s důkazem zdroje a rozsahem skeneru (A), žebřík jen s pozitivním důkazem s vlastníkem a druhou skupinou, nikdy vysoký dopad (B).
+- Metrika musí počítat i tiché pohlcení (C4), jinak oprava, která pohlcení odstraní, vypadá jako zhoršení. Předregistrace kroku 20 proto hlásí tři metriky: rozhodnutí (kontinuita s krokem 19), útoky s omylem zavřeným nálezem a útoky s pohlceným výskytem.
+- Cena: v `recommended()` je 97 % všech vyvrácení ve stopách na závislém důkazu (i neškodných), jejich odstranění zvýší zobrazené FP. To je cena R1, ne vada opravy; předpověď je v předregistraci.
