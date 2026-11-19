@@ -138,3 +138,18 @@ Zapíná ho volba soaku `--world-v2` (`WorldOptions::calendar_v2`, výchozí vyp
 - **Vyhodnocení:** Zeek na pcap, okna podle fází, `beh spust` s `SALTICUS_REPLAY_NOW` = konec okna, konfigurace `protect`, `l7_dns`, `l7_tls`, `close_gate`, `ctx_host_first`, `K22_SHADOW` (stín i v produkční cestě). Nález je **útok**, když v okně útoku nese zdroj útočníka nebo cíl útoku (A: zdroj `c1`; B: cíl 10.77.9.9 se zdrojem `backup`; C: cíl 10.77.9.9 se zdrojem `scanner`; D: zdroj `scanner` v slotu SD1); **neškodný se záznamem**, když všechny jeho zdroje a cíle patří úloze slotu se záznamem a není útokem; ostatní se hlásí zvlášť.
 - **Kritéria (z plánu, předem):** lístek (ve stínu) pro ≥ 90 % neškodných nálezů se záznamem; **0 lístků** na útocích A, B, C (každý aspoň 3 relace); BKN bez lístku. Útok D se hlásí zvlášť a **očekává se lístek** (sken v rozsahu v okně je z toku nerozlišitelný od autorizovaného skenu); jeho lístek není neúspěch kritéria B6, ale změřené zbytkové riziko (b). Jakýkoli lístek na A, B, C = nový nález, oprava před E3. Ladicí sada 22001 (smí se opakovat po opravě harnessu, ne brány); držená 22101 jednou.
 - **Bod (b), návrh mitigace (jen návrh, neimplementuje se v E2):** záznam skeneru by nesl i deklarovaný profil (porty, rychlost, nástroj); sken mimo profil by záznam nevysvětlil. Změří se, zda ho svět v2 (útoky z infrastruktury) a laboratoř (D) zachytí jako omyl ve stínu.
+
+## 6. K22-N1: výsledek (DO)
+
+Commit `23d8378`, binárka `F:\work-tmp\k22\bin\salticus-k22-23d8378.exe`.
+
+| kritérium (5.1) | výsledek | stav |
+|---|---|---|
+| (1) B1 + historie s výchozí `GatePolicy` → odmítnuto | `k22_n1_ladder_requires_independently_proven_context_source`: podpůrný kontext bez prefixu, `admit_ladder` → `SourceNotProven`, stín nevydá lístek | splněno |
+| (2) doložená záloha + historie → lístek | týž test, vlastník `spravce`, stín hlásí `context:backup` | splněno |
+| (3) prefix podvržený jménem schvalovatele → odmítnuto | týž test (text prefixu uvnitř jména, zdroj nedoložen) | splněno |
+| (4) bod (a) review: útok z jiného zdroje na host v rozsahu (cizí zdroj, smíšené zdroje, bez zdrojů) → nevysvětleno a bez doložení; host jen jako asset id rozsah nesplní; záměr (IP hostu v rozsahu, zdroj = skener) vysvětlen a doložen | `k22_review_a_host_in_scope_does_not_admit_attack_from_other_source` | splněno; obejít `any` v `targets_in_scope` nejde, protože doložení skeneru vyžaduje všechny zdroje nálezu v `sources` skeneru |
+| (5) K22-6 | `reg2` 48/48, `regsh2` 48/48 shodných sítí s `F:\work-tmp\k21\reg` (kromě časů) | splněno |
+| (6) testy | `cargo test --lib`: 695 prošlo, 6 známých selhání (5 `broker` bez Redis, 1 `identity_lab` bez Dockeru); `fmt` čisté; `clippy` bez nového varování | splněno |
+
+Vedlejší účinek (zapsáno): případy B1 brána nyní odmítá důvodem `SourceNotProven` místo `TooFewGroups` (první porušená podmínka je chybějící doložení). Test B1 upraven.
