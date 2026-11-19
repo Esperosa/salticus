@@ -570,6 +570,14 @@ fn k21_fixed_prior() -> bool {
     *ON.get_or_init(|| std::env::var_os("K21_FIXED_PRIOR").is_some())
 }
 
+/// Krok 21: měřicí rameno „zdokumentovaný skener“ (K21_SCANNER_SCOPE=1): záznam
+/// autorizovaného skeneru v simulaci má rozsah cílů nezávisle na přepínačích enginu.
+fn k21_scanner_scope() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("K21_SCANNER_SCOPE").is_some())
+}
+
 fn k16_dump(line: serde_json::Value) {
     use std::sync::{Mutex, OnceLock};
     static SINK: OnceLock<Option<Mutex<std::io::BufWriter<std::fs::File>>>> = OnceLock::new();
@@ -1765,7 +1773,9 @@ fn run_episode_inner(
                         &coverage,
                         &phantoms,
                         cycle,
-                        cfg.engine.strict_close(),
+                        // krok 21: K21_SCANNER_SCOPE=1 da zaznamu skeneru rozsah cilu i bez
+                        // `strict_close` (audit M4: prepinac enginu meni simulovany svet)
+                        cfg.engine.strict_close() || k21_scanner_scope(),
                     )
                 });
                 let at = ts(t0);

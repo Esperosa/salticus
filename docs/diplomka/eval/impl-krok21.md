@@ -57,6 +57,14 @@ Opravy mění rozhodování jen v režimu brány, a to jen u klíčů, které by
 | K21-5 | invariant | fuzz pravdivého invariantu (5 000 posloupností s restarty) 0 porušení; K20-5 dál 0 |
 | K21-7 | účinek opravy (FG21 vs. FG20, diagnostika) | hlásí se počet vyvrácení a automatických zavření, které oprava odmítla, a změna FP; bez prahu |
 
+### Dodatek: otevřený bod 4, příčina +3 % FP u RG (zapsáno před během)
+
+Rozklad držených běhů kroku 20 (R vs. RG, `F:\work-tmp\k21\fp_root.py`, data `F:\work-tmp\k20\held`) zpochybňuje vysvětlení kroku 20 („cena R1 za vyvrácení na závislém důkazu“): úbytek vyvrácení se mezi konfiguracemi liší (337, 432, 411), ale přírůstek zobrazených FP je téměř stejný (+196, +205, +192) a přírůstky podle důvodu zobrazení jsou **ve všech třech konfiguracích totožné** (`first` +1 269, `escalated_source` +890/891, `reopened` +208/203/206). Jediná změna nezávislá na konfiguraci je odstranění 39 kontextových zavření (všude 39 → 0), tj. záznamy autorizovaného skeneru, které v rameni R nemají rozsah cílů, protože simulace ho dává jen se `strict_close` (audit M4).
+
+**Hypotéza H21-FP:** většina přírůstku FP u RG pochází z nálezů autorizovaného skeneru, které brána správně odmítá zavřít, protože simulovaný záznam skeneru nemá rozsah cílů; jde o artefakt vazby simulovaného světa na přepínač enginu, ne o cenu R1 za žebřík.
+
+**Test (kauzální, jedna proměnná):** soak dostane měřicí přepínač prostředí `K21_SCANNER_SCOPE=1` (záznam skeneru má rozsah cílů bez ohledu na `strict_close`). Ramena na nových držených seedech 20270201 až 20270210, jen konfigurace `off` (přírůstek je na konfiguraci nezávislý): **R**, **RG**, **RS** (R + rozsah), **RGS** (RG + rozsah), binárka kroku 21 s tímto přepínačem (bez proměnné prostředí shodná s `2900ad1`). Předpověď H21-FP: FP poměr RG/R ≈ 1,03 (reprodukce) a **RGS/RS ≤ 1,01**. Vyvrácení: RGS/RS ≥ 1,02 (pak je příčina jinde, nejspíš žebřík, jak tvrdil krok 20). Hlásí se i K21-1 až K21-4 pro RGS/RS.
+
 **Předpověď pro FG21P (analyticky před během):** s bránou rozhoduje o vyvrácení hlavně pozitivní důkaz (kontext LR 0,3, seznam povolených 0,05) a druhá skupina; z apriorní P 0,15 (šance 0,176) stačí kontext + historie (0,3 × 0,25) na P 0,013 ≤ 0,03, takže pro typy s naučenou P ≤ 0,15 se výsledek nezmění. U typů s naučenou P nad 0,15 (útokem zatížené typy) bude produkce s pevnou 0,15 vyvracet **snáz** než soak, tedy nebezpečným směrem. Očekávám víc vyvrácení u FG21P než u FG21 a otázku, zda některé z nich jsou omylem zavřené útoky (K21-1 pro FG21P).
 
 **Předpověď:** v `final` je vysoká závažnost většinou už u otevření případu (žebřík ji nese), takže O1 změní jen klíče eskalované během života; O2 jen klíče s P4/P5 signálem po otevření; O3 se v soaku projeví jen při restartech (`restart_cycles`). Očekávám změnu zobrazených FP FG21 proti FG20 pod 0,5 % a K21-1 až K21-4 splněné.
