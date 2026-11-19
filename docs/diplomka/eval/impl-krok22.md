@@ -270,3 +270,25 @@ Kalendář měl pro 138 krytých nálezů aktivní záznam; brána nevysvětlila
 5. B7 až B9 dál odložit; B9 (registr chráněných prostředků) má smysl až po bodu 2.
 
 **Neúspěchy a omezení E2:** K22-1 nesplněn (3/4 omylem); V3 nesplněno; B6 pozitivní část nesplněna (0/124, 0/114); K22-5 bez jediné buňky; laboratoř bez objemových nálezů záloh (krátké fáze); svět v2 dál odvozuje výpadky, CMDB a senzor z pravdy; tabulka hranice počítá síťodny z 20 sítí (nástroj hlásí jen sítě se záznamem stínu); nezávislé review diffu E2 (`sol-loop`) zadání vylučuje, diff sahá na logiku brány (K22-N1) a na produkční cestu (stín), review má proběhnout v hlavní konverzaci.
+
+## 11. Předregistrace K22-N2 a K22-N3 (zapsáno před kódem a testem)
+
+Vedoucí po E2 schválil Act: E3 (držené seedy 20270301 až 20270310) se nespouští, brána se nezmírňuje (R2 a P6 zůstávají). Tato sekce je komitnuta před jakoukoli změnou kódu.
+
+**Přepínač:** nové pole `GatePolicy::scanner_guard`, zapínané spolu s `ctx_host_first` (kontext v2, `GatePolicy::for_engine`). Bez přepínače (výchozí `false`) se nemění žádná cesta: K22-6 musí zůstat 48/48 a 48/48.
+
+### 11.1 K22-N2: záznam skeneru vysvětlí jen tvar skenu
+
+- **Změna:** pevná množina skenových typů `SCAN_SHAPED = {scan_attempts, connection_timeout_burst, unmapped_passive_event}` (typy, které vznikají ze samotného sondování portů; `unexpected_traffic` je navázaný provoz, tedy ne tvar skenu). S `scanner_guard` pokrývá záznam `AuthorizedScanner` typ jen tehdy, když ho pokrývá podle `covers` (nebo `default_covers`) **a zároveň** typ leží v `SCAN_SHAPED`; explicitní `covers` množinu rozšířit nesmí. Platí pro vysvětlení (`explain_decision`) i podporu žebříku (`supporting_context`). Ostatní druhy kontextu beze změny.
+- **Kritéria (předem):** (1) test: s přepínačem `unexpected_traffic` ze zdroje skeneru na cíl v rozsahu se nevysvětlí ani nepodpoří, i když ho záznam uvádí explicitně v `covers`; `scan_attempts` se dál vysvětlí a doloží; rekonstrukce případu 20269801/0 (cykly 144 a 145) bez lístku. (2) property test (≥ 5 000 náhodných kalendářů se skenerem i bez, typy, závažnosti, zdroje, cíle): s přepínačem žádné vysvětlení ani podpora druhu skeneru pro typ mimo `SCAN_SHAPED`; pro typy v `SCAN_SHAPED` a pro kalendáře bez skeneru je rozhodnutí s přepínačem a bez něj totožné (bez zaznamenané cizí aktivity); bez `host_first` přepínač nic nemění.
+
+### 11.2 K22-N3: zavření skenu nesmí skrýt souběžnou aktivitu zdroje
+
+- **Změna:** volající před rozhodováním cyklu zaregistruje v bráně všechny nálezy cyklu (`ContextGate::note_activity`: typ, zdroje, identifikátory hostu, cíle, čas); brána drží aktivitu posledních 48 h. S `scanner_guard` záznam skeneru `E` se zdrojem `S` nález nevysvětlí ani nepodpoří, když v okně `E` existuje zaznamenaná aktivita `A`, které se `S` účastní (je ve zdrojích, hostu nebo cílech `A`) a kterou by `E` sám nepokryl (typ mimo pokrytí podle 11.1, některý zdroj `A` není zdrojem skeneru, nebo cíl `A` mimo rozsah). Rozhodnutí je pak nejednoznačné (P5 → případ zobrazen člověku) s důvodem `skener: soubezna aktivita zdroje mimo pokryti zaznamu`; důvod jde do paměti (produkční cesta) a do stínu (soak, čítač `k22_scanner_foreign`).
+- **Kritéria (předem):** (3) test: zdroj skeneru má v okně jiný nález mimo pokrytí (např. `c2_beacon` nebo `unexpected_traffic` se zdrojem `S`) → `scan_attempts` ze `S` nevysvětlen, nejednoznačný, s důvodem; zdroj skeneru jako cíl jiné aktivity → totéž; aktivita mimo okno záznamu nebo jiného zařízení → rozhodnutí beze změny; pořadí registrace nálezů v cyklu výsledek nemění. (4) ladicí seedy E2 (20269801 až 20269805, svět v2, `off`, 4 sítě, 168 h, se stínem), ramena F2c a FG2 znovu s novou binárkou, F2 z E2 jako základ (bez `ctx_host_first`, přepínač vypnut, kód beze změny): **0 omylem zavřených** (cf ani příčinně) ve FG2 i F2c, konkrétně 20269801/0 cykly 144 a 145 a 20269803/2 cyklus 170 bez zavření; K22-2 (detekce ne nižší než F2, žádná rodina o > 1 p. b. níž), K22-3 (FP FG2/F2 ≤ 1,01), K22-4 hlášeno. Pokud C2 aktivita kompromitovaného skeneru v 20269803/2 nevytvořila nález se zdrojem `S`, N3 ji z principu vidět nemůže: hlásí se jako neúspěch s příčinou (mez detekce), brána se kvůli tomu neupravuje. (5) K22-6: `reg4` 48/48 a `regsh4` 48/48 shodných sítí s `F:\work-tmp\k21\reg`. (6) `cargo test --lib` bez nových selhání, `fmt` a `clippy` čisté ve změněném kódu.
+- **Laboratoř C se znovu nespouští:** N2 a N3 lístky jen ubírají a laboratoř nevydala žádný (8.3); výsledek B6 se tím nemůže změnit.
+- **Omezení (předem):** produkční cesta zná jen nálezy aktuálního běhu (aktivita z dřívějších běhů v okně se neuchovává); záznam delší než 48 h vidí jen posledních 48 h aktivity.
+
+### 11.3 K22-N4: jen analýza
+
+Rozbor, kdo přiděluje nálezům záloh, dávek a skenu závažnost a zdroj (kód, ne výsledek brány); návrh opravy s měřením na ladicích seedech se jen zapíše, pravidla ani závažnosti se nemění.
