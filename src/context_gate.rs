@@ -271,9 +271,44 @@ pub struct GatePolicy {
     /// porovnává se všemi cíli nálezu a zdroje nálezu musí být zdroji skeneru (K21-N13).
     #[serde(default)]
     pub host_first: bool,
+    /// Krok 22 (K22-N2, K22-N3): záznam skeneru vysvětlí jen tvar skenu ([`SCAN_SHAPED`]) a
+    /// nic, když se zdroj skeneru v okně účastní jiné aktivity mimo pokrytí záznamu.
+    #[serde(default)]
+    pub scanner_guard: bool,
+}
+
+/// Krok 22 (K22-N2): typy nálezů, které vznikají ze samotného sondování portů.
+pub const SCAN_SHAPED: [&str; 3] = [
+    "scan_attempts",
+    "connection_timeout_burst",
+    "unmapped_passive_event",
+];
+
+/// Krok 22 (K22-N3): důvod nejednoznačnosti pro člověka.
+pub const SCANNER_FOREIGN: &str = "skener: soubezna aktivita zdroje mimo pokryti zaznamu";
+
+/// Jak dlouho brána drží zaznamenanou aktivitu nálezů (K22-N3).
+const ACTIVITY_KEEP_S: i64 = 48 * 3600;
+
+/// Zaznamenaný nález cyklu (K22-N3).
+#[derive(Debug, Clone)]
+struct Activity {
+    finding_type: String,
+    host_ids: Vec<String>,
+    targets: Vec<String>,
+    sources: Vec<String>,
+    at: DateTime<Utc>,
 }
 
 impl GatePolicy {
+    /// Pokrývá záznam typ (s `scanner_guard` skener jen tvar skenu, K22-N2)?
+    fn covers(&self, entry: &ContextEntry, finding_type: &str) -> bool {
+        entry.covers(finding_type)
+            && !(self.scanner_guard
+                && entry.kind == ContextKind::AuthorizedScanner
+                && !SCAN_SHAPED.contains(&finding_type))
+    }
+
     /// Mantinely podle konfigurace jádra (krok 6 a 7).
     pub fn for_engine(engine: &crate::engine::EngineConfig) -> Self {
         Self {
@@ -283,6 +318,7 @@ impl GatePolicy {
             // krok 20: brana zavreni prijme jen kontext s doloženym zdrojem
             strict_close: engine.strict_close() || engine.close_gate(),
             host_first: engine.ctx_host_first(),
+            scanner_guard: engine.ctx_host_first(),
             ..Self::default()
         }
     }
@@ -437,6 +473,7 @@ impl Default for GatePolicy {
             protect: false,
             strict_close: false,
             host_first: false,
+            scanner_guard: false,
         }
     }
 }
@@ -475,6 +512,8 @@ pub struct GateDecision {
     /// Záznam odpovídá hostu a typu, ale zdroj je mimo záznam nebo chybí druhý
     /// nezávislý druh kontextu (P6). Jen s `protect`.
     pub ambiguous: bool,
+    /// Krok 22 (K22-N3): důvod nejednoznačnosti pro člověka (jen se `scanner_guard`).
+    pub note: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -502,6 +541,7 @@ pub struct ContextGate {
     audit: BTreeMap<ContextKind, (u64, u64)>,
     disabled: BTreeSet<ContextKind>,
     pub stats: GateStats,
+    activity: std::collections::VecDeque<Activity>,
 }
 
 fn wilson_bounds(k: u64, n: u64) -> (f64, f64) {
@@ -548,6 +588,62 @@ impl ContextGate {
 
     pub fn begin_cycle(&mut self) {
         self.closures_this_cycle = 0;
+    }
+
+    /// Krok 22 (K22-N3): zaznamená nález cyklu; volající registruje všechny nálezy cyklu
+    /// před rozhodováním, takže výsledek nezávisí na pořadí. Bez `scanner_guard` nic.
+    pub fn note_activity(&mut self, input: &GateInput<'_>) {
+        if !self.policy.scanner_guard {
+            return;
+        }
+        let cutoff = input.at - chrono::Duration::seconds(ACTIVITY_KEEP_S);
+        while self.activity.front().is_some_and(|a| a.at < cutoff) {
+            self.activity.pop_front();
+        }
+        self.activity.push_back(Activity {
+            finding_type: input.finding_type.to_string(),
+            host_ids: input.host_ids.to_vec(),
+            targets: input.targets.to_vec(),
+            sources: input.sources.to_vec(),
+            at: input.at,
+        });
+    }
+
+    /// Krok 22 (K22-N3): účastní se zdroj skeneru v okně záznamu aktivity, kterou by záznam
+    /// sám nepokryl (typ, zdroje mimo skener, cíle mimo rozsah)?
+    fn scanner_foreign_activity(&self, entry: &ContextEntry) -> bool {
+        self.activity.iter().any(|a| {
+            if a.at < entry.start || a.at > entry.end {
+                return false;
+            }
+            let involved = entry
+                .sources
+                .iter()
+                .any(|s| a.sources.contains(s) || a.host_ids.contains(s) || a.targets.contains(s));
+            if !involved {
+                return false;
+            }
+            let probe = GateInput {
+                finding_type: &a.finding_type,
+                host_ids: &a.host_ids,
+                targets: &a.targets,
+                sources: &a.sources,
+                severity: Severity::Low,
+                at: a.at,
+                protected: false,
+            };
+            let covered = self.policy.covers(entry, &a.finding_type)
+                && scanner_proven(entry, &probe)
+                && targets_in_scope(&entry.hosts, &probe);
+            !covered
+        })
+    }
+
+    /// K22-N3 se týká záznamu?
+    fn scanner_blocked(&self, entry: &ContextEntry) -> bool {
+        self.policy.scanner_guard
+            && entry.kind == ContextKind::AuthorizedScanner
+            && self.scanner_foreign_activity(entry)
     }
 
     pub fn is_disabled(&self, kind: ContextKind) -> bool {
@@ -613,8 +709,9 @@ impl ContextGate {
         let mut refused_severe = false;
         let mut refused_disabled = false;
         let mut refused_source = false;
+        let mut note = None;
         for entry in provider.entries() {
-            if !entry.active(input.at) || !entry.covers(input.finding_type) {
+            if !entry.active(input.at) || !self.policy.covers(entry, input.finding_type) {
                 continue;
             }
             if !self.policy.admits(entry, input) {
@@ -649,6 +746,13 @@ impl ContextGate {
                 self.stats.refused_strict += 1;
                 continue;
             }
+            if self.scanner_blocked(entry) {
+                // krok 22 (K22-N3): zavreni skenu by skrylo jinou aktivitu zdroje
+                refused_source = true;
+                ambiguous = true;
+                note = Some(SCANNER_FOREIGN);
+                continue;
+            }
             if entry.kind.source_sensitive()
                 && input
                     .sources
@@ -678,6 +782,7 @@ impl ContextGate {
             return GateDecision {
                 explanation: self.close(entry, None, input),
                 ambiguous: false,
+                note: None,
             };
         }
         if refused_severe {
@@ -695,6 +800,7 @@ impl ContextGate {
                 return GateDecision {
                     explanation: self.close(entry, Some(all.join("+")), input),
                     ambiguous: false,
+                    note: None,
                 };
             }
             self.stats.refused_corroboration += 1;
@@ -703,6 +809,7 @@ impl ContextGate {
         GateDecision {
             explanation: None,
             ambiguous,
+            note,
         }
     }
 
@@ -776,13 +883,14 @@ impl ContextGate {
                         .iter()
                         .any(|s| !entry.hosts.contains(s) && !entry.sources.contains(s)));
             (entry.active(input.at)
-                && entry.covers(input.finding_type)
+                && self.policy.covers(entry, input.finding_type)
                 && self.policy.admits(entry, input)
                 && (entry.kind == ContextKind::SensorOutage
                     || self.policy.source_proven(entry, input))
                 && host_match
                 && source_ok
-                && !self.disabled.contains(&entry.kind))
+                && !self.disabled.contains(&entry.kind)
+                && !self.scanner_blocked(entry))
             .then(|| {
                 let proven = if independently_proven(entry, input) {
                     PROVEN_PREFIX
@@ -1579,6 +1687,231 @@ mod tests {
             ..scan_input("scan_attempts", &gateway, &target, &scanner_src)
         };
         assert!(v2.explain(&calendar, &high).is_none());
+    }
+
+    fn guard_policy() -> GatePolicy {
+        GatePolicy {
+            scanner_guard: true,
+            ..v2_policy()
+        }
+    }
+
+    /// Krok 22 (K22-N2): záznam skeneru vysvětlí jen tvar skenu, ani explicitní `covers` ho
+    /// nerozšíří; rekonstrukce 20269801/0 (cykly 144 a 145): `unexpected_traffic` ze skeneru
+    /// (ve skutečnosti `ssh_bruteforce`) na host v rozsahu, nízká závažnost.
+    #[test]
+    fn k22_n2_scanner_record_explains_only_scan_shape() {
+        let victim = vec!["10.0.0.53".to_string(), "asset:476".to_string()];
+        let scanner_src = vec!["10.0.0.104".to_string()];
+        let low = |kind| GateInput {
+            severity: Severity::Low,
+            ..scan_input(kind, &victim, &[], &scanner_src)
+        };
+        for covers in [&[][..], &["unexpected_traffic", "scan_attempts"][..]] {
+            let calendar = StaticCalendar::new(vec![scanner(&["10.0.0.0/24"], covers)]);
+            // bez prepinace: chovani E2 (vysvetleno, doloženo, listek)
+            let mut v2 = ContextGate::new(v2_policy());
+            let old = v2.explain(&calendar, &low("unexpected_traffic"));
+            assert!(old.is_some_and(|e| e.sources_proven), "{covers:?}");
+            // s prepinacem: nevysvetleno ani nepodporeno
+            let mut guarded = ContextGate::new(guard_policy());
+            let case = low("unexpected_traffic");
+            assert!(guarded.explain(&calendar, &case).is_none(), "{covers:?}");
+            assert!(guarded.supporting_context(&calendar, &case).is_none());
+            // sken dal vysvetlen a dolozen
+            let scan = low("scan_attempts");
+            let e = guarded.explain(&calendar, &scan).expect("sken");
+            assert!(e.sources_proven);
+            let (_, reason) = guarded
+                .supporting_context(&calendar, &scan)
+                .expect("podpora");
+            assert!(reason.starts_with(PROVEN_PREFIX));
+        }
+    }
+
+    /// Krok 22 (K22-N3): zdroj skeneru s jinou aktivitou mimo pokrytí v okně záznamu: sken se
+    /// nevysvětlí, rozhodnutí je nejednoznačné s důvodem; aktivita mimo okno nebo cizího
+    /// zařízení nic nemění; pořadí registrace nerozhoduje.
+    #[test]
+    fn k22_n3_scanner_foreign_activity_blocks_closure() {
+        let calendar = StaticCalendar::new(vec![scanner(&["10.0.0.0/24"], &[])]);
+        let victim = vec!["10.0.0.9".to_string()];
+        let scanner_src = vec!["10.0.0.104".to_string()];
+        let other_src = vec!["10.0.0.66".to_string()];
+        let scanner_host = vec!["10.0.0.104".to_string()];
+        let outside = vec!["198.51.100.7".to_string()];
+        let scan = scan_input("scan_attempts", &victim, &[], &scanner_src);
+        let c2 = scan_input("c2_beacon", &victim, &outside, &scanner_src);
+        let odd = scan_input("unexpected_traffic", &victim, &[], &scanner_src);
+        let out_of_scope = scan_input("scan_attempts", &victim, &outside, &scanner_src);
+        let target = scan_input("ssh_bruteforce", &scanner_host, &[], &other_src);
+        let late = GateInput {
+            at: at(30),
+            ..scan_input("c2_beacon", &victim, &outside, &scanner_src)
+        };
+        let unrelated = scan_input("c2_beacon", &victim, &outside, &other_src);
+        let blocked = |activity: &[&GateInput<'_>], reverse: bool| {
+            let mut gate = ContextGate::new(guard_policy());
+            let mut items: Vec<&GateInput<'_>> = activity.to_vec();
+            items.push(&scan);
+            if reverse {
+                items.reverse();
+            }
+            for a in items {
+                gate.note_activity(a);
+            }
+            let decision = gate.explain_decision(&calendar, &scan);
+            let support = gate.supporting_context(&calendar, &scan);
+            (decision, support)
+        };
+        for activity in [&c2, &odd, &out_of_scope, &target] {
+            for reverse in [false, true] {
+                let (decision, support) = blocked(&[activity], reverse);
+                assert!(decision.explanation.is_none(), "{activity:?}");
+                assert!(decision.ambiguous);
+                assert_eq!(decision.note, Some(SCANNER_FOREIGN));
+                assert!(support.is_none());
+            }
+        }
+        // jen sken, aktivita mimo okno (od 0 do 4 h) nebo ciziho zarizeni: vysvetleno
+        for activity in [&[][..], &[&late][..], &[&unrelated][..]] {
+            let (decision, support) = blocked(activity, false);
+            assert!(decision.explanation.is_some(), "{activity:?}");
+            assert!(decision.note.is_none());
+            assert!(support.is_some());
+        }
+        // bez prepinace se aktivita nezaznamena a rozhodnuti je jako v E2
+        let mut v2 = ContextGate::new(v2_policy());
+        v2.note_activity(&c2);
+        assert!(v2.explain(&calendar, &scan).is_some());
+    }
+
+    /// Krok 22 (K22-N2 a K22-N3, property): s přepínačem žádné vysvětlení ani podpora skeneru
+    /// pro typ mimo `SCAN_SHAPED`; bez zaznamenané aktivity je pro skenové typy a kalendáře bez
+    /// skeneru rozhodnutí s přepínačem i bez něj totožné; bez `host_first` (a přepínače)
+    /// zaznamenaná aktivita nic nemění.
+    #[test]
+    fn k22_scanner_guard_property() {
+        let mut state = 0x2222_1119_u64;
+        let mut next = |n: u64| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state % n
+        };
+        let kinds = [
+            ContextKind::AuthorizedScanner,
+            ContextKind::Backup,
+            ContextKind::Maintenance,
+            ContextKind::DeviceOnboarding,
+        ];
+        let types = [
+            "scan_attempts",
+            "connection_timeout_burst",
+            "unmapped_passive_event",
+            "unexpected_traffic",
+            "inductive_volume_anomaly",
+            "c2_beacon",
+        ];
+        let ip = |i: u64| format!("10.0.0.{}", i + 1);
+        let (mut scanner_cases, mut blocked) = (0, 0);
+        for _ in 0..6000 {
+            let mut entries = Vec::new();
+            for _ in 0..next(3) + 1 {
+                let kind = kinds[next(4) as usize];
+                let mut e = entry(kind, &ip(next(5)), 0, 10);
+                if kind == ContextKind::AuthorizedScanner {
+                    e.sources = vec![ip(next(3))];
+                    e.hosts = if next(2) == 0 {
+                        vec!["10.0.0.0/24".into()]
+                    } else {
+                        vec![ip(next(5))]
+                    };
+                    if next(3) == 0 {
+                        e.covers = vec![types[next(6) as usize].to_string()];
+                    }
+                }
+                entries.push(e);
+            }
+            let has_scanner = entries
+                .iter()
+                .any(|e| e.kind == ContextKind::AuthorizedScanner);
+            let calendar = StaticCalendar::new(entries.clone());
+            let host = vec![ip(next(5))];
+            let targets: Vec<String> = (0..next(2)).map(|_| ip(next(6))).collect();
+            let sources: Vec<String> = (0..next(3)).map(|_| ip(next(4))).collect();
+            let severity = [Severity::Low, Severity::Medium][next(2) as usize];
+            let kind = types[next(6) as usize];
+            let case = GateInput {
+                targets: &targets,
+                ..input(kind, &host, &sources, 1, severity)
+            };
+            // zdroje skeneru jsou ip(0..3): cizi aktivita casto ze zarizeni skeneru
+            let other_src = vec![ip(next(3))];
+            let other_type = types[next(6) as usize];
+            let other = input(other_type, &host, &other_src, 2, Severity::Low);
+            for protect in [false, true] {
+                let base = GatePolicy {
+                    protect,
+                    ..v2_policy()
+                };
+                let mut plain = ContextGate::new(base.clone());
+                let mut guarded = ContextGate::new(GatePolicy {
+                    scanner_guard: true,
+                    ..base.clone()
+                });
+                let p = plain.explain_decision(&calendar, &case);
+                let g = guarded.explain_decision(&calendar, &case);
+                let gs = guarded.supporting_context(&calendar, &case);
+                if !SCAN_SHAPED.contains(&kind) {
+                    assert!(
+                        g.explanation
+                            .as_ref()
+                            .is_none_or(|e| e.kind != ContextKind::AuthorizedScanner),
+                        "{entries:?} {case:?}"
+                    );
+                    assert!(
+                        gs.as_ref()
+                            .is_none_or(|(k, _)| *k != ContextKind::AuthorizedScanner),
+                        "{entries:?} {case:?}"
+                    );
+                }
+                if SCAN_SHAPED.contains(&kind) || !has_scanner {
+                    assert_eq!(p, g, "{entries:?} {case:?}");
+                    assert_eq!(
+                        plain.supporting_context(&calendar, &case),
+                        gs,
+                        "{entries:?} {case:?}"
+                    );
+                }
+                scanner_cases += (p.explanation.as_ref().map(|e| e.kind)
+                    == Some(ContextKind::AuthorizedScanner))
+                    as u32;
+                // s aktivitou: zavreni skenerem jen bez cizi aktivity zdroje skeneru
+                guarded.note_activity(&other);
+                guarded.note_activity(&case);
+                let ga = guarded.explain_decision(&calendar, &case);
+                if ga.note.is_some() {
+                    blocked += 1;
+                    assert!(ga.ambiguous && ga.explanation.is_none());
+                }
+                // bez prepinace a bez host_first aktivita nic nemeni
+                let legacy_policy = GatePolicy {
+                    protect,
+                    strict_close: true,
+                    ..GatePolicy::default()
+                };
+                let before =
+                    ContextGate::new(legacy_policy.clone()).explain_decision(&calendar, &case);
+                let mut legacy = ContextGate::new(legacy_policy);
+                legacy.note_activity(&other);
+                assert_eq!(before, legacy.explain_decision(&calendar, &case));
+            }
+        }
+        assert!(
+            scanner_cases > 100 && blocked > 20,
+            "{scanner_cases} {blocked}"
+        );
     }
 
     /// Krok 22 (property): pro náhodné kalendáře bez skeneru dává kontext v2 tatáž zavření

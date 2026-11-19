@@ -603,6 +603,56 @@ impl V3Session {
         let severe = GatePolicy::default().most_severe;
         let mut keys: Vec<crate::finding_memory::FindingKey> = Vec::new();
         let mut signal_sources: Vec<Vec<String>> = Vec::new();
+        if gate.policy.scanner_guard {
+            // krok 22 (K22-N3): vsechny nalezy behu do brany pred rozhodovanim
+            for finding in &report.findings {
+                let service_key = finding.service_key.as_deref().unwrap_or("-");
+                let (_, key_ip) = split_service_key(service_key);
+                let host_ip = finding
+                    .host_key
+                    .clone()
+                    .unwrap_or_else(|| key_ip.to_string());
+                let entity_host = finding
+                    .host_key
+                    .as_ref()
+                    .and_then(|k| identity.get(k))
+                    .map(|m| m.asset_id().to_string())
+                    .unwrap_or_else(|| host_ip.clone());
+                let sources = match behavior_signal.get(&finding.finding_id) {
+                    Some((_, sources)) => sources.clone(),
+                    None => {
+                        findings::finding_signal(
+                            finding,
+                            services.get(service_key).copied(),
+                            |dst, proto, port, kind| {
+                                self.sources
+                                    .get(&(
+                                        dst.to_string(),
+                                        proto.to_string(),
+                                        port,
+                                        kind.to_string(),
+                                    ))
+                                    .map(Vec::as_slice)
+                                    .unwrap_or(&[])
+                            },
+                        )
+                        .1
+                    }
+                };
+                let targets =
+                    findings::finding_targets(finding, services.get(service_key).copied());
+                let ids = [host_ip, entity_host];
+                gate.note_activity(&GateInput {
+                    finding_type: &finding.finding_type,
+                    host_ids: &ids,
+                    targets: &targets,
+                    sources: &sources,
+                    severity: finding.severity,
+                    at: now,
+                    protected: false,
+                });
+            }
+        }
         for finding in &report.findings {
             let service_key = finding.service_key.as_deref().unwrap_or("-");
             let (_, key_ip) = split_service_key(service_key);
@@ -674,6 +724,10 @@ impl V3Session {
             let protection = protect
                 .then(|| crate::protection::protection(&finding.finding_type, signals))
                 .flatten();
+            if let Some(note) = decision.note {
+                // krok 22 (K22-N3): duvod pro cloveka u pripadu, ktery skener nevysvetli
+                memory.record(now, "engine", "context_ambiguous", &key, note);
+            }
             let explanation = decision.explanation;
             if crate::closure_gate::shadow_on()
                 && explanation.is_none()

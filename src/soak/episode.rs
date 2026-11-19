@@ -1813,6 +1813,56 @@ fn run_episode_inner(
                 let at = ts(t0);
                 let memory_on = runtime.memory.is_some();
                 let mut out = Vec::with_capacity(run_report.findings.len());
+                if runtime.gate.policy.scanner_guard {
+                    // krok 22 (K22-N3): vsechny nalezy cyklu do brany pred rozhodovanim
+                    for finding in &run_report.findings {
+                        let service_key = finding.service_key.as_deref().unwrap_or("-");
+                        let (_, key_ip) = split_service_key(service_key);
+                        let host_ip = finding
+                            .host_key
+                            .clone()
+                            .unwrap_or_else(|| key_ip.to_string());
+                        let entity_host = finding
+                            .host_key
+                            .as_ref()
+                            .and_then(|k| identity_map.get(k))
+                            .map(|m| m.asset_id().to_string())
+                            .unwrap_or_else(|| host_ip.clone());
+                        let (sources, targets) = match behavior_signal.get(&finding.finding_id) {
+                            Some((_, sources, targets)) => {
+                                let mut ips: Vec<String> =
+                                    targets.iter().map(|(ip, _)| ip.clone()).collect();
+                                ips.sort();
+                                ips.dedup();
+                                (sources.clone(), ips)
+                            }
+                            None => (
+                                findings::finding_signal(
+                                    finding,
+                                    report_services.get(service_key).copied(),
+                                    |dst, proto, port, kind| {
+                                        runtime.sources_of(dst, proto, port, kind)
+                                    },
+                                )
+                                .1,
+                                findings::finding_targets(
+                                    finding,
+                                    report_services.get(service_key).copied(),
+                                ),
+                            ),
+                        };
+                        let ids = [host_ip, entity_host];
+                        runtime.gate.note_activity(&GateInput {
+                            finding_type: &finding.finding_type,
+                            host_ids: &ids,
+                            targets: &targets,
+                            sources: &sources,
+                            severity: finding.severity,
+                            at,
+                            protected: false,
+                        });
+                    }
+                }
                 for (finding_index, finding) in run_report.findings.iter().enumerate() {
                     let service_key = finding.service_key.as_deref().unwrap_or("-");
                     let (_, key_ip) = split_service_key(service_key);
@@ -1903,6 +1953,10 @@ fn run_episode_inner(
                             )
                         })
                         .flatten();
+                    if decision.as_ref().is_some_and(|d| d.note.is_some()) {
+                        // krok 22 (K22-N3): pripad jde cloveku, skener ho nevysvetli
+                        agg.output.k7_add("k22_scanner_foreign", 1);
+                    }
                     let explanation = decision.and_then(|d| d.explanation);
                     let gate_on = cfg.engine.close_gate();
                     let subject = crate::closure_gate::Subject {
