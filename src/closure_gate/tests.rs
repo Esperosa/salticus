@@ -469,3 +469,65 @@ fn gate_invariant_holds_under_random_operations_fuzz() {
     // generator musi zavirani skutecne pokryt, jinak test nic nedokazuje
     assert!(closures > 500, "zavreno jen {closures}");
 }
+
+/// Krok 22 (B1, K22-N1): rekonstrukce dvou příčinně omylem vyvrácených případů ramene R,
+/// seed 20270207, síť 0, cykly 636 a 637 (`F:\work-tmp\k22\trace`). Jediný neškodný výsledek
+/// je schválený kontext autorizovaného skeneru bez rozsahu cílů; nález má smíšené zdroje
+/// (skener a cizí zdroj). Brána žebříku vyvrácení odmítne (jen jedna skupina) a s přísným
+/// doložením zdroje (`close_gate` zapíná `strict_close`) kontext ani nepodpoří.
+#[test]
+fn k22_b1_scanner_context_without_scope_alone_is_refused() {
+    let undetermined = |check: CheckId, detail: &str| StepNote {
+        check,
+        cycle: 0,
+        tag: "undetermined",
+        lr: None,
+        detail: detail.to_string(),
+    };
+    let mut d = decision(
+        "unexpected_traffic",
+        vec![
+            undetermined(CheckId::History, "historie jen 0 dny"),
+            undetermined(CheckId::Profile, "pripad nema jednu dvojici host-cil"),
+            note(
+                CheckId::Context,
+                0.30,
+                "schvaleny kontext: authorized_scanner (schvalil sim-spravce)",
+            ),
+        ],
+    );
+    d.posterior = 0.026_372;
+    assert_eq!(admit_ladder(&d), Err(Refusal::TooFewGroups));
+
+    use crate::context_gate::{ContextEntry, ContextGate, GateInput, GatePolicy, StaticCalendar};
+    let scanner = ContextEntry {
+        kind: ContextKind::AuthorizedScanner,
+        hosts: Vec::new(),
+        sources: vec!["192.168.33.119".to_string()],
+        start: at(0),
+        end: at(30),
+        covers: Vec::new(),
+        approved_by: "sim-spravce".to_string(),
+        expires: at(60),
+    };
+    let calendar = StaticCalendar::new(vec![scanner]);
+    let host = vec!["192.168.33.1".to_string()];
+    let mixed = vec!["192.168.34.234".to_string(), "192.168.33.119".to_string()];
+    let case = GateInput {
+        finding_type: "unexpected_traffic",
+        host_ids: &host,
+        sources: &mixed,
+        severity: Severity::Low,
+        at: at(10),
+        protected: false,
+    };
+    // rameno R (bez prisnosti): castecna shoda zdroje staci, kontext podpori vyvraceni
+    let loose = ContextGate::new(GatePolicy::default());
+    assert!(loose.supporting_context(&calendar, &case).is_some());
+    // s branou: skener bez rozsahu a cizi zdroj = nedolozeno, zadny podpurny dukaz
+    let strict = ContextGate::new(GatePolicy {
+        strict_close: true,
+        ..GatePolicy::default()
+    });
+    assert!(strict.supporting_context(&calendar, &case).is_none());
+}

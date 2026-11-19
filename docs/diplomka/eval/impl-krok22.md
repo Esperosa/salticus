@@ -41,3 +41,18 @@ V E0 a E1 se držené seedy nepoužijí.
 ### 1.4 Upřesnění kontroly smyslu stínu (zapsáno před kódem)
 
 Plán (B4) žádá shodu stínu se 14 automatickými zavřeními a 1 529 vyvráceními z běhu `scan` ramene R (seedy 20270201 až 20270210, 40 sítí). Tyto seedy byly drženými seedy kroku 21; v kroku 22 se použijí jen jako diagnostika správnosti stínu (stejně jako stopy 20270207/08), ne pro rozhodnutí o prazích K22. Odhad ceny: 40 sítí × ≈ 76 s CPU ≈ 50 min CPU, 8 vláken. Pokud by cena výrazně překročila rozpočet E1, kontrola se zúží na seedy se stopou (20270203, 20270206, 20270209) a zapíše se to.
+
+## 2. E0: rozbor dvou nerozebraných omylem vyvrácených (B1)
+
+Běh: `F:\work-tmp\k22\trace\off-R-20270207` (binárka `salticus-k21-224ed3e.exe`, `--max-networks 1`, `K15_TRACE`), 20 s reálného času. Souhrn sítě 0 (`output` v `networks.jsonl`) je **shodný** s během `F:\work-tmp\k21\scan\off-R-20270207` ve všech polích (`ladder_refuted` 2, `ladder_refuted_wrong_causal` 2, nálezů 33 086). Rozbor `rca21.py`:
+
+| cyklus | klíč | P | neškodné výsledky | zdroje nálezu | pravda |
+|---|---|---|---|---|---|
+| 636 | `asset:1\|unexpected_traffic\|host-only` (host 192.168.33.1, brána sítě) | 0,0264 | jen L1 kontext `authorized_scanner (schvalil sim-spravce)`, LR 0,30; historie a profil `nezjisteno` | 192.168.34.234, 192.168.33.119 | příčinně omyl; v okně benign `AuthorizedScanner` (id 25) a `CloudMigration` (id 81) |
+| 637 | týž klíč | 0,0264 | totéž | | totéž |
+
+**Výsledek proti kritériu (1.3): zamítnuto podle litery kritéria.** Případy **nemají** příčinu z tabulky `impl-krok21.md` 6 b (jedna slabá skupina): jedinou skupinou je schválený kontext s vlastníkem, tj. podle `closure_gate::positive` pozitivní důkaz s vlastníkem. Záznam je skener **bez rozsahu cílů** a nález má smíšené zdroje; bez `strict_close` (rameno R) stačí částečná shoda zdroje (`context_gate.rs:555`). Druhá podmínka kritéria platí: brána na rekonstruovaném rozhodnutí vrací `Refusal::TooFewGroups` a s přísným doložením (`close_gate` ⇒ `strict_close`, `engine.rs:909`) kontext nález ani nepodpoří (test `closure_gate::tests::k22_b1_scanner_context_without_scope_alone_is_refused`). Dvě nezávislé skupiny případ nemá.
+
+**Nový nález K22-N1 (zapsán do registru až v Check kroku):** tvrzení kroku 21 „všechny omylem vyvrácené v R jsou jedna slabá skupina“ neplatí pro 2 ze 42 případů. Ty blokuje brána dvěma nezávislými mechanismy (pravidlo dvou skupin v `admit_ladder` a přísný kontext v kroku žebříku), ne chybějícím pozitivním důkazem. Slabé místo: `admit_ladder` pozná pozitivní kontext jen podle textu poznámky („schvalil“) a **sám neověřuje doložení zdroje**; spoléhá na to, že krok kontextu žebříku běží se stejnou `GatePolicy` (`for_engine`, v soaku `soak/v3.rs:77`, v produkci `pipeline/v3.rs:480`). Skener bez rozsahu + historie (druhá skupina) by bez přísné politiky lístek dostal. Dnes to nenastane (přísnost je s branou vynucená a testem připnutá), proto se E1 nezastavuje; obranná kontrola doložení přímo v `admit_ladder` je navržena jako první bod E2 (mění chování brány, potřebuje vlastní předregistraci).
+
+Odchylka od Act plánu (zapsáno): plán pro zamítnutí říká „opravit dřív než cokoli dalšího“. Brána případ prokazatelně odmítá (test), vada je ve zdůvodnění tvrzení R1 a v obranné hloubce, ne v propustnosti brány; E1 (jen za vypnutými přepínači, bez vlivu na zavírání) proto pokračuje.
