@@ -96,6 +96,8 @@ Kontrola úplnosti mapy (krok 21): grep všech zápisů `FindingState::AutoResol
 
 **Riziko:** uložení lístku prodlužuje zavření (nebezpečný směr), proto až se sdílenou funkcí a měřením; podpis řeší podvržení, ne chybu v bráně.
 
+**Výsledek FG21P (2026-11-19, `impl-krok21.md` 5):** pevná apriorní P 0,15 nezměnila zavírání (0 vyvrácení v FG21 i FG21P, protože s bránou se k vyvrácení nedojde), zvýšila zobrazené FP o 0,5 až 0,6 % a případy pro člověka o 16 až 23. Bod 1 je tedy pro zavírání **neotestovaný**, ne vyvrácený; otestovat ho jde až tehdy, když simulace bude generovat zavíratelné případy (6, krok 2).
+
 ### 4.3 Chráněné prostředky (hosty)
 
 **Kořenová příčina:** R2 je v kódu implementováno jen jako chráněné typy (P1 až P3), signály P4/P5 a vysoký dopad podle závažnosti nebo typu; inventář nemá atribut kritičnosti a `closure_gate::Subject` nemá hosta (M16, ověřeno čtením).
@@ -107,6 +109,8 @@ Kontrola úplnosti mapy (krok 21): grep všech zápisů `FindingState::AutoResol
 ### 4.4 Příčina +3 % zobrazených FP u `recommended()` + brána
 
 **Tvrzení kroku 20:** cena R1 a R2 (zmizí 337 až 432 vyvrácení na závislém důkazu). **Stav: zpochybněno** rozkladem `F:\work-tmp\k21\fp_root.py` (sekce Dodatek v `impl-krok21.md`): přírůstek FP i přírůstky podle důvodu zobrazení jsou na konfiguraci nezávislé, ač úbytek vyvrácení závislý je; konfiguračně nezávislá je jen ztráta 39 kontextových zavření skeneru bez rozsahu (M4). Hypotéza H21-FP a její kauzální test (ramena R, RG, RS, RGS) jsou předregistrovány; výsledek v `impl-krok21.md` sekce 5.
+
+**Výsledek (2026-11-19):** test H21-FP selhal jako test (RS = R, RGS = RG; přepínač rozsahu nic nenastaví, K21-N13), hypotéza je **neotestovaná**. Párování nálezů ze stop našlo jinou příčinu, **ověřenou nezávisle** stopou i testem: K21-N14. Přísné doložení zdroje se kontroluje před shodou hostu, takže záznam o jiném hostu označí nález jako nejednoznačný (P5) a nález se zobrazí hned místo ověření. V síti bez jediného vyvrácení (20270208/0) jde o 162 ze 164 navíc zobrazených nálezů bez útoku. Tvrzení kroku 20 je jako hlavní příčina **vyvráceno**. Ztráta vyvrácení přispívá jen v sítích s mnoha vyvráceními (20270206/0); podíl obou příčin není kvantifikován. Nárůst v kroku 21: RG/R = 1,056.
 
 ## 5. Vlastní nálezy kroku 21
 
@@ -124,12 +128,21 @@ Kontrola úplnosti mapy (krok 21): grep všech zápisů `FindingState::AutoResol
 | K21-N10 (2026-11-19) | pozitivní důkaz žebříku se pozná podle textu kroku (`schvalil `, `seznam povolenych`, `vlastnik `) | `closure_gate.rs` `positive`, `after` | ověřeno nezávisle (čtení) | — | střední při změně formátu textu (tiché vypnutí nebo zapnutí důkazu) | otevřené; návrh: strukturované pole `owner` v `StepNote`, pořadí 5 |
 | K21-N11 (2026-11-19) | `CloseTicket` a `Entry` mají `Deserialize`; lístek lze vyrobit mimo bránu deserializací | `closure_gate.rs:30`, `finding_memory.rs:300` | ověřeno nezávisle (čtení); v kódu se nikde nedeserializuje (grep) | — | nízké | otevřené (spolu s N4) |
 | K21-N12 (2026-11-19) | kontext jako pozitivní důkaz se v žebříku ověřuje v cyklu kontroly, ne v cyklu rozhodnutí; po expiraci záznamu může lístek nést prošlý kontext | `verify_ladder.rs:1628` (krok Context), `admit_ladder` nekontroluje čas kroku | **neověřeno** (z čtení, bez testu) | — | nízké až střední | otevřené |
+| K21-N13 (2026-11-19) | rozsah cílů skeneru (`hosts`) se porovnává s hostem nálezu, ne s cíli; sken ven přes bránu (host nálezu = brána) se zdokumentovaným skenerem nevysvětlí nikdy. V simulaci skener skenuje jen cíle mimo síť, takže `K21_SCANNER_SCOPE` dá prázdný rozsah a nic nezmění | test `context_gate::tests::known_gap_scanner_scope_does_not_match_finding_host_of_egress_scan`; stopa RGS 20270203 (`scanner_trace.py`); `soak/v3.rs:418-432`, `context_gate.rs:550` | ověřeno nezávisle | rozsah z `victim_devices` (měřicí přepínač kroku 21, nefunkční) | střední: zdokumentovaný skener v produkci nezavře své nálezy; bez rozsahu (R) zavírá útoky (13 ze 14 omylem) | otevřené; návrh: `GateInput` s cíli nálezu, rozsah se porovná s cíli, zdroj se zdroji; v simulaci rozsah z `target_external` i interních cílů |
+| K21-N14 (2026-11-19) | při `strict_close` se doložení zdroje kontroluje před shodou hostu; záznam o jiném hostu označí nález jako nejednoznačný → s `protect` signál P5 → nález se zobrazí hned, nejde do ověření a nikdy se nezavře | test `known_gap_strict_close_flags_ambiguous_from_other_host_record`; stopy R/RG 20270208 (`fp_pair.py`, `prot_check.py`: 161 nálezů `protected` jen v RG); `context_gate.rs:540` vs `:547` | ověřeno nezávisle | — | střední: hlavní příčina +FP u brány (4.4); P5 ztrácí význam (nejednoznačnost z cizího záznamu) | otevřené; návrh: shoda hostu a zdroje před přísnou kontrolou (`ambiguous` jen pro záznam, který se nálezu týká); za přepínačem, měřit na nových držených seedech, protože mění i `final` |
+| K21-N15 (2026-11-19) | soak má na síť 2 virtuální dny; historie a profil v žebříku nedozrají (≈ 99 % případů eskaluje na `nezjisteno`), takže P ≤ 0,03 má ≈ 1 % případů a hranici automatizace nelze v soaku změřit | stopa RG 20270203 (`ladder_block.py`), `virtual_days` 2,0 v `networks.jsonl` | ověřeno nezávisle | — | vysoké pro platnost závěrů o automatizaci | otevřené; návrh: delší horizont nebo předehřátá historie a profil, pořadí 2 |
+| K21-N16 (2026-11-19) | simulované záznamy kontextu (záloha, dávka, patch, výpadek, CMDB) nemají zdroje, jen hosty-oběti; přísné doložení zdroje proto v simulaci neprojde nikdy a pozitivní důkaz s vlastníkem nevzniká; bez přísnosti zavírají kontextová zavření omylem (R: 14 ze 14) | `soak/v3.rs:393-457`; `outcomes.py` (kontext `undetermined` ve všech gated ramenech) | ověřeno nezávisle | — | vysoké pro platnost: brána je v simulaci neotestovatelná na správné zavření | otevřené; návrh: záznamy se zdroji podle skutečných kalendářů (zálohovací server, hostitel dávky, zdroj patchů), pořadí 2 |
 
-## 6. Doporučené pořadí dalších kroků
+## 6. Doporučené pořadí dalších kroků (revize 2026-11-19 po měření)
 
-1. Jedna sdílená funkce cyklu pro soak i produkci a soak s restartem v každém cyklu (4.2); teprve pak rozhodnout o uložení lístku s podpisem.
-2. Pravidlo epizody i pro otevřený klíč (4.1), měřeno na nových držených seedech.
-3. Zámek běhu a kontrola verze řádku v paměti (N5); monotónní čas (N8); třída vyřazení podle zámku (N9).
-4. Registr chráněných prostředků (4.3) a role v simulaci.
-5. Strukturovaný vlastník důkazu a klíč v lístku (N7, N10, N11); seznam povolených jen z nezávislého zdroje (N6).
-6. Odpojit rozsah skeneru v simulaci od `strict_close` (M4) natrvalo podle výsledku H21-FP; pak znovu změřit RG a rozhodnout o presetu.
+Hlavní závěr měření kroku 21: **„0 omylem zavřených“ s bránou nastává tím, že se nezavře nic** (FG21 0 vyvrácení a 0 automatických zavření na 120 držených sítích; RG 0 na 40). Brána nic neodmítla (`gate_refused` 0); k vyvrácení se nedojde kvůli horizontu simulace (N15) a chybějícímu pozitivnímu důkazu v simulovaném světě (N16, N13). Bez brány (R) jsou omylem zavřená všechna kontextová zavření (14 ze 14) a vyvrácení stojí na jediné slabé skupině (40 rozebraných případů). Brána je tedy oprávněně přísná, ale **hranice automatizace (správné zavření s pozitivním důkazem) zatím změřena není**.
+
+1. **Opravy kontextové brány za přepínačem** (N14 shoda hostu před přísnou kontrolou; N13 rozsah proti cílům nálezu). Malé změny, každá s testem; měřit proti `final` na nových držených seedech (návrh 20270301 až 20270310, zapsat dopředu).
+2. **Svět simulace, ve kterém lze zavírat správně** (předregistrovat jako změnu světa, ne ladění): záznamy kontextu se zdroji podle skutečných kalendářů (N16); skener s rozsahem i pro vnitřní cíle (N13); horizont ≥ minimální historie, nebo předehřátá historie a profil (N15); seznam povolených v `off` a `ops` jako záznam vlastníka.
+3. **Stínový režim lístků a měřená hranice:** brána vydá „lístek by byl“ a zapíše ho bez zavření; pro každou buňku (druh pozitivního důkazu × typ nálezu) se počítají správná a omylem zavřená (cf i příčinně) s Wilsonovou horní mezí. Automatické zavírání se zapne jen pro buňky s horní mezí omylů pod cílem (návrh 1 %, n ≥ 300 správných), ostatní jdou člověku. Hranice je tak tabulka buněk s čísly, ne jedno číslo za celý systém. Na tom stavět rozsah L1 až L3 (`rozsah-autonomie.md`).
+4. Jedna sdílená funkce cyklu pro soak i produkci a soak s restartem v každém cyklu (4.2); pak uložení lístku s podpisem a znovu FG21P, tentokrát se zavíratelnými případy.
+5. Pravidlo epizody i pro otevřený klíč (4.1), měřeno na nových držených seedech.
+6. Zámek běhu a kontrola verze řádku (N5); monotónní čas (N8); třída vyřazení podle zámku (N9).
+7. Registr chráněných prostředků (4.3); strukturovaný vlastník důkazu a klíč v lístku (N7, N10, N11); seznam povolených jen z nezávislého zdroje (N6).
+
+Odmítnuté alternativy: (i) zmírnit bránu, aby přijala živost nebo historii bez vlastníka. Zamítnuto: přesně tento vzor dává omylem vyvrácené v R a porušil by R1. (ii) Ladit práh `p_refute` nebo apriorní P na držených seedech. Zamítnuto: zakázáno zadáním a nepomůže, protože 99 % případů P ≤ 0,03 nedosáhne kvůli horizontu, ne kvůli prahu. (iii) Odebrat `strict_close` z `close_gate`. Zamítnuto: vrací 13 omylem zavřených skenerem bez rozsahu.
