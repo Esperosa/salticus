@@ -153,3 +153,42 @@ Commit `23d8378`, binárka `F:\work-tmp\k22\bin\salticus-k22-23d8378.exe`.
 | (6) testy | `cargo test --lib`: 695 prošlo, 6 známých selhání (5 `broker` bez Redis, 1 `identity_lab` bez Dockeru); `fmt` čisté; `clippy` bez nového varování | splněno |
 
 Vedlejší účinek (zapsáno): případy B1 brána nyní odmítá důvodem `SourceNotProven` místo `TooFewGroups` (první porušená podmínka je chybějící doložení). Test B1 upraven.
+
+## 7. E2: svět simulace v2 na ladicích seedech (B5)
+
+Commity `95928d4` (svět v2, pravda ke stínu, odstraněn `K21_SCANNER_SCOPE`), `86e22f5` (laboratoř C, stín v produkční cestě). Binárka `F:\work-tmp\k22\bin\salticus-k22-86e22f5.exe`. Běhy `F:\work-tmp\k22\e2` (35 úloh = 7 ramen × seedy 20269801 až 20269805, konfigurace `off`, 4 sítě, 168 h, se stínem) a `F:\work-tmp\k22\{reg3,regsh3}` (K22-6), všech 59 úloh s kódem 0, ≈ 50 min reálného času při 7 paralelních úlohách. Držené seedy nepoužity. Vyhodnocení `tools/k22_gate.py` (`F:\work-tmp\k22\e2-gate.txt`), `tools/k22_shadow.py`.
+
+**K22-6 po všech změnách E2** (svět v1, bez přepínačů a se stínem, binárka `86e22f5`): `reg3` 48/48, `regsh3` 48/48 shodných sítí s krokem 21. Svět v1 se odstraněním `K21_SCANNER_SCOPE` nezměnil.
+
+### 7.1 Validita světa (5.2)
+
+| kritérium | výsledek | stav |
+|---|---|---|
+| V1 podíl jevů kalendáře se záznamem 90 % ± 2 % | 207 z 229 = 90,4 % (20 sítí; zrušených oken 15, posunutých záznamů 10) | splněno |
+| V2 podíl útoků se zdrojem nebo cílem v aktivním okně (hlásí se) | 385 z 1 798 = 21,4 %; útoků z infrastruktury 4 | hlášeno |
+| V3 rameno R ve v2 má víc kontextových zavření než ve v1 | R1 (v1, 168 h) **10** zavření (z toho 6 omylem), R2 (v2) **0** | **nesplněno** |
+
+**Proč V3 neprošlo (rozbor stopy `F:\work-tmp\k22\trace\off-FG2-20269801`, síť 0):** záznamy kalendáře do brány dojdou (test `calendar_backup_record_reaches_context_gate`) a nálezy úloh mají správný host a zdroj, ale engine je nevysvětlí: z 673 nálezů zálohy a dávky (v okně úlohy, typ krytý druhem záznamu) je 487 vysoké závažnosti (s `protect` platí P6: vysvětlí je jen dva nezávislé druhy kontextu) a 409 je bez identifikovaného zdroje (s přísným doložením nedoloženo; bez zdroje opět P6); **všech 673** splňuje aspoň jednu z obou podmínek, takže kontext je nevysvětlí nikdy. Ve v1 R zavíral hlavně proto, že záznam byl odvozený z pravdy (6 z 10 zavření omylem). Příčina tedy není vada generátoru, ale pravidla jádra (P6, přísné doložení, chybějící zdroje u objemových nálezů). **Odchylka od předregistrace (zapsáno):** předregistrace pro neúspěch validity předepisuje opravu generátoru; generátor se neopravuje, protože každá změna, která by V3 splnila (menší objemy záloh, zdroje u objemových nálezů), by byla laděním světa podle toho, zda brána zavírá (kruhovost A1). Výsledek se hlásí jako neúspěch V3 se změřenou příčinou.
+
+### 7.2 Prahy K22 na ladicích seedech (svět v2, `off`, 20 sítí; jen diagnostika, rozhodují až držené seedy E3)
+
+| práh | výsledek | stav |
+|---|---|---|
+| K22-1 omylem zavřená ve FG2 | **3 ze 4** skutečných zavření (kontext `authorized_scanner`); 2 útoky s omylem zavřeným nálezem; 5 výskytů útoků pohlceno pod zavřeným klíčem | **nesplněno** |
+| K22-2 detekce FG2 vs F2 | 85,32 → 85,37 % (+0,06 p. b.); žádná rodina nižší (počty útoků) | splněno |
+| K22-3 FP | FG2/F2 = 1 353/1 365 = 0,991 (≤ 1,01); F2c/F2 = 0,991 (≤ 1,00) | splněno |
+| K22-4 případy pro člověka | 22 274 → 22 272 (−0,01 %) | splněno |
+| K22-5 tabulka hranice (stín) | dny 6 a 7: **žádný** stínový lístek ani kontextové vysvětlení v žádném rameni (40 síťodnů); všech 7 dní: 4 lístky, buňky `context:authorized_scanner × unexpected_traffic` (2, oba omylem) a `× scan_attempts` (2, 1 omylem); žebřík 0 lístků (odmítnutí: 411 vysoký dopad, 136 bez pozitivního důkazu, 62 chráněný nález) | žádný kandidát |
+| K22-6 | 48/48 a 48/48 | splněno |
+| K22-7 v1 vs v2 | F: FP 1 526 → 1 365 (×0,894); detekce 85,21 → 85,32 %; R: FP 1 472 → 1 326, kontextová zavření 10 → 0, vyvrácení 136 → 225; FG: zavření 0 → 4 (3 omylem); stínové lístky 0 → 4 | hlášeno |
+
+**Rozbor tří omylem zavřených (K22-N2):**
+
+| síť | cyklus | nález | zdroj | pravda | mechanismus |
+|---|---|---|---|---|---|
+| 20269801/0 | 144, 145 | `unexpected_traffic` na 10.188.2.53 (nízká závažnost) | 10.188.2.98 = autorizovaný skener | cf i příčinně: `ssh_bruteforce` (id 48) ze skeneru, začátek přesunut do okna skenu (kompromitace infrastruktury, 5.2) | záznam skeneru pokrývá `unexpected_traffic`, zdroj = skener, cíl v rozsahu → doloženo, lístek. Útok, který vůbec není sken, projde jako sken. |
+| 20269803/2 | 170 | `scan_attempts` | 192.168.17.190 = skener (pracovní stanice, síť 14 zařízení) | jen příčinně (cf ne): současně běží `c2_irc_style_channel` ze stejného zařízení | přirozený překryv: skener je zároveň infikovaná stanice; nález sám vznikl ze skenu, ale zavření skryje aktivitu kompromitovaného zařízení |
+
+Tím je bod (b) review změřen: **svět v2 zbytkové riziko zachytil** (2 omylem zavřené ze 4 zavření v 20 sítích a 7 dnech, 1 další přirozeným překryvem). Kandidátní buňka by po odečtení omylů nevznikla ani při libovolném objemu: horní mez Wilson pro 3 omyly ze 4 je 99,4 %.
+
+**Potřebný objem:** pro buňky zálohy a dávky nebyl za 140 síťodnů (dny 1 až 7) ani 40 síťodnů (dny 6 a 7) vydán žádný lístek; horní mez míry (3/140 na síťoden) dává **≥ 17 800 síťodnů** na 381 zavření v jedné buňce při dnešních pravidlech P6 a přísném doložení, tj. na držené sadě (40 sítí × 7 dní = 280 síťodnů) nedosažitelné. Pro buňky skeneru je problémem chybovost, ne objem.
