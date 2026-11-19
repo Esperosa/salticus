@@ -93,3 +93,37 @@ Kandidátská binárka `17bbd7e` bez přepínače proti základní `f4a44f3` (b�
 - Část případů, které základ potvrdil jen z apriorní P, kandidát dokončením kontrol téhož cyklu potvrdí s nezávislým důkazem (`off`: z 3 276 bez důkazu se 1 576 předalo jako nepotvrzené, zbytek dostal důkaz nebo se rozhodl jinak).
 - Po případech (stopy `K15_TRACE`, včetně kontrafaktuálních světů): 96,4 % rozhodnutí padlo ve stejném cyklu jako v základu, 3,6 % jinak. Rozdíly vznikají i mimo přímo dotčené případy (zpětná vazba učení apriorní P a rozpočtu), proto se v malém mění i počty eskalací.
 - Ladicí seedy neukázaly důvod ke změně kódu; na držené seedy jde binárka `17bbd7e` beze změny.
+
+### Držené seedy 20269601 až 20269610 (použity jednou, 10 seedů x 4 sítě x 3 konfigurace, binárka `17bbd7e`)
+
+| konfigurace | potvrzeno základ / kandidát | bez nezávislého důkazu základ → kandidát | přesnost potvrzení | nepotvrzeno předáno (útok) | omylem zavřeno | případy pro člověka | zobrazené FP | detekce |
+|---|---|---|---|---|---|---|---|---|
+| `off` | 7 464 / 4 994 | 58,7 % → **0 %** (jen apriorní P 3 600, jen závislý zdroj 785) | 93,8 → 94,3 % | 2 383 (94,0 %), 5,7/síť-den | 0 / 0 | −0,03 % | ×1,0001 | 81,44 → 81,46 % |
+| `ops` | 7 336 / 5 327 | 63,2 % → **0 %** (3 997, 638) | 93,2 → 94,3 % | 2 406 (93,0 %), 5,8/síť-den | 0 / 0 | +0,34 % | ×1,0001 | 81,60 → 81,63 % |
+| `elying` | 6 912 / 5 047 | 51,0 % → **0 %** (2 775, 747) | 93,4 → 93,2 % | 2 447 (94,0 %), 5,9/síť-den | 0 / 0 | +0,19 % | ×1,0001 | 81,58 → 81,58 % |
+
+40 párů sítí na konfiguraci, 416 síť-dní, 4 305 útoků, 0 nespárovaných, všechny běhy doběhly (žádná síť XXL nad 2 h).
+
+- **K18-1 splněno:** 0 % potvrzení bez pozitivního důkazu z nezávislého zdroje ve všech konfiguracích (základ 51 až 63 %).
+- **K18-2 splněno:** žádná rodina s ≥ 20 útoky neklesla; jediná změna je `c2_beacon` 80,7 → 81,3 % (n = 166) v `off` a `ops`. Souhrnná detekce +0,00 až +0,03 p. b.
+- **K18-3 splněno:** omylem zavřeno 0 v obou ramenech všech konfigurací; držení klíče nemuselo odmítnout žádné vyvrácení (žebřík v držených bězích `off` a `ops` nevyvrátil nic, v `elying` 7 shodně v obou ramenech).
+- **K18-4:** člověku jde 5,7 až 5,9 nepotvrzených případů na síť-den, 93 až 94 % z nich jsou útoky. Celkový počet případů pro člověka se změnil o −0,03 až +0,34 % (práh 1 % splněn).
+- **K18-5:** přesnost potvrzení se nesnížila, jak předpovídala kořenová analýza (`off` +0,5, `ops` +1,1, `elying` −0,2 p. b.). Odhad z ladicích stop (0,85 pro potvrzení s nezávislým důkazem) byl ze dvou sítí na seed; na držených sítích jsou potvrzení s nezávislým důkazem přesná zhruba stejně jako ta jen z apriorní P.
+- **K18-6 splněno:** zobrazené FP ×1,0001 ve všech konfiguracích.
+- Po případech (stopy, včetně kontrafaktuálních světů): 97,2 % rozhodnutí ve stejném cyklu jako v základu.
+
+## 6. Závěr a co se nepodařilo
+
+Pravidlo „bez pozitivního důkazu se netvrdí“ teď v žebříku platí strukturálně: stav `confirmed` vznikne jen s podezřelým výsledkem kontroly z nezávislého zdroje, apriorní P zůstává v rozhodnutí jako priorita. Na držených seedech to stojí nic měřitelného (detekce, FP, zavírání, zátěž člověka beze změny) a z 51 až 63 % potvrzení bez důkazu je 0 %.
+
+Co se nepodařilo nebo zůstává otevřené:
+
+1. **Engine sám důkaz nedodá.** Nepotvrzené případy jsou z 93 až 94 % útoky; apriorní P z paměti případů je v simulaci přesná, ale nejde o zjištění o daném případu. Člověk dostává 5,7 až 5,9 takových případů na síť-den s kontrolou, na kterou čekají; aby se z nich staly potvrzené, chybí nezávislé zdroje (reputace a intel jsou v simulaci většinou „neznámé“, koncová telemetrie jen v `elying`). Skutečné zlepšení je v pokrytí zdrojů, ne v politice.
+2. **Kontrola, na kterou případ čeká, je často levná pasivní kontrola, která už proběhla bez dat, nebo ruční ověření;** „cena“ je cena žebříku (relativní jednotka rozpočtu), ne čas analytika.
+3. **Množina nezávislých zdrojů je volba autora** (historie, profil hostu a přetrvání vyloučeny jako týž tok dat jako detektor); nebyla měřena alternativa. Srovnání s peery (LR 1,3) je slabý důkaz a stačí k potvrzení, pokud P už je vysoko.
+4. **Kořenová analýza na dumpech kroků 14 a 15 šla jen ze souhrnů** (dumpy nenesou kroky případů a dumpy kroku 16 se nedochovaly); po případech se analyzovalo z nového krátkého běhu na ladicích seedech.
+5. **Předpověď K18-5 (pokles přesnosti) se nepotvrdila;** odhad stál na stopách ze dvou sítí na seed.
+6. **Produkční pipeline učenou apriorní P nepoužívá** (pevná 0,15), takže tam přepínač dnes nic nemění; pravidlo je připravené pro chvíli, kdy se učená P přenese. Reálná data (CTU-13, LUFlow) se proto neměřila: žebřík na nich nic nepotvrzuje (krok 16).
+7. Review: council ani sol-loop se podle zadání nespouštěly; kód posoudil jen autor.
+
+**Návrh pro `recommended()` (neprovedeno, ke schválení):** zapnout `confirm_evidence`. Všechny předregistrované prahy splněny na držených seedech, cena v A-ukazatelích nulová.
