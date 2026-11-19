@@ -1263,4 +1263,55 @@ mod tests {
         assert_eq!(gate.stats.refused_disabled, 1);
         assert!((wilson_upper(0, 200) - 0.0188).abs() < 1e-3);
     }
+
+    /// Krok 21 (K21-N14, známá mezera): při `strict_close` se doložení zdroje kontroluje
+    /// dřív než shoda hostu, takže záznam o JINÉM hostu, který typ pokrývá, označí nález
+    /// jako nejednoznačný (P5). S `protect` pak nález dostane ochranu, zobrazí se hned
+    /// a nejde do ověření. Bez `strict_close` záznam jiného hostu nález neovlivní.
+    #[test]
+    fn known_gap_strict_close_flags_ambiguous_from_other_host_record() {
+        let outage = entry(ContextKind::ServiceOutage, "10.0.0.50", 0, 10);
+        let calendar = StaticCalendar::new(vec![outage]);
+        let host = vec!["10.0.0.9".to_string()];
+        let src = vec!["10.0.0.77".to_string()];
+        let case = input("connection_timeout_burst", &host, &src, 1, Severity::Medium);
+        let mut lenient = ContextGate::new(protect_policy());
+        let decision = lenient.explain_decision(&calendar, &case);
+        assert!(decision.explanation.is_none() && !decision.ambiguous);
+        let mut strict = ContextGate::new(GatePolicy {
+            strict_close: true,
+            ..protect_policy()
+        });
+        let decision = strict.explain_decision(&calendar, &case);
+        assert!(decision.explanation.is_none());
+        assert!(
+            decision.ambiguous,
+            "znama mezera: zaznam jineho hostu dela nalez nejednoznacnym"
+        );
+    }
+
+    /// Krok 21 (K21-N13, známá mezera): záznam skeneru s rozsahem cílů nevysvětlí nález,
+    /// jehož host je jiný než cíl (sken ven přes bránu: host nálezu je brána, cíl je
+    /// mimo síť). Rozsah cílů v `hosts` se porovnává s hostem nálezu, ne s cíli.
+    #[test]
+    fn known_gap_scanner_scope_does_not_match_finding_host_of_egress_scan() {
+        let scoped = ContextEntry {
+            hosts: vec!["203.0.113.80".to_string()],
+            sources: vec!["10.0.0.104".to_string()],
+            ..entry(ContextKind::AuthorizedScanner, "-", 0, 4)
+        };
+        let calendar = StaticCalendar::new(vec![scoped]);
+        let gateway = vec!["10.0.0.1".to_string()];
+        let scanner = vec!["10.0.0.104".to_string()];
+        let case = input("scan_attempts", &gateway, &scanner, 1, Severity::Medium);
+        let mut gate = ContextGate::new(GatePolicy {
+            strict_close: true,
+            ..GatePolicy::default()
+        });
+        assert!(
+            gate.explain(&calendar, &case).is_none(),
+            "znama mezera: sken zdokumentovaneho skeneru ven se nevysvetli"
+        );
+        assert!(gate.supporting_context(&calendar, &case).is_none());
+    }
 }
