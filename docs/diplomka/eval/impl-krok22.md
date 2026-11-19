@@ -192,3 +192,23 @@ Commity `95928d4` (svět v2, pravda ke stínu, odstraněn `K21_SCANNER_SCOPE`), 
 Tím je bod (b) review změřen: **svět v2 zbytkové riziko zachytil** (2 omylem zavřené ze 4 zavření v 20 sítích a 7 dnech, 1 další přirozeným překryvem). Kandidátní buňka by po odečtení omylů nevznikla ani při libovolném objemu: horní mez Wilson pro 3 omyly ze 4 je 99,4 %.
 
 **Potřebný objem:** pro buňky zálohy a dávky nebyl za 140 síťodnů (dny 1 až 7) ani 40 síťodnů (dny 6 a 7) vydán žádný lístek; horní mez míry (3/140 na síťoden) dává **≥ 17 800 síťodnů** na 381 zavření v jedné buňce při dnešních pravidlech P6 a přísném doložení, tj. na držené sadě (40 sítí × 7 dní = 280 síťodnů) nedosažitelné. Pro buňky skeneru je problémem chybovost, ne objem.
+
+## 8. E2: laboratoř C (B6)
+
+Sestava `labs/k22`, skripty `tools/k22_lab.py` (běh, kalendář před první úlohou) a `tools/k22_lab_eval.py` (Zeek, okna, `beh spust` s `K22_SHADOW`). Data jen v `F:\work-tmp\k22\lab`. Kontejnery jen na tomto počítači, sítě 10.77.0.0/16 bez NAT, nic ven.
+
+**Úpravy harnessu na ladicí sadě (zapsáno, bez změny brány, kalendáře a provozu):** (1) zkušební běh `smoke` (3 sloty, fáze 25 s) ukázal, že bez inventáře produkční cesta zná služby jen jako `unmapped_passive_event` bez zdrojů; vyhodnocení proto dostává statický inventář nmap ze sestavy (znalost operátora, `HOSTS` v `k22_lab_eval.py`); (2) produkční stín loguje i nálezy, pro které kalendář má aktivní záznam krytého typu, ale brána je nevysvětlila (`context_none`, jen měření). Skript běhu laboratoře se mezi 22001 a 22101 neměnil.
+
+### 8.1 Ladicí sada 22001 (15 slotů, fáze 120 s, 154 047 spojení Zeek, 47 oken, 695 nálezů)
+
+| třída (5.3) | nálezů | stínový lístek | poznámka |
+|---|---|---|---|
+| neškodný se záznamem (sloty SC, SA) | 124 | **0** | 99 `unmapped_passive_event` (bez zdroje), 25 `connection_timeout_burst`; všechny **vysoké závažnosti** |
+| útok A (sken z `c1` v okně skenu) | 5 | 0 | ve 3 slotech |
+| útok B (exfiltrace ze zálohovacího kontejneru) | 3 | 0 | `identification_gap` (typ mimo pokrytí zálohy) |
+| útok C (skener mimo rozsah) | 3 | 0 | `identification_gap` |
+| útok D (kompromitovaný skener v rozsahu, smíšeno s autorizovaným skenem) | 16 | 0 | očekávaný lístek nevznikl: kryté typy (5 `connection_timeout_burst`, 1 `scan_attempts`) jsou vysoké závažnosti, ostatní typy záznam skeneru nepokrývá |
+| BKN (záloha bez záznamu) | 0 krytých nálezů | 0 | |
+| zálohy a dávky se záznamem (BK, BA, BB) | 0 krytých nálezů | – | skutečný přenos 80 MB na úlohu nevytvořil v produkční cestě žádný objemový nález (jen `identification_gap`, `management_surface_exposure`, `packet_loss_signal`) |
+
+Všech 135 krytých nálezů v aktivním okně záznamu (všechny fáze, všechny vysoké závažnosti) brána nevysvětlila (`context_none`): u vysoké závažnosti vyžaduje vysvětlení explicitní `covers` a neprázdný rozsah (kalendář laboratoře má podle předregistrace `covers` prázdné) a i s ním by lístek odmítla R2 (vysoký dopad se nezavírá nikdy); u `unmapped_passive_event` chybí zdroj.
