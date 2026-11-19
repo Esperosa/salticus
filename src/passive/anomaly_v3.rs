@@ -104,6 +104,9 @@ pub struct V3Switches {
     pub recall: bool,
     /// Krok 11: nizsi prah skenu pro vnejsi zdroj bez jedineho uspesneho spojeni.
     pub scan_fresh: bool,
+    /// Krok 23 (O2): zdroj objemove anomalie podle rysu, ktery ji vyhlasil (podil bajtu
+    /// nebo paketu sluzby v cyklu), ne podle poctu toku.
+    pub sev_calib: bool,
 }
 
 /// Prahy v3 (volba autora; verze kvůli dohledatelnosti, A05).
@@ -409,6 +412,39 @@ struct CycleFeatures {
     pkts: u64,
     rates: Vec<f64>,
     sources: HashMap<String, u32>,
+    /// Krok 23 (O2): bajty a pakety podle zdroje (jen se `sev_calib`).
+    source_volume: HashMap<String, (u64, u64)>,
+}
+
+/// Krok 23 (O2): zdroje s aspoň polovinou objemu služby v cyklu (bajty nebo pakety podle
+/// rysu, který anomálii vyhlásil). Nejvýš dva (jen při přesné shodě 50/50); seřazeno
+/// sestupně podle objemu, pak podle adresy. Prázdné, když nikdo polovinu nemá.
+fn volume_dominant(
+    volume: &HashMap<String, (u64, u64)>,
+    total: u64,
+    by_bytes: bool,
+) -> Vec<(String, u64)> {
+    if total == 0 {
+        return Vec::new();
+    }
+    let mut out: Vec<(String, u64)> = volume
+        .iter()
+        .map(|(ip, (bytes, pkts))| (ip.clone(), if by_bytes { *bytes } else { *pkts }))
+        .filter(|(_, v)| u128::from(*v) * 2 >= u128::from(total))
+        .collect();
+    out.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    out
+}
+
+fn format_volume_sources(sources: &[(String, u64)], total: u64, unit: &str) -> String {
+    if sources.is_empty() {
+        return format!("zdroje podle {unit}: rozptylene (nikdo nema polovinu)");
+    }
+    let parts: Vec<String> = sources
+        .iter()
+        .map(|(ip, v)| format!("{ip} ({:.0} %)", 100.0 * *v as f64 / total.max(1) as f64))
+        .collect();
+    format!("zdroj podle {unit}: {}", parts.join(", "))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -546,10 +582,11 @@ pub(crate) fn detect_v3(
             .or_else(|| combine_optional(connection.orig_pkts, connection.resp_pkts))
             .unwrap_or(0);
         item.pkts += pkts;
-        item.bytes += connection
+        let bytes = connection
             .total_bytes
             .or_else(|| combine_optional(connection.orig_bytes, connection.resp_bytes))
             .unwrap_or(0);
+        item.bytes += bytes;
         let duration = connection.duration_s.unwrap_or(0.0);
         if pkts >= th.qualified_min_pkts && duration >= th.qualified_min_duration_s {
             item.rates.push(pkts as f64 / duration);
@@ -559,6 +596,14 @@ pub(crate) fn detect_v3(
                 *n += 1;
             } else if item.sources.len() < 4096 {
                 item.sources.insert(src.clone(), 1);
+            }
+            if switches.sev_calib {
+                if let Some(v) = item.source_volume.get_mut(src) {
+                    v.0 += bytes;
+                    v.1 += pkts;
+                } else if item.source_volume.len() < 4096 {
+                    item.source_volume.insert(src.clone(), (bytes, pkts));
+                }
             }
         }
 
@@ -834,6 +879,16 @@ pub(crate) fn detect_v3(
                 .or_else(|| by_bytes.map(|v| ("bajty", v)))
             {
                 flagged.insert((*key).clone());
+                // krok 23 (O2): anomalie vyhlasena bajty ma zdroj podle podilu bajtu
+                let (ips, text) = if switches.sev_calib && feature == "bajty" {
+                    let dom = volume_dominant(&item.source_volume, item.bytes, true);
+                    (
+                        dom.iter().map(|(ip, _)| ip.clone()).collect::<Vec<_>>(),
+                        format_volume_sources(&dom, item.bytes, "bajtu"),
+                    )
+                } else {
+                    (dominant_ips.clone(), source_text.clone())
+                };
                 events.push(event(
                     key,
                     "inductive_volume_anomaly",
@@ -844,12 +899,12 @@ pub(crate) fn detect_v3(
                     },
                     "volume-baseline",
                     format!(
-                        "Objem ({feature}) {:.1}x nad baseline ({}, z {:.1}, toku {}, bajtu {}); {source_text}.",
+                        "Objem ({feature}) {:.1}x nad baseline ({}, z {:.1}, toku {}, bajtu {}); {text}.",
                         verdict.ratio, verdict.basis, verdict.z, item.count, item.bytes
                     ),
                     first_seen,
                     item.count,
-                    representative.clone(),
+                    ips.first().cloned(),
                 ));
                 sources.insert(
                     (
@@ -858,7 +913,7 @@ pub(crate) fn detect_v3(
                         key.2,
                         "inductive_volume_anomaly".into(),
                     ),
-                    dominant_ips.clone(),
+                    ips,
                 );
             }
         }
@@ -871,6 +926,16 @@ pub(crate) fn detect_v3(
                 .or_else(|| by_pkts.map(|v| ("pakety za okno", v)))
             {
                 flagged.insert((*key).clone());
+                // krok 23 (O2): spicka vyhlasena pakety za okno ma zdroj podle podilu paketu
+                let (ips, text) = if switches.sev_calib && feature == "pakety za okno" {
+                    let dom = volume_dominant(&item.source_volume, item.pkts, false);
+                    (
+                        dom.iter().map(|(ip, _)| ip.clone()).collect::<Vec<_>>(),
+                        format_volume_sources(&dom, item.pkts, "paketu"),
+                    )
+                } else {
+                    (dominant_ips.clone(), source_text.clone())
+                };
                 events.push(event(
                     key,
                     "packet_rate_spike",
@@ -881,12 +946,12 @@ pub(crate) fn detect_v3(
                     },
                     "rate-baseline",
                     format!(
-                        "Rychlost ({feature}) {:.1}x nad baseline ({}, z {:.1}, paketu {}); {source_text}.",
+                        "Rychlost ({feature}) {:.1}x nad baseline ({}, z {:.1}, paketu {}); {text}.",
                         verdict.ratio, verdict.basis, verdict.z, item.pkts
                     ),
                     first_seen,
                     item.count,
-                    representative.clone(),
+                    ips.first().cloned(),
                 ));
                 sources.insert(
                     (
@@ -895,7 +960,7 @@ pub(crate) fn detect_v3(
                         key.2,
                         "packet_rate_spike".into(),
                     ),
-                    dominant_ips.clone(),
+                    ips,
                 );
                 let aggregate = &aggregates[*key];
                 if aggregate.timeout_ratio() >= 0.15 && aggregate.count >= 4 {
@@ -1476,6 +1541,7 @@ mod tests {
         unexpected: true,
         recall: false,
         scan_fresh: false,
+        sev_calib: false,
     };
     const RECALL: V3Switches = V3Switches {
         recall: true,
@@ -2178,5 +2244,228 @@ mod tests {
             &HashMap::new(),
         );
         assert!(!flagged(&without), "proti vsem sluzbam portu 80 ne");
+    }
+
+    const CALIB: V3Switches = V3Switches {
+        sev_calib: true,
+        ..ALL
+    };
+
+    /// Služba s pravidelným klientem (30 toků za cyklus = dominantní podle toků) a
+    /// rozptýlenými ostatními; v cyklu 16 přidá `extra` (dávka nebo záloha).
+    fn steady_with(extra: &[ConnectionObservation], cycle: i64) -> Vec<ConnectionObservation> {
+        let mut flows = busy_service(70, cycle);
+        for _ in 0..30 {
+            let mut f = flow("10.0.0.10", "10.0.0.2", 53, 4, 0.0012, "SF", 300);
+            f.timestamp = at(cycle);
+            flows.push(f);
+        }
+        flows.extend(extra.iter().cloned());
+        flows
+    }
+
+    fn bulk(src: &str, bytes: u64, cycle: i64) -> ConnectionObservation {
+        let mut f = flow(src, "10.0.0.2", 53, 4, 0.0012, "SF", 300);
+        f.total_bytes = Some(bytes);
+        f.timestamp = at(cycle);
+        f
+    }
+
+    fn volume_sources(switches: V3Switches, extra: &[ConnectionObservation]) -> Vec<String> {
+        let (services, hosts) = known();
+        let mut state = DetectorState::default();
+        let th = V3Thresholds::default();
+        for cycle in 0..16 {
+            detect_v3(
+                &steady_with(&[], cycle),
+                &services,
+                &hosts,
+                &mut state,
+                switches,
+                &th,
+                at(cycle),
+                &HashMap::new(),
+            );
+        }
+        let out = detect_v3(
+            &steady_with(extra, 16),
+            &services,
+            &hosts,
+            &mut state,
+            switches,
+            &th,
+            at(16),
+            &HashMap::new(),
+        );
+        let event = out
+            .events
+            .iter()
+            .find(|e| e.event_type == "inductive_volume_anomaly")
+            .expect("anomalie podle bajtu");
+        assert!(event.message.contains("(bajty)"), "{}", event.message);
+        let ips = out.sources[&(
+            "10.0.0.2".to_string(),
+            "tcp".to_string(),
+            53,
+            "inductive_volume_anomaly".to_string(),
+        )]
+            .clone();
+        assert_eq!(event.src_ip, ips.first().cloned());
+        ips
+    }
+
+    /// Krok 23 (O2), dávka: 3 toky po 2 GB od hostitele dávky na službu s pravidelným
+    /// klientem. Podle toků je zdrojem klient (chyba z K22-N4), podle bajtů hostitel dávky.
+    #[test]
+    fn k23_o2_batch_volume_is_attributed_by_bytes() {
+        let batch: Vec<_> = (0..3)
+            .map(|_| bulk("10.0.3.38", 2_000_000_000, 16))
+            .collect();
+        assert_eq!(volume_sources(ALL, &batch), vec!["10.0.0.10".to_string()]);
+        assert_eq!(volume_sources(CALIB, &batch), vec!["10.0.3.38".to_string()]);
+    }
+
+    /// Krok 23 (O2), záloha: jeden dlouhý tok; podle toků nikdo (bez zdroje), podle bajtů
+    /// hostitel zálohy. Dva zdroje, každý pod polovinou bajtů: bez zdroje (rozptýleno).
+    #[test]
+    fn k23_o2_backup_gets_source_and_split_volume_gets_none() {
+        let backup = [bulk("10.0.5.5", 5_000_000_000, 16)];
+        let without = volume_sources(ALL, &backup);
+        assert!(!without.contains(&"10.0.5.5".to_string()), "{without:?}");
+        assert_eq!(volume_sources(CALIB, &backup), vec!["10.0.5.5".to_string()]);
+        let split = [
+            bulk("10.0.5.5", 2_000_000_000, 16),
+            bulk("10.0.5.6", 2_000_000_000, 16),
+            bulk("10.0.5.7", 2_000_000_000, 16),
+        ];
+        assert!(volume_sources(CALIB, &split).is_empty());
+    }
+
+    /// Krok 23 (O2) property: náhodné cykly (≥ 5 000) se stejným vstupem s `sev_calib` a bez.
+    /// Události (typ, cíl, závažnost, počet) jsou totožné; liší se nejvýš zdroj objemových
+    /// událostí vyhlášených bajty nebo pakety, a ten má vždy ≥ 50 % bajtů, resp. paketů
+    /// služby v cyklu. Ostatní zdroje a všechny zdroje bez přepínače beze změny.
+    #[test]
+    fn k23_o2_property_only_volume_sources_change_and_hold_half() {
+        let (services, hosts) = known();
+        let th = V3Thresholds::default();
+        let mut rng = 0x2302_u64;
+        let mut next = |n: u64| {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng % n
+        };
+        let mut cycles = 0;
+        let mut changed = 0;
+        for _ in 0..640 {
+            let mut plain = DetectorState::default();
+            let mut calib = DetectorState::default();
+            for cycle in 0..8 {
+                let mut flows = Vec::new();
+                let n = 20 + next(60) as usize;
+                for i in 0..n {
+                    let src = format!("10.0.1.{}", next(12) + if i % 3 == 0 { 0 } else { 20 });
+                    let mut f = flow(&src, "10.0.0.2", 53, 2 + next(8), 0.002, "SF", 300);
+                    f.timestamp = at(cycle);
+                    flows.push(f);
+                }
+                if cycle >= 6 && next(2) == 0 {
+                    for _ in 0..1 + next(4) {
+                        let src = format!("10.0.2.{}", next(3));
+                        let mut f = bulk(&src, 1_000_000 * (1 + next(4000)), cycle);
+                        f.total_pkts = Some(10 + next(200_000));
+                        f.duration_s = Some(1.0 + next(3000) as f64);
+                        flows.push(f);
+                    }
+                }
+                let a = detect_v3(
+                    &flows,
+                    &services,
+                    &hosts,
+                    &mut plain,
+                    ALL,
+                    &th,
+                    at(cycle),
+                    &HashMap::new(),
+                );
+                let b = detect_v3(
+                    &flows,
+                    &services,
+                    &hosts,
+                    &mut calib,
+                    CALIB,
+                    &th,
+                    at(cycle),
+                    &HashMap::new(),
+                );
+                cycles += 1;
+                let shape = |o: &V3Output| -> Vec<(String, String, Severity, u32)> {
+                    o.events
+                        .iter()
+                        .map(|e| (e.event_type.clone(), e.dst_ip.clone(), e.severity, e.count))
+                        .collect()
+                };
+                assert_eq!(shape(&a), shape(&b));
+                let bytes: u64 = flows.iter().map(|f| f.total_bytes.unwrap_or(0)).sum();
+                let pkts: u64 = flows.iter().map(|f| f.total_pkts.unwrap_or(0)).sum();
+                let of = |ip: &str, by_bytes: bool| -> u64 {
+                    flows
+                        .iter()
+                        .filter(|f| f.src_ip.as_deref() == Some(ip))
+                        .map(|f| {
+                            if by_bytes {
+                                f.total_bytes
+                            } else {
+                                f.total_pkts
+                            }
+                            .unwrap_or(0)
+                        })
+                        .sum()
+                };
+                for (key, ips) in &b.sources {
+                    let old = a.sources.get(key);
+                    let event = b
+                        .events
+                        .iter()
+                        .find(|e| e.event_type == key.3 && e.dst_ip == key.0)
+                        .expect("udalost ke zdroji");
+                    let by_bytes = event.message.starts_with("Objem (bajty)");
+                    let by_pkts = event.message.starts_with("Rychlost (pakety za okno)");
+                    if by_bytes || by_pkts {
+                        for ip in ips {
+                            assert!(2 * of(ip, by_bytes) >= if by_bytes { bytes } else { pkts });
+                        }
+                        changed += usize::from(old != Some(ips));
+                    } else {
+                        assert_eq!(old, Some(ips), "{key:?}");
+                    }
+                }
+                assert_eq!(a.sources.len(), b.sources.len());
+            }
+        }
+        assert!(cycles >= 5_000);
+        assert!(changed > 0, "pokryti: zadna zmena zdroje");
+    }
+
+    /// Krok 23 (O2): výběr podle podílu: nikdo, jeden, dva při přesné shodě 50/50.
+    #[test]
+    fn k23_volume_dominant_half_rule() {
+        let v = |pairs: &[(&str, u64)]| -> HashMap<String, (u64, u64)> {
+            pairs
+                .iter()
+                .map(|(ip, b)| (ip.to_string(), (*b, *b)))
+                .collect()
+        };
+        assert!(volume_dominant(&v(&[("a", 49), ("b", 51)]), 0, true).is_empty());
+        assert_eq!(
+            volume_dominant(&v(&[("a", 49), ("b", 51)]), 100, true),
+            vec![("b".to_string(), 51)]
+        );
+        assert_eq!(
+            volume_dominant(&v(&[("a", 50), ("b", 50)]), 100, false).len(),
+            2
+        );
+        assert!(volume_dominant(&v(&[("a", 40), ("b", 40)]), 100, true).is_empty());
     }
 }

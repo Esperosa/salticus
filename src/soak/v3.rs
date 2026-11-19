@@ -216,6 +216,7 @@ impl V3Runtime {
             unexpected: self.engine.unexpected_v3(),
             recall: self.engine.recall(),
             scan_fresh: self.engine.scan_fresh(),
+            sev_calib: self.engine.sev_calib(),
         };
         let out = detect_v3(
             observations,

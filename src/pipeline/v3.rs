@@ -280,6 +280,7 @@ impl V3Session {
                     unexpected: engine.unexpected_v3(),
                     recall: engine.recall(),
                     scan_fresh: engine.scan_fresh(),
+                    sev_calib: engine.sev_calib(),
                 },
                 known,
                 known_hosts,
@@ -355,6 +356,12 @@ impl V3Session {
             },
             ..Default::default()
         };
+        if self.engine.sev_calib() {
+            // krok 23 (O1): zavaznost objemovych nalezu podle udalosti detektoru
+            let mut list = std::mem::take(&mut report.findings);
+            findings::calibrate_volume_severity(&mut list, report);
+            report.findings = list;
+        }
         if self.engine.unexpected_v3() {
             let mut list = std::mem::take(&mut report.findings);
             list.extend(findings::v3_extra_findings(report, self.engine.recall()));
@@ -621,9 +628,10 @@ impl V3Session {
                 let sources = match behavior_signal.get(&finding.finding_id) {
                     Some((_, sources)) => sources.clone(),
                     None => {
-                        findings::finding_signal(
+                        findings::finding_signal_with_unmapped(
                             finding,
                             services.get(service_key).copied(),
+                            self.engine.sev_calib().then_some(&*report),
                             |dst, proto, port, kind| {
                                 self.sources
                                     .get(&(
@@ -668,9 +676,10 @@ impl V3Session {
                 .unwrap_or_else(|| host_ip.clone());
             let (count, sources) = match behavior_signal.get(&finding.finding_id) {
                 Some((count, sources)) => (*count, sources.clone()),
-                None => findings::finding_signal(
+                None => findings::finding_signal_with_unmapped(
                     finding,
                     services.get(service_key).copied(),
+                    self.engine.sev_calib().then_some(&*report),
                     |dst, proto, port, kind| {
                         self.sources
                             .get(&(dst.to_string(), proto.to_string(), port, kind.to_string()))

@@ -341,6 +341,122 @@ pub fn finding_signal<'a>(
     (count, sources)
 }
 
+/// Krok 23 (O1): objemové typy, jejichž závažnost se bere z události detektoru.
+pub const CALIBRATED_VOLUME_TYPES: [&str; 2] = ["inductive_volume_anomaly", "packet_rate_spike"];
+
+/// Krok 23 (O1): nález `inductive_volume_anomaly` a `packet_rate_spike` převezme závažnost
+/// nejsilnější události téhož typu na službě (detektor v3: High jen při poměru ≥ 10× nad
+/// baseline), nejméně Medium. Pravidla bez přepínače dávají pevně High, resp. High podle
+/// počtu toků služby, a kalibraci detektoru zahazují. Ostatní typy beze změny.
+pub fn calibrate_volume_severity(findings: &mut [Finding], report: &RunReport) {
+    let mut services: std::collections::HashMap<&str, &ServiceReport> =
+        std::collections::HashMap::new();
+    for host in &report.hosts {
+        for service in &host.services {
+            services
+                .entry(service.service_key.as_str())
+                .or_insert(service);
+        }
+    }
+    for finding in findings.iter_mut() {
+        if !CALIBRATED_VOLUME_TYPES.contains(&finding.finding_type.as_str()) {
+            continue;
+        }
+        let Some(service) = finding.service_key.as_deref().and_then(|k| services.get(k)) else {
+            continue;
+        };
+        if let Some(strongest) = service
+            .events
+            .iter()
+            .filter(|e| e.event.event_type == finding.finding_type)
+            .map(|e| e.event.severity)
+            .max()
+        {
+            finding.severity = strongest.max(Severity::Medium);
+        }
+    }
+}
+
+/// Krok 23 (O3): signál nálezu včetně `unmapped_passive_event`. Nespárovaná událost nemá
+/// službu, takže `finding_signal` vrací prázdné zdroje; s `report` se zdroje vezmou z
+/// nespárovaných událostí téhož cíle (IP, protokol, port) a typu: `src_ip` události a
+/// dominantní zdroje detektoru pro tentýž klíč a typ. Počet beze změny (1). Bez `report`
+/// (přepínač vypnut) totéž co `finding_signal`.
+pub fn finding_signal_with_unmapped<'a, F>(
+    finding: &Finding,
+    service: Option<&ServiceReport>,
+    report: Option<&RunReport>,
+    sources_of: F,
+) -> (u32, Vec<String>)
+where
+    F: Fn(&str, &str, u16, &str) -> &'a [String],
+{
+    let (count, mut sources) = finding_signal(finding, service, &sources_of);
+    let Some(report) = report else {
+        return (count, sources);
+    };
+    if finding.finding_type != "unmapped_passive_event" || service.is_some() {
+        return (count, sources);
+    }
+    for item in unmapped_events_of(finding, report) {
+        let e = &item.event;
+        if let Some(src) = &e.src_ip
+            && !sources.contains(src)
+        {
+            sources.push(src.clone());
+        }
+        if let Some(port) = e.dst_port {
+            for source in sources_of(&e.dst_ip, &e.proto, port, &e.event_type) {
+                if !sources.contains(source) {
+                    sources.push(source.clone());
+                }
+            }
+        }
+    }
+    sources.truncate(16);
+    (count, sources)
+}
+
+/// Nespárované události, ze kterých nález `unmapped_passive_event` vznikl: po agregaci
+/// (krok 1C) cíl ze `service_key` a typ z konce id, před agregací podle `event_id`.
+fn unmapped_events_of<'r>(
+    finding: &Finding,
+    report: &'r RunReport,
+) -> Vec<&'r crate::model::CorrelatedEvent> {
+    if let Some(event_id) = finding
+        .finding_id
+        .strip_prefix("finding:unmapped_passive_event:-:")
+    {
+        return report
+            .unmapped_events
+            .iter()
+            .filter(|e| e.event.event_id == event_id)
+            .collect();
+    }
+    let Some(target) = finding.service_key.as_deref() else {
+        return Vec::new();
+    };
+    let Some((_, kind)) = finding.finding_id.rsplit_once(':') else {
+        return Vec::new();
+    };
+    report
+        .unmapped_events
+        .iter()
+        .filter(|item| {
+            let e = &item.event;
+            e.event_type == kind
+                && format!(
+                    "{}/{}/{}",
+                    e.dst_ip,
+                    e.proto,
+                    e.dst_port
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| "-".into())
+                ) == target
+        })
+        .collect()
+}
+
 /// Engine v3 (krok 1C, audit A13): `unmapped_passive_event` se neskládá po
 /// jednotlivých událostech (id obsahovalo `event_id` s počtem, takže každý cyklus
 /// vznikl nový nález), ale jeden nález na (cíl, protokol, port, typ události).
@@ -2189,5 +2305,166 @@ mod rule_tests {
         let (count, sources) = finding_signal(exploit, Some(service), none);
         assert_eq!(count, 2);
         assert_eq!(sources, vec!["203.0.113.5", "203.0.113.6"]);
+    }
+
+    /// Krok 23 (O1): objemové nálezy převezmou závažnost nejsilnější události (nejméně
+    /// Medium); bez kalibrace platí pevné High a High podle počtu toků. Ostatní typy beze změny.
+    #[test]
+    fn k23_o1_volume_severity_follows_event() {
+        let mut svc = service(443, "https");
+        let mut vol = event("inductive_volume_anomaly", "ip+port", 3);
+        vol.event.severity = Severity::Medium;
+        let mut rate = event("packet_rate_spike", "ip+port", 50);
+        rate.event.severity = Severity::Medium;
+        let mut timeout = event("connection_timeout_burst", "ip+port", 9);
+        timeout.event.severity = Severity::Medium;
+        svc.events = vec![vol.clone(), rate.clone(), timeout];
+        let report = report_with(svc.clone());
+        let before = generate_findings(&report);
+        let sev = |list: &[Finding], kind: &str| {
+            list.iter()
+                .find(|f| f.finding_type == kind)
+                .map(|f| f.severity)
+                .unwrap()
+        };
+        assert_eq!(sev(&before, "inductive_volume_anomaly"), Severity::High);
+        assert_eq!(sev(&before, "packet_rate_spike"), Severity::High);
+        let mut after = before.clone();
+        calibrate_volume_severity(&mut after, &report);
+        assert_eq!(sev(&after, "inductive_volume_anomaly"), Severity::Medium);
+        assert_eq!(sev(&after, "packet_rate_spike"), Severity::Medium);
+        // timeout a ostatni typy beze zmeny
+        for (b, a) in before.iter().zip(&after) {
+            if !CALIBRATED_VOLUME_TYPES.contains(&b.finding_type.as_str()) {
+                assert_eq!((&b.finding_id, b.severity), (&a.finding_id, a.severity));
+            }
+        }
+        // silnejsi udalost (>= 10x) zustava High; Low udalost nesmi nalez snizit pod Medium
+        let mut strong = vol.clone();
+        strong.event.severity = Severity::High;
+        let mut weak = rate.clone();
+        weak.event.severity = Severity::Low;
+        svc.events = vec![vol, strong, weak];
+        let report = report_with(svc);
+        let mut list = generate_findings(&report);
+        calibrate_volume_severity(&mut list, &report);
+        assert_eq!(sev(&list, "inductive_volume_anomaly"), Severity::High);
+        assert_eq!(sev(&list, "packet_rate_spike"), Severity::Medium);
+    }
+
+    /// Krok 23 (O3): `unmapped_passive_event` dostane zdroj z nespárované události (src_ip
+    /// a dominantní zdroje detektoru téhož klíče a typu); bez reportu prázdné jako dřív.
+    #[test]
+    fn k23_o3_unmapped_event_carries_its_source() {
+        let mut report = empty_report();
+        let mut scan = event("scan_attempts", "unmapped", 40);
+        scan.event.src_ip = Some("10.0.0.66".to_string());
+        scan.event.dst_ip = "10.9.9.9".to_string();
+        scan.event.dst_port = Some(445);
+        let mut other = event("unexpected_traffic", "unmapped", 3);
+        other.event.src_ip = Some("10.0.0.5".to_string());
+        other.event.dst_ip = "10.9.9.9".to_string();
+        other.event.dst_port = Some(445);
+        report.unmapped_events = vec![scan, other];
+        let mut list = generate_findings(&report);
+        let raw = list
+            .iter()
+            .find(|f| f.finding_id.ends_with("evt:scan_attempts"))
+            .cloned()
+            .expect("nesparovany nalez pred agregaci");
+        aggregate_unmapped_findings(&mut list, &report);
+        let finding = list
+            .iter()
+            .find(|f| f.finding_id.ends_with(":scan_attempts"))
+            .expect("agregovany nalez");
+        let map = vec!["10.0.0.67".to_string()];
+        let sources_of = |dst: &str, _: &str, port: u16, kind: &str| -> &[String] {
+            if dst == "10.9.9.9" && port == 445 && kind == "scan_attempts" {
+                &map
+            } else {
+                &[]
+            }
+        };
+        assert_eq!(finding_signal(finding, None, sources_of), (1, Vec::new()));
+        assert_eq!(
+            finding_signal_with_unmapped(finding, None, None, sources_of),
+            (1, Vec::new())
+        );
+        assert_eq!(
+            finding_signal_with_unmapped(finding, None, Some(&report), sources_of),
+            (1, vec!["10.0.0.66".to_string(), "10.0.0.67".to_string()])
+        );
+        // pred agregaci (legacy cesta) podle event_id; jiny typ na temze cili se nemicha
+        assert_eq!(
+            finding_signal_with_unmapped(&raw, None, Some(&report), sources_of).1,
+            vec!["10.0.0.66".to_string(), "10.0.0.67".to_string()]
+        );
+        // sparovany nalez (se sluzbou) beze zmeny
+        let mut svc = service(80, "http");
+        svc.events = vec![event("source_volume_outlier", "ip+port", 7)];
+        let mapped = report_with(svc);
+        let outlier = v3_extra_findings(&mapped, true)
+            .into_iter()
+            .find(|f| f.finding_type == "source_volume_outlier")
+            .unwrap();
+        let service = &mapped.hosts[0].services[0];
+        assert_eq!(
+            finding_signal_with_unmapped(&outlier, Some(service), Some(&mapped), sources_of),
+            finding_signal(&outlier, Some(service), sources_of)
+        );
+    }
+
+    /// Krok 23 (O1) property: 5 000 náhodných služeb s událostmi různých typů, závažností a
+    /// počtů. Po kalibraci má objemový nález závažnost max(Medium, nejsilnější událost téhož
+    /// typu); všechny ostatní nálezy (id i závažnost) jsou totožné s výstupem bez kalibrace.
+    #[test]
+    fn k23_o1_property_calibrated_severity() {
+        let kinds = [
+            "inductive_volume_anomaly",
+            "packet_rate_spike",
+            "connection_timeout_burst",
+            "service_overload_risk",
+            "unexpected_traffic",
+        ];
+        let sevs = [Severity::Low, Severity::Medium, Severity::High];
+        let mut rng = 0x2301_u64;
+        let mut next = |n: u64| {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng % n
+        };
+        let mut lowered = 0;
+        for _ in 0..5_000 {
+            let mut svc = service(443, "https");
+            for _ in 0..1 + next(6) {
+                let mut e = event(kinds[next(5) as usize], "ip+port", 1 + next(40) as u32);
+                e.event.severity = sevs[next(3) as usize];
+                svc.events.push(e);
+            }
+            let report = report_with(svc);
+            let before = generate_findings(&report);
+            let mut after = before.clone();
+            calibrate_volume_severity(&mut after, &report);
+            assert_eq!(before.len(), after.len());
+            for (b, a) in before.iter().zip(&after) {
+                assert_eq!(b.finding_id, a.finding_id);
+                if CALIBRATED_VOLUME_TYPES.contains(&a.finding_type.as_str()) {
+                    let strongest = report.hosts[0].services[0]
+                        .events
+                        .iter()
+                        .filter(|e| e.event.event_type == a.finding_type)
+                        .map(|e| e.event.severity)
+                        .max()
+                        .unwrap();
+                    assert_eq!(a.severity, strongest.max(Severity::Medium));
+                    assert!(a.severity >= Severity::Medium);
+                    lowered += usize::from(a.severity < b.severity);
+                } else {
+                    assert_eq!(a.severity, b.severity);
+                }
+            }
+        }
+        assert!(lowered > 0, "pokryti: zadne snizeni");
     }
 }

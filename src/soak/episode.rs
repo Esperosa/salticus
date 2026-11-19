@@ -1541,6 +1541,12 @@ fn run_episode_inner(
                 unmapped,
             );
             run_report.findings = findings::generate_findings(&run_report);
+            if cfg.engine.sev_calib() {
+                // krok 23 (O1): zavaznost objemovych nalezu podle udalosti detektoru
+                let mut list = std::mem::take(&mut run_report.findings);
+                findings::calibrate_volume_severity(&mut list, &run_report);
+                run_report.findings = list;
+            }
             run_report
                 .findings
                 .sort_by(|l, r| l.finding_id.cmp(&r.finding_id));
@@ -1837,9 +1843,10 @@ fn run_episode_inner(
                                 (sources.clone(), ips)
                             }
                             None => (
-                                findings::finding_signal(
+                                findings::finding_signal_with_unmapped(
                                     finding,
                                     report_services.get(service_key).copied(),
+                                    cfg.engine.sev_calib().then_some(&run_report),
                                     |dst, proto, port, kind| {
                                         runtime.sources_of(dst, proto, port, kind)
                                     },
@@ -1880,9 +1887,10 @@ fn run_episode_inner(
                     let (count, sources) = match behavior_item {
                         // behavioralni nalez: signal a protistrana z vrstvy (krok 3)
                         Some((count, sources, _)) => (*count, sources.clone()),
-                        None => findings::finding_signal(
+                        None => findings::finding_signal_with_unmapped(
                             finding,
                             report_services.get(service_key).copied(),
+                            cfg.engine.sev_calib().then_some(&run_report),
                             |dst, proto, port, kind| runtime.sources_of(dst, proto, port, kind),
                         ),
                     };

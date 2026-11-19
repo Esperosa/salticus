@@ -228,6 +228,11 @@ pub struct V3Features {
     /// s cíli nálezu. Výchozí vypnuto.
     #[serde(default)]
     pub ctx_host_first: bool,
+    /// Krok 23 (O1 až O3): závažnost objemových nálezů podle události, zdroj objemové anomálie
+    /// podle rysu, který ji vyhlásil (bajty, pakety), a zdroj nespárovaných událostí.
+    /// Výchozí vypnuto.
+    #[serde(default)]
+    pub sev_calib: bool,
 }
 
 impl Default for V3Features {
@@ -237,7 +242,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 56] = [
+    pub const NAMES: [&'static str; 57] = [
         "memory",
         "rate",
         "volume",
@@ -294,6 +299,7 @@ impl V3Features {
         "confirm_evidence",
         "close_gate",
         "ctx_host_first",
+        "sev_calib",
     ];
 
     pub fn all() -> Self {
@@ -354,6 +360,7 @@ impl V3Features {
             confirm_evidence: true,
             close_gate: true,
             ctx_host_first: true,
+            sev_calib: true,
         }
     }
 
@@ -422,6 +429,7 @@ impl V3Features {
             confirm_evidence: false,
             close_gate: false,
             ctx_host_first: false,
+            sev_calib: false,
             ..Self::all()
         }
     }
@@ -493,6 +501,7 @@ impl V3Features {
             confirm_evidence: false,
             close_gate: false,
             ctx_host_first: false,
+            sev_calib: false,
         }
     }
 
@@ -578,6 +587,7 @@ impl V3Features {
             "confirm_evidence" => &mut self.confirm_evidence,
             "close_gate" => &mut self.close_gate,
             "ctx_host_first" => &mut self.ctx_host_first,
+            "sev_calib" => &mut self.sev_calib,
             _ => return None,
         })
     }
@@ -810,6 +820,10 @@ impl EngineConfig {
     pub fn ctx_host_first(&self) -> bool {
         self.on(|f| f.ctx_host_first)
     }
+    /// Krok 23: kalibrace závažnosti a atribuce zdroje objemových a nespárovaných nálezů.
+    pub fn sev_calib(&self) -> bool {
+        self.on(|f| f.sev_calib)
+    }
     /// Přísné vyvrácení žebříku: `strict_close`, nebo brána zavření (krok 20).
     pub fn strict_refute(&self) -> bool {
         self.strict_close() || self.close_gate()
@@ -965,7 +979,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext+endpoint_allow+endpoint_weak+refute_episode+ops_symptoms+ops_blast+upload_horizon+case_folder+confirm_evidence+close_gate+ctx_host_first]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext+endpoint_allow+endpoint_weak+refute_episode+ops_symptoms+ops_blast+upload_horizon+case_folder+confirm_evidence+close_gate+ctx_host_first+sev_calib]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,
