@@ -3,6 +3,7 @@
 
 pub mod alloc;
 pub mod benign_regular;
+pub mod calendar;
 pub mod coverage;
 pub mod endpoint_sim;
 pub mod episode;

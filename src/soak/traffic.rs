@@ -2128,6 +2128,36 @@ fn emit_truth(
                 );
             }
         }
+        Kind::Benign(Lookalike::Backup) if truth.cov.calendar => {
+            // krok 22 (svet v2): zalohovaci server stahuje data z cilu kalendare
+            let Some(server) = truth.attacker_device else {
+                return;
+            };
+            for &target in &truth.victim_devices {
+                if target == server {
+                    continue;
+                }
+                let bytes = rng.lognormal(6.0e8 * truth.intensity, 0.5) as u64;
+                push(
+                    out,
+                    ctx,
+                    obs(
+                        at(rng),
+                        &ips[server as usize],
+                        rng.range(32768, 60999) as u16,
+                        &ips[target as usize],
+                        "tcp",
+                        445,
+                        rng.range_f(300.0, 1800.0),
+                        rng.range(2000, 9000),
+                        bytes,
+                        "SF",
+                    ),
+                    Some(index),
+                    truths,
+                );
+            }
+        }
         Kind::Benign(Lookalike::Backup) => {
             let (Some(src_dev), Some(&server)) =
                 (truth.attacker_device, truth.victim_devices.first())
@@ -2163,6 +2193,31 @@ fn emit_truth(
             let Some(scanner) = truth.attacker_device else {
                 return;
             };
+            // krok 22 (svet v2): skener ma v rozsahu i vnejsi cil site
+            if truth.cov.calendar
+                && let Some(external) = truth.target_external.clone()
+            {
+                for port in [22u16, 80, 443, 3389] {
+                    push(
+                        out,
+                        ctx,
+                        obs(
+                            at(rng),
+                            &ips[scanner as usize],
+                            rng.range(32768, 60999) as u16,
+                            &external,
+                            "tcp",
+                            port,
+                            0.0,
+                            0,
+                            0,
+                            "S0",
+                        ),
+                        Some(index),
+                        truths,
+                    );
+                }
+            }
             for target in 0..ips.len() {
                 if target as u32 == scanner {
                     continue;
@@ -2739,7 +2794,11 @@ fn emit_truth(
                     .map(|s| s.port)
                     .unwrap_or(445);
                 for _ in 0..rng.range(3, 10) {
-                    let partner = *rng.pick(&partners);
+                    // krok 22 (svet v2): davku spousti hostitel z kalendare
+                    let partner = match truth.attacker_device.filter(|_| truth.cov.calendar) {
+                        Some(host) => host,
+                        None => *rng.pick(&partners),
+                    };
                     if partner == server {
                         continue;
                     }

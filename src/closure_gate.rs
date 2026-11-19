@@ -360,6 +360,37 @@ pub fn shadow_context(
     }
 }
 
+/// Krok 22 (B4): stínové lístky brány zapnuté proměnnou prostředí `K22_SHADOW=soubor` (jedna
+/// JSON řádka na posouzení; soak i produkční cesta pro laboratoř). Jen měření: nic nezavírá,
+/// nemění stav ani zobrazení. Bez proměnné nic nedělá.
+pub fn shadow_on() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("K22_SHADOW").is_some())
+}
+
+/// Připíše řádku stínu do souboru `K22_SHADOW` (bez proměnné nic).
+pub fn shadow_log(line: serde_json::Value) {
+    use std::sync::{Mutex, OnceLock};
+    static SINK: OnceLock<Option<Mutex<std::io::BufWriter<std::fs::File>>>> = OnceLock::new();
+    let Some(sink) = SINK.get_or_init(|| {
+        let path = std::env::var("K22_SHADOW").ok()?;
+        let f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .ok()?;
+        Some(Mutex::new(std::io::BufWriter::new(f)))
+    }) else {
+        return;
+    };
+    if let Ok(mut f) = sink.lock() {
+        use std::io::Write;
+        let _ = writeln!(f, "{line}");
+        let _ = f.flush();
+    }
+}
+
 /// Zapíše rozhodnutí žebříku do paměti jedinou cestou a vrátí skutečný výsledek: vyvrácení
 /// odmítnuté bránou nebo pamětí (potvrzený nebo podezřelý klíč) se stává eskalací s důvodem.
 /// Zobrazení a čítače se mají řídit vráceným rozhodnutím.

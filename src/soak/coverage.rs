@@ -151,6 +151,8 @@ pub struct TruthCoverage {
     pub variant: Option<&'static str>,
     /// Krok 11: merici souhrn toku utoku (jen diagnostika, nic nerozhoduje).
     pub diag: FlowDiag,
+    /// Krok 22 (svet v2): jev vznikl z kalendare provozu (`soak::calendar`).
+    pub calendar: bool,
 }
 
 /// Krok 11: souhrn toku jednoho utoku po emisi (pred degradaci telemetrie).

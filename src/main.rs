@@ -234,6 +234,9 @@ struct SoakRunArgs {
     /// Krok 13: planovac rizenych mixu dvojic udalosti (`on` | `off`).
     #[arg(long, default_value = "off")]
     mix: String,
+    /// Krok 22 (B5): svet v2, kalendar provozu jako pricina neskodnych jevu.
+    #[arg(long)]
+    world_v2: bool,
     /// Krok 8: podil hostu s agentem v procentech.
     #[arg(long, default_value_t = 100)]
     endpoint_coverage: u32,
@@ -1272,6 +1275,7 @@ fn main() -> anyhow::Result<()> {
                 other => anyhow::bail!("--ops-telemetry: on | off, ne {other}"),
             }
             cfg.world.mix = args.mix == "on";
+            cfg.world.calendar_v2 = args.world_v2;
             cfg.world.l7_cal = args.l7 == "cal";
             cfg.world.l7 = match args.l7.as_str() {
                 "on" | "cal" => true,

@@ -344,6 +344,7 @@ impl SimContext {
         phantoms: &[(u32, u32, u32)],
         cycle: u32,
         scanner_scope: bool,
+        calendar: Option<&crate::soak::calendar::CalendarPlan>,
     ) -> Self {
         let at = |c: u32| ts(cycle_start_abs(start_offset_s, c));
         let window = |start: u32, end: u32, extra_end: u32| {
@@ -376,10 +377,29 @@ impl SimContext {
             });
         };
         let ip = |device: u32| ips[device as usize].clone();
+        // krok 22 (svet v2): zaznamy kalendare provozu (pricina jevu, ne popis pravdy)
+        for record in calendar.map(|c| c.records.as_slice()).unwrap_or(&[]) {
+            if cycle + 2 < record.start || cycle > record.end + 2 {
+                continue;
+            }
+            let mut hosts: Vec<String> = record.host_devices.iter().map(|d| ip(*d)).collect();
+            hosts.extend(record.host_nets.iter().cloned());
+            let mut sources: Vec<String> = record.source_devices.iter().map(|d| ip(*d)).collect();
+            sources.extend(record.source_external.iter().cloned());
+            push(
+                record.kind,
+                hosts,
+                sources,
+                window(record.start, record.end, 0),
+            );
+        }
         for truth in truths {
             let Kind::Benign(look) = truth.kind else {
                 continue;
             };
+            if calendar.is_some() && crate::soak::calendar::calendar_kind(look) {
+                continue;
+            }
             let lead = match look {
                 Lookalike::Onboarding | Lookalike::Decommission => 48,
                 _ => 2,

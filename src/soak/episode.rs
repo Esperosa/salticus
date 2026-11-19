@@ -158,6 +158,9 @@ pub struct WorldOptions {
     /// Krok 13 (dodatek A): planovac rizenych mixu dvojic udalosti (`--mix on`).
     #[serde(default)]
     pub mix: bool,
+    /// Krok 22 (B5): svet v2, kalendar provozu jako pricina neskodnych jevu (`--world-v2`).
+    #[serde(default)]
+    pub calendar_v2: bool,
 }
 
 impl Default for WorldOptions {
@@ -174,6 +177,7 @@ impl Default for WorldOptions {
             l7: false,
             l7_cal: false,
             mix: false,
+            calendar_v2: false,
         }
     }
 }
@@ -570,42 +574,13 @@ fn k21_fixed_prior() -> bool {
     *ON.get_or_init(|| std::env::var_os("K21_FIXED_PRIOR").is_some())
 }
 
-/// Krok 21: měřicí rameno „zdokumentovaný skener“ (K21_SCANNER_SCOPE=1): záznam
-/// autorizovaného skeneru v simulaci má rozsah cílů nezávisle na přepínačích enginu.
-fn k21_scanner_scope() -> bool {
-    use std::sync::OnceLock;
-    static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("K21_SCANNER_SCOPE").is_some())
-}
-
-/// Krok 22 (B4): stínové lístky brány (K22_SHADOW=soubor, jedna JSON řádka na posouzení).
-/// Stín volá tytéž funkce brány nad týmiž vstupy; nic nezavírá, nemění stav ani zobrazení.
-/// Pravda se v enginu nedoplňuje (až při vyhodnocení). Bez proměnné prostředí nic nedělá.
+/// Krok 22 (B4): stínové lístky brány (`closure_gate::shadow_log`, K22_SHADOW=soubor).
 fn k22_shadow_on() -> bool {
-    use std::sync::OnceLock;
-    static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("K22_SHADOW").is_some())
+    crate::closure_gate::shadow_on()
 }
 
 fn k22_shadow(line: serde_json::Value) {
-    use std::sync::{Mutex, OnceLock};
-    static SINK: OnceLock<Option<Mutex<std::io::BufWriter<std::fs::File>>>> = OnceLock::new();
-    let Some(sink) = SINK.get_or_init(|| {
-        let path = std::env::var("K22_SHADOW").ok()?;
-        let f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-            .ok()?;
-        Some(Mutex::new(std::io::BufWriter::new(f)))
-    }) else {
-        return;
-    };
-    if let Ok(mut f) = sink.lock() {
-        use std::io::Write;
-        let _ = writeln!(f, "{line}");
-        let _ = f.flush();
-    }
+    crate::closure_gate::shadow_log(line);
 }
 
 fn k16_dump(line: serde_json::Value) {
@@ -813,6 +788,25 @@ fn run_episode_inner(
         }
         Kind::Benign(_) => true,
     });
+    // krok 22 (B5): svet v2, kalendar provozu (vlastni proud; ve v1 nic)
+    let calendar = cfg
+        .world
+        .calendar_v2
+        .then(|| crate::soak::calendar::plan_calendar(&model, &mut truths, hours, start_offset_s));
+    if let Some(plan) = &calendar {
+        let st = &plan.stats;
+        for (name, value) in [
+            ("cal2_jobs", st.jobs),
+            ("cal2_recorded", st.recorded),
+            ("cal2_cancelled", st.cancelled),
+            ("cal2_shifted", st.shifted),
+            ("cal2_infra_attacks", st.infra_attacks),
+            ("cal2_attacks", st.attacks),
+            ("cal2_attacks_in_window", st.attacks_in_window),
+        ] {
+            agg.output.k7_add(name, value);
+        }
+    }
     // krok 3: neskodne pravidelne vzory (vlastni proud, svet utoku beze zmeny)
     let regular = crate::soak::benign_regular::plan(&model, cfg.world.noise);
     *attack_ids = truths
@@ -1772,6 +1766,13 @@ fn run_episode_inner(
         let mut promoted_pairs: Vec<(String, String)> = Vec::new();
         // odhady prioru z Case Memory jednou za cyklus (odhad prochazi vsechny zaznamy)
         let mut prior_cache: HashMap<String, f64> = HashMap::new();
+        // krok 22 (B4): stinove listky kontextu cekajici na pravdu cyklu (index nalezu ->
+        // zaznam, cile, zdroje); prazdne bez `K22_SHADOW`
+        #[allow(clippy::type_complexity)]
+        let mut k22_pending: HashMap<
+            usize,
+            (serde_json::Value, Vec<(String, u16)>, Vec<String>),
+        > = HashMap::new();
         let mut shown: Vec<Shown> = match v3.as_mut() {
             None => run_report
                 .findings
@@ -1803,9 +1804,10 @@ fn run_episode_inner(
                         &coverage,
                         &phantoms,
                         cycle,
-                        // krok 21: K21_SCANNER_SCOPE=1 da zaznamu skeneru rozsah cilu i bez
-                        // `strict_close` (audit M4: prepinac enginu meni simulovany svet)
-                        cfg.engine.strict_close() || k21_scanner_scope(),
+                        // svet v1: rozsah skeneru jen se `strict_close` (krok 12); merici
+                        // prepinac kroku 21 nahradil svet v2 (krok 22, kalendar provozu)
+                        cfg.engine.strict_close(),
+                        calendar.as_ref(),
                     )
                 });
                 let at = ts(t0);
@@ -1965,14 +1967,37 @@ fn run_episode_inner(
                     };
                     let auto_closed = matches!(disposition, Disposition::AutoResolved(_));
                     if let Some((kind, shadow)) = shadow_context {
-                        k22_shadow(serde_json::json!({
-                            "ev": "context", "seed": cfg.run_seed, "net": cfg.network_id,
-                            "world": format!("{:?}", cfg.mask), "cycle": cycle,
-                            "key": format!("{}|{}|{}", key_copy.entity, key_copy.finding_type, key_copy.service),
-                            "type": finding.finding_type, "id": finding.finding_id,
-                            "kind": kind.label(), "sources": sources,
-                            "closed": auto_closed, "shadow": shadow,
-                        }));
+                        // pravda se doplni az po emisi cyklu (atribuce nalezu nize)
+                        let targets: Vec<(String, u16)> = match behavior_item {
+                            Some((_, _, targets)) => targets.clone(),
+                            None => report_services
+                                .get(service_key)
+                                .map(|svc| {
+                                    svc.events
+                                        .iter()
+                                        .filter(|e| e.event.event_type == finding.finding_type)
+                                        .filter_map(|e| {
+                                            e.event.dst_port.map(|p| (e.event.dst_ip.clone(), p))
+                                        })
+                                        .collect()
+                                })
+                                .unwrap_or_default(),
+                        };
+                        k22_pending.insert(
+                            finding_index,
+                            (
+                                serde_json::json!({
+                                    "ev": "context", "seed": cfg.run_seed, "net": cfg.network_id,
+                                    "world": format!("{:?}", cfg.mask), "cycle": cycle,
+                                    "key": format!("{}|{}|{}", key_copy.entity, key_copy.finding_type, key_copy.service),
+                                    "type": finding.finding_type, "id": finding.finding_id,
+                                    "kind": kind.label(), "sources": sources,
+                                    "closed": auto_closed, "shadow": shadow,
+                                }),
+                                targets,
+                                sources.clone(),
+                            ),
+                        );
                     }
                     if auto_closed && protection.is_some() {
                         agg.output.k7_add("protected_auto_closed", 1);
@@ -2115,23 +2140,6 @@ fn run_episode_inner(
                             .map(|r| (&r.store, &r.policy, t0 + crate::soak::traffic::CYCLE_SECS)),
                     };
                     let mut decisions = runtime.ladder.step(cycle as u64, &mut env);
-                    if k22_shadow_on() && memory_on {
-                        // krok 22 (B4): stin brany nad rozhodnutim zebriku pred zapisem do pameti
-                        use crate::verify_ladder::Status;
-                        for d in decisions.iter().filter(|d| {
-                            d.status == Status::Refuted
-                                || d.posterior <= crate::closure_gate::P_REFUTE
-                        }) {
-                            k22_shadow(serde_json::json!({
-                                "ev": "ladder", "seed": cfg.run_seed, "net": cfg.network_id,
-                                "world": format!("{:?}", cfg.mask), "cycle": cycle,
-                                "key": format!("{}|{}|{}", d.key.entity, d.key.finding_type, d.key.service),
-                                "type": d.finding_type, "id": d.finding_id,
-                                "status": format!("{:?}", d.status), "posterior": d.posterior,
-                                "shadow": crate::closure_gate::shadow_ladder(d),
-                            }));
-                        }
-                    }
                     agg.output.ladder_liveness_runs += env.liveness_runs;
                     agg.output.ladder_liveness_failures += env.liveness_failures;
                     let gate_on = cfg.engine.close_gate();
@@ -2548,6 +2556,20 @@ fn run_episode_inner(
             let mut attack_family: Option<&'static str> = None;
             let mut first_truth: Option<(usize, bool)> = None;
             let fhash = finding_hash(&finding.finding_id);
+            let mut k22_line: Option<serde_json::Value> = None;
+            if let Some((mut line, targets, sources)) = k22_pending.remove(&finding_index) {
+                // krok 22 (B4): pravda simulatoru ke stinu kontextu (stejne definice jako u
+                // skutecnych zavreni: pricinne v okne utoku, cf z kontrafaktualu)
+                let causal = truths.iter().any(|truth| {
+                    matches!(truth.kind, Kind::Attack(_))
+                        && cycle + ATTRIBUTION_LATENCY >= truth.start_cycle
+                        && cycle <= truth.end_cycle + ATTRIBUTION_LATENCY
+                        && (targets.iter().any(|t| truth.cycle_targets.contains(t))
+                            || sources.iter().any(|s| truth.cycle_sources.contains(s)))
+                });
+                line["truth_causal"] = causal.into();
+                k22_line = Some(line);
+            }
             let first_key = coverage_on
                 && is_behavioral
                 && seen_finding_keys.insert((
@@ -2953,6 +2975,14 @@ fn run_episode_inner(
                     }
                 }
             }
+            if let Some(mut line) = k22_line.take() {
+                let cf_caused = attacked
+                    && cf
+                        .as_deref()
+                        .is_some_and(|cf| cf.all.absent(cycle, fhash, false));
+                line["truth_cf"] = cf_caused.into();
+                k22_shadow(line);
+            }
             // krok 12: zobrazene nalezy do historie incidentu (stitek = prvni pripsana pravda)
             if suspect
                 && is_behavioral
@@ -3145,6 +3175,25 @@ fn run_episode_inner(
             use crate::verify_ladder::Status;
             let truth = case_truth.remove(&decision.key);
             let caused = truth.is_some_and(|t| t.cf);
+            if k22_shadow_on()
+                && v3.as_ref().is_some_and(|r| r.memory.is_some())
+                && (decision.status == Status::Refuted
+                    || decision.posterior <= crate::closure_gate::P_REFUTE)
+            {
+                // krok 22 (B4): stin brany nad rozhodnutim zebriku; brana meni jen stav a
+                // duvod, stin cte poznamky, P, ochranu a dopad (shodne pred i po zapisu).
+                // Pravda simulatoru (ne enginu) pro vyhodnoceni hranice.
+                k22_shadow(serde_json::json!({
+                    "ev": "ladder", "seed": cfg.run_seed, "net": cfg.network_id,
+                    "world": format!("{:?}", cfg.mask), "cycle": cycle,
+                    "key": format!("{}|{}|{}", decision.key.entity, decision.key.finding_type, decision.key.service),
+                    "type": decision.finding_type, "id": decision.finding_id,
+                    "status": format!("{:?}", decision.status), "posterior": decision.posterior,
+                    "truth_cf": caused, "truth_causal": truth.is_some_and(|t| t.causal),
+                    "truth_known": truth.is_some(),
+                    "shadow": crate::closure_gate::shadow_ladder(decision),
+                }));
+            }
             k15_trace(serde_json::json!({
                 "ev": "ladder", "net": cfg.network_id, "cycle": cycle,
                 "world": format!("{:?}", cfg.mask),
