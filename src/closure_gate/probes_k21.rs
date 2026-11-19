@@ -45,7 +45,7 @@ fn approved_context() -> StepNote {
     step(
         CheckId::Context,
         0.1,
-        "schvaleny kontext: backup (schvalil spravce)",
+        "schvaleny kontext: [zdroj dolozen] backup (schvalil spravce)",
     )
 }
 

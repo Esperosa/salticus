@@ -368,6 +368,21 @@ fn scanner_proven(entry: &ContextEntry, input: &GateInput<'_>) -> bool {
         && input.sources.iter().all(|s| entry.sources.contains(s))
 }
 
+/// Krok 22 (K22-N1): prefix důvodu podpůrného kontextu, který doložil zdroj nezávisle na
+/// `GatePolicy`. Vzniká v kódu před textem z kalendáře, jménem schvalovatele ho nejde podvrhnout;
+/// brána žebříku (`closure_gate::admit_ladder`) uzná kontext jako pozitivní důkaz jen s ním.
+pub const PROVEN_PREFIX: &str = "[zdroj dolozen] ";
+
+/// Krok 22 (K22-N1): doložení zdroje bez ohledu na politiku. Skener: neprázdný rozsah, všechny
+/// zdroje nálezu jsou zdroji skeneru a všechny cíle v rozsahu; ostatní druhy `strictly_proven`.
+fn independently_proven(entry: &ContextEntry, input: &GateInput<'_>) -> bool {
+    if entry.kind == ContextKind::AuthorizedScanner {
+        scanner_proven(entry, input) && targets_in_scope(&entry.hosts, input)
+    } else {
+        strictly_proven(entry, input)
+    }
+}
+
 /// Všechny cíle nálezu leží v rozsahu (adresa nebo CIDR). Bez známých cílů je cílem host
 /// nálezu (sken vnitřního hostu); neznámý cíl rozsah nesplní.
 fn targets_in_scope(scope: &[String], input: &GateInput<'_>) -> bool {
@@ -764,9 +779,18 @@ impl ContextGate {
                 && source_ok
                 && !self.disabled.contains(&entry.kind))
             .then(|| {
+                let proven = if independently_proven(entry, input) {
+                    PROVEN_PREFIX
+                } else {
+                    ""
+                };
                 (
                     entry.kind,
-                    format!("{} (schvalil {})", entry.kind.label(), entry.approved_by),
+                    format!(
+                        "{proven}{} (schvalil {})",
+                        entry.kind.label(),
+                        entry.approved_by
+                    ),
                 )
             })
         });
@@ -1407,6 +1431,60 @@ mod tests {
             targets,
             ..input(kind, hosts, sources, 1, Severity::Medium)
         }
+    }
+
+    /// Krok 22, review E1 bod (a): bez známých cílů nálezu stačí k shodě rozsahu kterýkoli
+    /// identifikátor hostu (IP nebo asset id). Obejít to nejde útokem z jiného zdroje: záznam
+    /// skeneru vyžaduje, aby VŠECHNY zdroje nálezu byly zdroji skeneru (vysvětlení, podpora
+    /// žebříku i nezávislé doložení K22-N1).
+    #[test]
+    fn k22_review_a_host_in_scope_does_not_admit_attack_from_other_source() {
+        let calendar = StaticCalendar::new(vec![scanner(&["10.0.0.0/24"], &[])]);
+        let ids = vec!["10.0.0.5".to_string(), "asset-db-1".to_string()];
+        let attacker = vec!["10.0.0.66".to_string()];
+        let mixed = vec!["10.0.0.104".to_string(), "10.0.0.66".to_string()];
+        let none: Vec<String> = Vec::new();
+        let scanner_src = vec!["10.0.0.104".to_string()];
+        for sources in [&attacker, &mixed, &none] {
+            let case = scan_input("scan_attempts", &ids, &[], sources);
+            let mut gate = ContextGate::new(v2_policy());
+            assert!(gate.explain(&calendar, &case).is_none(), "{sources:?}");
+            assert!(
+                gate.supporting_context(&calendar, &case)
+                    .is_none_or(|(_, r)| !r.starts_with(PROVEN_PREFIX)),
+                "{sources:?}"
+            );
+            // ani volna politika (bez prisnosti) nedolozi zdroj
+            let loose = ContextGate::new(GatePolicy::default());
+            assert!(
+                loose
+                    .supporting_context(&calendar, &case)
+                    .is_none_or(|(_, r)| !r.starts_with(PROVEN_PREFIX)),
+                "{sources:?}"
+            );
+        }
+        // asset id hostu v rozsahu nestaci: identifikator, ktery neni adresa, rozsah nesplni
+        let asset_only = vec!["asset-db-1".to_string()];
+        let case = scan_input("scan_attempts", &asset_only, &[], &scanner_src);
+        assert!(
+            ContextGate::new(v2_policy())
+                .explain(&calendar, &case)
+                .is_none()
+        );
+        // zamer: host v rozsahu (IP), zdroj = skener, bez znamych cilu -> vysvetleno a dolozeno
+        let case = scan_input("scan_attempts", &ids, &[], &scanner_src);
+        let mut gate = ContextGate::new(v2_policy());
+        assert!(gate.explain(&calendar, &case).expect("sken").sources_proven);
+        let (_, reason) = gate.supporting_context(&calendar, &case).expect("podpora");
+        assert!(reason.starts_with(PROVEN_PREFIX), "{reason}");
+        // host mimo rozsah se zdrojem skeneru: nevysvetleno
+        let outside = vec!["10.0.1.5".to_string()];
+        let case = scan_input("scan_attempts", &outside, &[], &scanner_src);
+        assert!(
+            ContextGate::new(v2_policy())
+                .explain(&calendar, &case)
+                .is_none()
+        );
     }
 
     /// Krok 21 (K21-N13), opraveno v kroku 22 za přepínačem `host_first`: rozsah skeneru se

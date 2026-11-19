@@ -3154,7 +3154,7 @@ mod tests {
         assert!(!ladder.open(escalated, 1), "druhe otevreni se jen slouci");
         let mut env = Env {
             recurrence: Some(Recurrence::Seen { days: 4 }),
-            context: Some("backup (schvalil spravce)".into()),
+            context: Some("[zdroj dolozen] backup (schvalil spravce)".into()),
             ..Env::default()
         };
         let d = run_until_decided(&mut ladder, &mut env);

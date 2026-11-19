@@ -49,7 +49,7 @@ fn context() -> StepNote {
     note(
         CheckId::Context,
         0.1,
-        "schvaleny kontext: backup_window (schvalil spravce)",
+        "schvaleny kontext: [zdroj dolozen] backup_window (schvalil spravce)",
     )
 }
 fn allow() -> StepNote {
@@ -500,7 +500,8 @@ fn k22_b1_scanner_context_without_scope_alone_is_refused() {
         ],
     );
     d.posterior = 0.026_372;
-    assert_eq!(admit_ladder(&d), Err(Refusal::TooFewGroups));
+    // K22-N1: nedolozeny kontext neni pozitivni dukaz (driv: mene nez dve skupiny)
+    assert_eq!(admit_ladder(&d), Err(Refusal::SourceNotProven));
 
     use crate::context_gate::{ContextEntry, ContextGate, GateInput, GatePolicy, StaticCalendar};
     let scanner = ContextEntry {
@@ -534,4 +535,120 @@ fn k22_b1_scanner_context_without_scope_alone_is_refused() {
         ..GatePolicy::default()
     });
     assert!(strict.supporting_context(&calendar, &case).is_none());
+}
+
+/// Krok 22 (K22-N1): brána žebříku ověřuje doložení zdroje kontextu sama, nezávisle na
+/// `GatePolicy` kroku kontextu. Případ B1 (skener bez rozsahu, smíšené zdroje) s druhou
+/// skupinou (historie) dá bez přísné politiky podpůrný kontext, ale lístek nedostane.
+#[test]
+fn k22_n1_ladder_requires_independently_proven_context_source() {
+    use crate::context_gate::{ContextEntry, ContextGate, GateInput, GatePolicy, StaticCalendar};
+    let entry = |kind: ContextKind, hosts: &[&str], sources: &[&str], owner: &str| ContextEntry {
+        kind,
+        hosts: hosts.iter().map(|s| s.to_string()).collect(),
+        sources: sources.iter().map(|s| s.to_string()).collect(),
+        start: at(0),
+        end: at(30),
+        covers: Vec::new(),
+        approved_by: owner.to_string(),
+        expires: at(60),
+    };
+    let loose = ContextGate::new(GatePolicy::default());
+    let refuted_with = |reason: String| {
+        let mut d = decision(
+            "unexpected_traffic",
+            vec![
+                history(),
+                note(
+                    CheckId::Context,
+                    0.3,
+                    &format!("schvaleny kontext: {reason}"),
+                ),
+            ],
+        );
+        d.posterior = 0.02;
+        d
+    };
+    // (1) B1: skener bez rozsahu, smisene zdroje; bez prisne politiky kontext podpori
+    let calendar = StaticCalendar::new(vec![entry(
+        ContextKind::AuthorizedScanner,
+        &[],
+        &["192.168.33.119"],
+        "sim-spravce",
+    )]);
+    let host = vec!["192.168.33.1".to_string()];
+    let mixed = vec!["192.168.34.234".to_string(), "192.168.33.119".to_string()];
+    let case = GateInput {
+        finding_type: "unexpected_traffic",
+        host_ids: &host,
+        targets: &[],
+        sources: &mixed,
+        severity: Severity::Low,
+        at: at(10),
+        protected: false,
+    };
+    let (_, reason) = loose
+        .supporting_context(&calendar, &case)
+        .expect("podpurny");
+    assert!(
+        !reason.starts_with(crate::context_gate::PROVEN_PREFIX),
+        "{reason}"
+    );
+    let d = refuted_with(reason);
+    assert_eq!(admit_ladder(&d), Err(Refusal::SourceNotProven));
+    assert!(!shadow_ladder(&d).admitted);
+    // (2) dolozena zaloha (zdroj nalezu je host zaznamu) + historie: listek
+    let calendar = StaticCalendar::new(vec![entry(
+        ContextKind::Backup,
+        &["10.0.0.5", "10.0.0.9"],
+        &[],
+        "spravce",
+    )]);
+    let host = vec!["10.0.0.5".to_string()];
+    let src = vec!["10.0.0.9".to_string()];
+    let case = GateInput {
+        finding_type: "inductive_volume_anomaly",
+        host_ids: &host,
+        targets: &[],
+        sources: &src,
+        severity: Severity::Low,
+        at: at(10),
+        protected: false,
+    };
+    let (_, reason) = loose
+        .supporting_context(&calendar, &case)
+        .expect("podpurny");
+    assert!(
+        reason.starts_with(crate::context_gate::PROVEN_PREFIX),
+        "{reason}"
+    );
+    let ticket = admit_ladder(&refuted_with(reason)).expect("listek");
+    assert_eq!(ticket.owner(), "spravce");
+    let shadow = shadow_ladder(&refuted_with(format!(
+        "{}backup (schvalil spravce)",
+        crate::context_gate::PROVEN_PREFIX
+    )));
+    assert_eq!(shadow.positive, vec!["context:backup".to_string()]);
+    // (3) podvrzeny prefix ve jmenu schvalovatele neplati (nedolozeny zdroj)
+    let forged = StaticCalendar::new(vec![entry(
+        ContextKind::Backup,
+        &["10.0.0.5"],
+        &[],
+        "x) [zdroj dolozen] (schvalil y",
+    )]);
+    let no_source = GateInput {
+        sources: &[],
+        ..case.clone()
+    };
+    let (_, reason) = loose
+        .supporting_context(&forged, &no_source)
+        .expect("podpurny");
+    assert!(
+        !reason.starts_with(crate::context_gate::PROVEN_PREFIX),
+        "{reason}"
+    );
+    assert_eq!(
+        admit_ladder(&refuted_with(reason)),
+        Err(Refusal::SourceNotProven)
+    );
 }

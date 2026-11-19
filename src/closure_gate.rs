@@ -183,10 +183,25 @@ fn after<'a>(detail: &'a str, marker: &str) -> Option<&'a str> {
     (!owner.is_empty()).then_some(owner)
 }
 
-/// Pozitivní důkaz s vlastníkem z kroku žebříku: (skupina, vlastník, popis).
+/// Text kroku kontextu, který doložil zdroj (K22-N1, `context_gate::PROVEN_PREFIX`).
+fn proven_context(note: &StepNote) -> bool {
+    note.detail
+        .strip_prefix("schvaleny kontext: ")
+        .is_some_and(|rest| rest.starts_with(crate::context_gate::PROVEN_PREFIX))
+}
+
+/// Schválený kontext s vlastníkem bez ohledu na doložení zdroje (jen pro důvod odmítnutí).
+fn owned_context(note: &StepNote) -> bool {
+    note.check == CheckId::Context
+        && !note.detail.contains("sensor_outage")
+        && after(&note.detail, "schvalil ").is_some()
+}
+
+/// Pozitivní důkaz s vlastníkem z kroku žebříku: (skupina, vlastník, popis). Kontext je
+/// pozitivní jen s doloženým zdrojem (K22-N1), nezávisle na politice kroku kontextu.
 fn positive(note: &StepNote) -> Option<(u8, String, String)> {
     match note.check {
-        CheckId::Context if !note.detail.contains("sensor_outage") => {
+        CheckId::Context if !note.detail.contains("sensor_outage") && proven_context(note) => {
             after(&note.detail, "schvalil ").map(|o| (1, o.to_string(), "schvaleny kontext".into()))
         }
         CheckId::Endpoint if note.detail.starts_with("seznam povolenych") => {
@@ -224,6 +239,10 @@ pub fn admit_ladder(decision: &Decision) -> Result<CloseTicket, Refusal> {
         .collect();
     let positive: Vec<(u8, String, String)> = benign.iter().filter_map(|n| positive(n)).collect();
     let Some((_, owner, _)) = positive.first().cloned() else {
+        // K22-N1: schvaleny kontext bez dolozeneho zdroje neni pozitivni dukaz
+        if benign.iter().any(|n| owned_context(n)) {
+            return Err(Refusal::SourceNotProven);
+        }
         return Err(Refusal::NoPositiveEvidence);
     };
     let mut groups: Vec<u8> = benign.iter().filter_map(|n| supporting(n)).collect();
@@ -270,6 +289,10 @@ fn positive_kind(note: &StepNote) -> Option<String> {
         .detail
         .split("kontext: ")
         .nth(1)
+        .map(|rest| {
+            rest.strip_prefix(crate::context_gate::PROVEN_PREFIX)
+                .unwrap_or(rest)
+        })
         .and_then(|rest| rest.split([' ', '(', ',', ';']).next())
         .filter(|l| !l.is_empty())
         .unwrap_or("?");
