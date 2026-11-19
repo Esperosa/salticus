@@ -3018,11 +3018,17 @@ fn run_episode_inner(
                     lifecycle: None,
                     ops: k16_ops.get(&decision.finding_id),
                     coverage: None,
-                    endpoint_covered: None,
+                    endpoint_covered: endpoint_view.as_ref().map(|v| v.covered(&decision.host_ip)),
                     contexts: &[],
                     incidents: None,
                     pseudonymize_users: true,
                     endpoint_weak: cfg.engine.endpoint_weak(),
+                    endpoint_users: endpoint_view.as_ref().and_then(|v| {
+                        v.users(&decision.host_ip).map(|us| {
+                            let privacy = crate::endpoint::graph::Privacy::default();
+                            us.iter().map(|u| privacy.user(u)).collect()
+                        })
+                    }),
                 });
                 let violations = crate::case_folder::validate(&folder, decision);
                 let bytes = serde_json::to_vec(&folder).map_or(0, |b| b.len());

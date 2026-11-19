@@ -464,6 +464,9 @@ pub struct HostAssessment {
     pub allowed_peers: BTreeMap<(String, u16), String>,
     pub events: usize,
     pub last_event: i64,
+    /// Krok 19: uživatelé v okně posouzení (vlastník procesu, úspěšné přihlášení), pro
+    /// případovou složku. Rozhodování je nepoužívá.
+    pub users: std::collections::BTreeSet<String>,
 }
 
 impl HostAssessment {
@@ -643,6 +646,9 @@ pub fn assess(
         out.last_event = out.last_event.max(event.ts);
         match &event.kind {
             EventKind::ProcessCreate(p) => {
+                if let Some(user) = p.user.as_deref().filter(|u| !u.trim().is_empty()) {
+                    out.users.insert(user.to_string());
+                }
                 if let Some(code) = shell_child(policy, p) {
                     add(
                         &mut out,
@@ -777,6 +783,9 @@ pub fn assess(
                 src_ip,
                 success,
             }) => {
+                if *success && !user.trim().is_empty() {
+                    out.users.insert(user.clone());
+                }
                 if !success {
                     *fails.entry(src_ip.clone().unwrap_or_default()).or_default() += 1;
                 } else if matches!(logon_type, 3 | 10) || (*logon_type == 0 && src_ip.is_some()) {
@@ -1012,6 +1021,19 @@ impl EndpointView {
 
     pub fn covered(&self, host: &str) -> bool {
         self.covered.contains(host)
+    }
+
+    /// Krok 19: uživatelé hosta s živou koncovou telemetrií (`None` = host bez agenta).
+    pub fn users(&self, host: &str) -> Option<Vec<String>> {
+        if !self.covered.contains(host) {
+            return None;
+        }
+        Some(
+            self.assessments
+                .get(host)
+                .map(|a| a.users.iter().cloned().collect())
+                .unwrap_or_default(),
+        )
     }
 
     pub fn assessment(&self, host: &str) -> Option<&HostAssessment> {
@@ -1417,6 +1439,42 @@ mod tests {
                 .benign_peers
                 .is_empty()
         );
+    }
+
+    /// Krok 19: posouzení hosta nese uživatele (vlastník procesu, úspěšné přihlášení), ne
+    /// neúspěšné pokusy; skóre se tím nemění.
+    #[test]
+    fn assessment_collects_users_without_changing_score() {
+        let p = Policy::default();
+        let events = vec![
+            conn(T0, "C:\\a.exe", "8.8.8.8", Some(true), None),
+            ev(
+                T0 + 1,
+                EventKind::Logon(Logon {
+                    user: "CORP\\jnovak".into(),
+                    logon_type: 2,
+                    src_ip: None,
+                    success: true,
+                }),
+            ),
+            ev(
+                T0 + 2,
+                EventKind::Logon(Logon {
+                    user: "utocnik".into(),
+                    logon_type: 3,
+                    src_ip: Some("10.0.0.9".into()),
+                    success: false,
+                }),
+            ),
+        ];
+        let a = assess("h", events.iter(), T0 + 10, &p);
+        assert_eq!(a.users.iter().collect::<Vec<_>>(), vec!["CORP\\jnovak"]);
+        let without: Vec<EndpointEvent> = events
+            .iter()
+            .filter(|e| !matches!(&e.kind, EventKind::Logon(l) if l.success))
+            .cloned()
+            .collect();
+        assert_eq!(assess("h", without.iter(), T0 + 10, &p).score, a.score);
     }
 
     #[test]

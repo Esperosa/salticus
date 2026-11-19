@@ -50,6 +50,7 @@ fn input(d: &Decision) -> FolderInput<'_> {
         incidents: None,
         pseudonymize_users: true,
         endpoint_weak: false,
+        endpoint_users: None,
     }
 }
 
@@ -78,7 +79,7 @@ fn escalated_case_is_complete_consistent_and_names_what_is_missing() {
     assert!(
         f.blind_spots
             .iter()
-            .any(|b| b.starts_with("l7: nelze urcit"))
+            .any(|b| b.starts_with("l7: nelze provest"))
     );
     assert!(f.actors_missing.iter().any(|a| a.starts_with("uzivatel")));
     assert_eq!(f.uncertainty.observation.value, Some(1.0 / 3.0));
@@ -501,6 +502,15 @@ fn fuzz_random_decisions_never_panic_and_always_validate() {
             inp.coverage = Some(&cov);
             inp.incidents = Some(&incidents);
             inp.endpoint_covered = Some(next() % 2 == 0);
+            inp.endpoint_users = match next() % 3 {
+                0 => None,
+                1 => Some(Vec::new()),
+                _ => Some(
+                    (0..next() % 6)
+                        .map(|k| texts[(k % texts.len() as u64) as usize].repeat(40))
+                        .collect(),
+                ),
+            };
         }
         let f = build(&inp);
         let v = validate(&f, &d);
@@ -514,4 +524,149 @@ fn fuzz_random_decisions_never_panic_and_always_validate() {
         assert!(size <= 16 * 1024, "iterace {i}: {size} B");
         let _ = render_text(&f);
     }
+}
+
+/// Krok 19 (slabina kroku 16: „slepé místo“ u 99 % předaných): kontrola, která proběhla a nic
+/// nerozlišila, není slepé místo; slepé místo je jen kontrola, kterou nešlo provést.
+#[test]
+fn inconclusive_check_is_not_a_blind_spot() {
+    let d = decision(
+        Status::Escalated,
+        0.3,
+        vec![
+            note(CheckId::Liveness, "undetermined", None, "sluzba odpovida"),
+            note(
+                CheckId::Reputation,
+                "undetermined",
+                None,
+                "zdroj bez reputace",
+            ),
+        ],
+    );
+    let f = build(&input(&d));
+    assert!(validate(&f, &d).is_empty(), "{:?}", validate(&f, &d));
+    assert!(
+        f.blind_spots.iter().all(|b| b.starts_with("stav pokryti")),
+        "{:?}",
+        f.blind_spots
+    );
+    assert!(!f.handoff.iter().any(|h| h.starts_with("slepa mista")));
+    let d = decision(
+        Status::Escalated,
+        0.3,
+        vec![
+            note(CheckId::Liveness, "undetermined", None, "sluzba odpovida"),
+            note(
+                CheckId::Endpoint,
+                "unavailable",
+                None,
+                "host 10.0.4.7 nema zivou koncovou telemetrii",
+            ),
+        ],
+    );
+    let f = build(&input(&d));
+    assert!(validate(&f, &d).is_empty(), "{:?}", validate(&f, &d));
+    assert_eq!(
+        f.blind_spots
+            .iter()
+            .filter(|b| !b.starts_with("stav pokryti"))
+            .count(),
+        1,
+        "{:?}",
+        f.blind_spots
+    );
+    assert!(f.handoff.iter().any(|h| h.starts_with("slepa mista: 1")));
+    // validátor odmítne slepé místo vyrobené z kontroly, která proběhla
+    let mut bad = f.clone();
+    bad.blind_spots
+        .push("liveness: nelze provest, sluzba odpovida".into());
+    assert!(
+        validate(&bad, &d)
+            .iter()
+            .any(|v| v.starts_with("slepe misto liveness"))
+    );
+}
+
+/// Krok 19 (slabina kroku 16: obecný doporučený krok): doporučí se jen kontrola se změřenou
+/// rozlišovací schopností, s ručním postupem a s tím, jak by výsledek posunul P(útok).
+#[test]
+fn recommendation_names_a_discriminating_check_and_its_effect() {
+    let d = decision(Status::Escalated, 0.3, Vec::new());
+    let f = build(&input(&d));
+    assert!(validate(&f, &d).is_empty(), "{:?}", validate(&f, &d));
+    for neutral in ["DnsPivot", "Timing", "GeoAsn", "TlsFingerprint"] {
+        assert!(
+            !f.recommended_step.contains(neutral),
+            "{}",
+            f.recommended_step
+        );
+        let entry = f.to_verify.iter().find(|c| c.check == neutral).unwrap();
+        assert!(!entry.why.starts_with(DISCRIMINATES), "{entry:?}");
+    }
+    assert!(
+        f.recommended_step.starts_with("Rucne"),
+        "{}",
+        f.recommended_step
+    );
+    assert!(f.recommended_step.contains("podezrely vysledek -> P(utok)"));
+    // první v seznamu je kontrola, která rozlišuje
+    assert!(
+        f.to_verify[0].why.starts_with(DISCRIMINATES),
+        "{:?}",
+        f.to_verify[0]
+    );
+    // validátor odmítne doporučení kontroly bez rozlišovací schopnosti
+    let mut bad = f.clone();
+    bad.recommended_step = "Rucne projit DNS (DnsPivot, cena 0.10).".into();
+    assert!(
+        validate(&bad, &d)
+            .iter()
+            .any(|v| v.contains("DnsPivot nerozlisuje"))
+    );
+}
+
+/// Krok 19 (slabina kroku 16: uživatel vždy „nelze určit“): uživatel z koncové telemetrie.
+#[test]
+fn user_actor_comes_from_endpoint_telemetry() {
+    let d = decision(Status::Escalated, 0.3, Vec::new());
+    let mut i = input(&d);
+    i.endpoint_covered = Some(true);
+    i.endpoint_users = Some(vec!["u-1a2b3c4d".into(), "SYSTEM".into()]);
+    let f = build(&i);
+    assert!(validate(&f, &d).is_empty(), "{:?}", validate(&f, &d));
+    let users: Vec<&Actor> = f.actors.iter().filter(|a| a.role == "uzivatel").collect();
+    assert_eq!(users.len(), 2);
+    assert!(
+        users
+            .iter()
+            .all(|a| a.source == "endpoint" && a.pseudonymized)
+    );
+    assert!(!f.actors_missing.iter().any(|a| a.starts_with("uzivatel")));
+    i.endpoint_users = Some(Vec::new());
+    let f = build(&i);
+    assert!(
+        f.actors_missing
+            .iter()
+            .any(|a| a.starts_with("uzivatel") && a.contains("neuvadi"))
+    );
+    i.endpoint_users = None;
+    i.endpoint_covered = Some(false);
+    let f = build(&i);
+    assert!(
+        f.actors_missing
+            .iter()
+            .any(|a| a.starts_with("uzivatel") && a.contains("nema zivou"))
+    );
+    let mut bad = f.clone();
+    bad.actors.push(Actor {
+        role: "uzivatel".into(),
+        id: "x".into(),
+        pseudonymized: false,
+        source: "nalez".into(),
+    });
+    assert!(
+        validate(&bad, &d)
+            .iter()
+            .any(|v| v.contains("uzivatel mimo"))
+    );
 }

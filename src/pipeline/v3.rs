@@ -1133,6 +1133,9 @@ impl V3Session {
                 incidents: Some(&out.incidents),
                 pseudonymize_users: privacy.pseudonymize_users,
                 endpoint_weak: self.engine.endpoint_weak(),
+                endpoint_users: endpoint
+                    .and_then(|e| e.users(&d.host_ip))
+                    .map(|us| us.iter().map(|u| privacy.user(u)).collect()),
             }));
         }
     }

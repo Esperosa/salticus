@@ -14,11 +14,13 @@ import glob
 import json
 import os
 import random
+import re
 import statistics
 import sys
 from collections import Counter
 
 UNKNOWN = "nelze urcit"
+DISCRIMINATES = "neprovedeno; rozlisuje"
 
 
 def folders_from_dump(paths):
@@ -78,7 +80,24 @@ def checks(f):
         v.append("potvrzeno bez dukazu, shrnuti to neuvadi")
     if not f["related"]["note"].strip():
         v.append("souvislosti bez poznamky")
+    # krok 19: doporucena kontrola rozlisuje a jeste neprobehla s vysledkem
+    m = re.search(r"\((\w+), cena", f["recommended_step"])
+    if m:
+        entry = [c for c in f["to_verify"] if c["check"] == m.group(1)]
+        if not entry or not entry[0]["why"].startswith(DISCRIMINATES):
+            v.append("doporucena kontrola nerozlisuje nebo uz probehla")
+    # krok 19: slepe misto jen z kontroly, kterou nebylo mozne provest
+    unavailable = {c["check"] for c in f["verified"] if c["result"] == "neprovedeno"}
+    for b in f["blind_spots"]:
+        if ": nelze provest" in b and b.split(":")[0] not in unavailable:
+            v.append("slepe misto z provedene kontroly")
+    if any(a["role"] == "uzivatel" and a["source"] != "endpoint" for a in f["actors"]):
+        v.append("uzivatel mimo koncovou telemetrii")
     return v
+
+
+def rows_f(rows):
+    return [r["folder"] for r in rows]
 
 
 def pct(a, b):
@@ -112,6 +131,23 @@ def summarize(rows, label):
     print(f"predane se slepym mistem: {pct(blind, len(handed))}; s doporucenou dalsi kontrolou: {pct(sum(1 for f in handed if f['to_verify']), len(handed))}")
     nofor = sum(1 for f in handed if not f["evidence_for"] and not f["evidence_against"])
     print(f"predane bez jakehokoli dukazu (jen apriorni): {pct(nofor, len(handed))}")
+    # krok 19: slepa mista jako duvod predani, doporuceny krok, uzivatel
+    blind_reason = sum(1 for f in handed if any(h.startswith("slepa mista") for h in f["handoff"]))
+    old_rule = sum(
+        1
+        for f in handed
+        if f["verdict"]["status"] != "confirmed"
+        and (any(c["result"] in ("bez vysledku", "neprovedeno") for c in f["verified"])
+             or any(not b.startswith("stav pokryti") for b in f["blind_spots"]))
+    )
+    print(f"K19-B3 slepa mista jako duvod predani: {pct(blind_reason, len(handed))} (pravidlem kroku 16 by bylo {pct(old_rule, len(handed))})")
+    rec = Counter()
+    for f in handed:
+        m = re.search(r"\((\w+), cena", f["recommended_step"])
+        rec[m.group(1) if m else "bez kontroly: " + f["recommended_step"][:40]] += 1
+    print("K19-B4 doporucena kontrola:", [(k, pct(n, len(handed))) for k, n in rec.most_common(8)])
+    users = [f for f in rows_f(rows) if any(a["role"] == "uzivatel" for a in f["actors"])]
+    print(f"K19-B5 uzivatel vyplnen: {pct(len(users), n)}; duvody chybeni: {Counter(a.split(',')[1].strip()[:50] for f in rows_f(rows) for a in f['actors_missing'] if a.startswith('uzivatel')).most_common(4)}")
     if "truth_cf" in rows[0]:
         wrong_closed = sum(1 for r in rows if r["folder"]["verdict"]["status"] == "refuted" and r["truth_cf"])
         att = Counter((r["folder"]["verdict"]["status"], bool(r["truth_cf"])) for r in rows)

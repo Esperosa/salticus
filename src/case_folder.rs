@@ -176,6 +176,82 @@ pub struct FolderInput<'a> {
     pub pseudonymize_users: bool,
     /// Krok 15 `endpoint_weak`: neškodný koncový signál mimo seznam povolených je slabý.
     pub endpoint_weak: bool,
+    /// Krok 19: uživatelé hosta z koncové telemetrie (už pseudonymizovaní volajícím podle
+    /// nastavení soukromí); `None` = host bez živé koncové telemetrie nebo neznámo.
+    pub endpoint_users: Option<Vec<String>>,
+}
+
+/// Krok 19: kontrola „rozlišuje“, když má změřenou vzájemnou informaci s třídou útok/neškodné
+/// (tabulky kroku 12); neutrální tabulka (poměr 1) dá 0.
+const MIN_INFO: f64 = 1e-6;
+/// Začátek důvodu u zbývající kontroly, která rozlišuje (validátor a skript ho hledají).
+pub const DISCRIMINATES: &str = "neprovedeno; rozlisuje";
+
+/// Informace kontroly na jednotku ceny při P(útok) `p` (bity na cenu, `competing`).
+fn discrimination(p: f64, kind: CheckKind) -> f64 {
+    let v = crate::competing::information_per_cost(
+        p.clamp(1e-6, 1.0 - 1e-6),
+        kind,
+        crate::competing::measured_static(),
+    );
+    if v.is_finite() { v.max(0.0) } else { 0.0 }
+}
+
+/// P(útok) po jednom výsledku kontroly (změřené tabulky; pro text doporučení).
+fn shifted(p: f64, kind: CheckKind, result: crate::competing::Result3) -> f64 {
+    finite01(crate::competing::posterior_attack(
+        p.clamp(1e-6, 1.0 - 1e-6),
+        &[crate::competing::Obs { kind, result }],
+        crate::competing::measured_static(),
+    ))
+}
+
+/// Co má člověk udělat, aby kontrolu provedl (složka nic nespouští).
+fn manual_step(kind: CheckKind) -> &'static str {
+    match kind {
+        CheckKind::DnsPivot => "projit DNS dotazy hosta kolem casu nalezu",
+        CheckKind::TlsFingerprint => {
+            "porovnat TLS otisk klienta a certifikat s obvyklymi pro hosta"
+        }
+        CheckKind::Timing => "posoudit pravidelnost spojeni (beacon)",
+        CheckKind::GeoAsn => "overit zemi a ASN protejsku",
+        CheckKind::HostBaseline => "porovnat s obvyklym chovanim hosta",
+        CheckKind::PeerCompare => "porovnat s hosty stejneho typu v podsiti",
+        CheckKind::EndpointTelemetry => "zkontrolovat procesy a prihlaseni na hostu (EDR, Sysmon)",
+        CheckKind::CaseHistory => "dohledat drivejsi vyskyty u hosta",
+        CheckKind::Reputation => "overit reputaci protejsku (TI zdroj)",
+        CheckKind::ConfigContext => "dohledat schvalenou zmenu nebo okno udrzby (CMDB, kalendar)",
+        CheckKind::RepeatMeasure => "pockat a overit, zda se jev opakuje",
+        CheckKind::ActiveReadOnly => "aktivne overit dostupnost sluzby (jen cteni)",
+        CheckKind::OpsTelemetry => "zkontrolovat syslog a SNMP zarizeni na ceste",
+    }
+}
+
+fn kind_named(name: &str) -> Option<CheckKind> {
+    CheckKind::ALL
+        .into_iter()
+        .find(|k| format!("{k:?}") == name)
+}
+
+/// Text doporučené kontroly: co udělat, cena a jak by výsledek posunul P(útok).
+fn step_text(p: f64, c: &PendingCheck) -> String {
+    let Some(kind) = kind_named(&c.check) else {
+        return format!("Overit: {} (cena {:.2}).", c.check, c.cost);
+    };
+    use crate::competing::Result3;
+    format!(
+        "Rucne {} ({}, cena {:.2}{}); podezrely vysledek -> P(utok) {:.2}, neskodny -> {:.2}.",
+        manual_step(kind),
+        c.check,
+        c.cost,
+        if c.needs_approval {
+            ", se schvalenim"
+        } else {
+            ""
+        },
+        shifted(p, kind, Result3::Suspicious),
+        shifted(p, kind, Result3::Benign),
+    )
 }
 
 fn clip(text: &str) -> String {
@@ -546,11 +622,31 @@ pub fn build(input: &FolderInput<'_>) -> CaseFolder {
             None => "proces: nelze urcit, pokryti koncovou telemetrii nezname".to_string(),
         }),
     }
-    actors_missing.push(if input.pseudonymize_users {
-        "uzivatel: nelze urcit, sitova a ladder data uzivatele nenesou (koncova telemetrie by ho uvedla jen pseudonymem)".to_string()
-    } else {
-        "uzivatel: nelze urcit, sitova a ladder data uzivatele nenesou".to_string()
-    });
+    // uživatel: jen z koncové telemetrie hosta (síťová data ho nenesou)
+    match input.endpoint_users.as_deref() {
+        Some(users) if !users.is_empty() => {
+            for u in users.iter().take(3) {
+                actors.push(Actor {
+                    role: "uzivatel".into(),
+                    id: clip(u),
+                    pseudonymized: input.pseudonymize_users,
+                    source: "endpoint".into(),
+                });
+            }
+        }
+        Some(_) => actors_missing.push(
+            "uzivatel: nelze urcit, koncova telemetrie hosta v okne neuvadi zadneho uzivatele"
+                .to_string(),
+        ),
+        None => actors_missing.push(match input.endpoint_covered {
+            Some(false) => {
+                "uzivatel: nelze urcit, host nema zivou koncovou telemetrii (sitova data uzivatele nenesou)"
+                    .to_string()
+            }
+            _ => "uzivatel: nelze urcit, koncova telemetrie neni k dispozici (sitova data uzivatele nenesou)"
+                .to_string(),
+        }),
+    }
 
     // ověřeno a slepá místa
     let verified: Vec<VerifiedCheck> = d
@@ -564,13 +660,11 @@ pub fn build(input: &FolderInput<'_>) -> CaseFolder {
             detail: clip(&n.detail),
         })
         .collect();
+    // slepé místo = chybějící telemetrie nebo kontrola, kterou nešlo provést (pravidlo 5
+    // rozsahu); kontrola, která proběhla a nic nerozlišila (`undetermined`), slepé místo není
     let mut blind_spots: Vec<String> = Vec::new();
-    for n in d
-        .notes
-        .iter()
-        .filter(|n| matches!(n.tag, "undetermined" | "unavailable"))
-    {
-        let line = clip(&format!("{}: nelze urcit, {}", n.check.label(), n.detail));
+    for n in d.notes.iter().filter(|n| n.tag == "unavailable") {
+        let line = clip(&format!("{}: nelze provest, {}", n.check.label(), n.detail));
         if !blind_spots.contains(&line) {
             blind_spots.push(line);
         }
@@ -617,7 +711,7 @@ pub fn build(input: &FolderInput<'_>) -> CaseFolder {
         .iter()
         .filter_map(|n| competing_kind(n.check))
         .collect();
-    let mut to_verify: Vec<PendingCheck> = CheckKind::ALL
+    let mut ranked = CheckKind::ALL
         .into_iter()
         .filter(|k| !tried.contains(k))
         .filter(|k| {
@@ -625,31 +719,45 @@ pub fn build(input: &FolderInput<'_>) -> CaseFolder {
         })
         .map(|k| {
             let (cost, approval) = k.cost();
-            PendingCheck {
-                check: format!("{k:?}"),
-                cost,
-                needs_approval: approval,
-                risk: if approval {
-                    "aktivni cteci kontrola: jen se schvalenim, krehke zarizeni muze reagovat"
-                        .into()
-                } else {
-                    "pasivni: bez vlivu na provoz".into()
+            let info = discrimination(p, k);
+            let rank = if performed.contains(&k) {
+                2u8
+            } else if info > MIN_INFO {
+                0
+            } else {
+                1
+            };
+            (
+                rank,
+                info,
+                PendingCheck {
+                    check: format!("{k:?}"),
+                    cost,
+                    needs_approval: approval,
+                    risk: if approval {
+                        "aktivni cteci kontrola: jen se schvalenim, krehke zarizeni muze reagovat"
+                            .into()
+                    } else {
+                        "pasivni: bez vlivu na provoz".into()
+                    },
+                    why: match rank {
+                        0 => format!("{DISCRIMINATES}, {info:.2} b/cena"),
+                        1 => "neprovedeno; rozlisovaci schopnost nezmerena".into(),
+                        _ => "provedeno bez vysledku: znovu ma smysl az s novymi daty".into(),
+                    },
                 },
-                why: if performed.contains(&k) {
-                    "provedeno bez vysledku: znovu ma smysl az s novymi daty".into()
-                } else {
-                    "neprovedeno v tomto pripadu".into()
-                },
-            }
+            )
         })
-        .collect();
-    to_verify.sort_by(|a, b| {
-        a.why
-            .starts_with("provedeno")
-            .cmp(&b.why.starts_with("provedeno"))
-            .then(a.cost.total_cmp(&b.cost))
-            .then(a.check.cmp(&b.check))
+        .collect::<Vec<(u8, f64, PendingCheck)>>();
+    // nejdřív neprovedené, které rozlišují (nejvíc informace na cenu), pak neprovedené bez
+    // změřené rozlišovací schopnosti, pak provedené bez výsledku
+    ranked.sort_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then(b.1.total_cmp(&a.1))
+            .then(a.2.cost.total_cmp(&b.2.cost))
+            .then(a.2.check.cmp(&b.2.check))
     });
+    let mut to_verify: Vec<PendingCheck> = ranked.into_iter().map(|(_, _, c)| c).collect();
     if d.status == Status::Refuted {
         to_verify.clear();
     }
@@ -833,9 +941,11 @@ pub fn build(input: &FolderInput<'_>) -> CaseFolder {
 
     // shrnutí a doporučený krok
     let kind = &d.finding_type;
+    // doporučit jen kontrolu, která útok od neškodného rozliší; pasivní přednostně
     let next = to_verify
         .iter()
-        .find(|c| !c.needs_approval && c.why.starts_with("neprovedeno"));
+        .find(|c| !c.needs_approval && c.why.starts_with(DISCRIMINATES))
+        .or_else(|| to_verify.iter().find(|c| c.why.starts_with(DISCRIMINATES)));
     let summary = match d.status {
         Status::Confirmed if evidence_for.is_empty() => format!(
             "Zebrik oznacil {kind} na hostu {host} za utok jen podle apriorni pravdepodobnosti (P(utok) = {p:.2}), bez podezreleho dukazu z kontrol; nutno overit."
@@ -862,8 +972,8 @@ pub fn build(input: &FolderInput<'_>) -> CaseFolder {
     let recommended_step = match d.status {
         Status::Confirmed if evidence_for.is_empty() => match next {
             Some(c) => format!(
-                "Pred zasahem overit: {} (cena {:.2}, {}); bez podezreleho vysledku nezasahovat.",
-                c.check, c.cost, c.risk
+                "Pred zasahem: {} Bez podezreleho vysledku nezasahovat.",
+                step_text(p, c)
             ),
             None => format!("Pred zasahem rucne overit aktivitu hosta {host}; podezrely dukaz z kontrol chybi."),
         },
@@ -874,15 +984,12 @@ pub fn build(input: &FolderInput<'_>) -> CaseFolder {
             "Bez zasahu; zavreni podleha auditu vzorku a plati do expirace podkladu.".to_string()
         }
         Status::Escalated | Status::Open => match (next, evidence_for.is_empty()) {
-            (Some(c), _) => format!(
-                "Nejlevnejsi dosud neprovedena kontrola: {} (cena {:.2}, {}); pak rozhodnout podle predpovedi hypotez.",
-                c.check, c.cost, c.risk
-            ),
+            (Some(c), _) => step_text(p, c),
             (None, false) => {
-                format!("Rozhodnout ze slozky: posoudit dukazy pro utok na hostu {host}.")
+                format!("Zadna dalsi dostupna kontrola pripad nerozlisi; rozhodnout podle dukazu pro utok na hostu {host}.")
             }
             (None, true) => {
-                "Rozhodnout ze slozky; pasivni kontroly probehly bez vysledku, chybi data (viz slepa mista).".to_string()
+                "Zadna dalsi dostupna kontrola pripad nerozlisi a dukaz pro utok chybi; rozhodnout podle P(utok) a dopadu.".to_string()
             }
         },
     };
@@ -1028,6 +1135,39 @@ pub fn validate(f: &CaseFolder, d: &Decision) -> Vec<String> {
     }
     if d.status != Status::Confirmed && s.contains("potvrdil") {
         v.push("shrnuti tvrdi potvrzeni bez potvrzeni".into());
+    }
+    // krok 19: doporučená kontrola musí rozlišovat a nesmí být už provedená s výsledkem
+    for c in CheckKind::ALL {
+        if f.recommended_step.contains(&format!("({c:?},")) {
+            let listed = f
+                .to_verify
+                .iter()
+                .any(|t| t.check == format!("{c:?}") && t.why.starts_with(DISCRIMINATES));
+            if !listed {
+                v.push(format!(
+                    "doporucena kontrola {c:?} nerozlisuje nebo uz probehla"
+                ));
+            }
+        }
+    }
+    // krok 19: slepé místo jen z kontroly, kterou nešlo provést
+    for b in &f.blind_spots {
+        if let Some((label, _)) = b.split_once(": nelze provest") {
+            if !d
+                .notes
+                .iter()
+                .any(|n| n.check.label() == label && n.tag == "unavailable")
+            {
+                v.push(format!("slepe misto {label} bez nedostupne kontroly"));
+            }
+        }
+    }
+    // krok 19: uživatel jako aktér jen z koncové telemetrie
+    if f.actors
+        .iter()
+        .any(|a| a.role == "uzivatel" && a.source != "endpoint")
+    {
+        v.push("uzivatel mimo koncovou telemetrii".into());
     }
     // potvrzení bez podezřelého důkazu smí složka uvést jen jako apriorní, ne jako doklad
     if d.status == Status::Confirmed
