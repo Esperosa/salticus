@@ -105,8 +105,8 @@ pub struct V3Switches {
     /// Krok 11: nizsi prah skenu pro vnejsi zdroj bez jedineho uspesneho spojeni.
     pub scan_fresh: bool,
     /// Krok 23 (O2): zdroj objemove anomalie podle rysu, ktery ji vyhlasil (podil bajtu
-    /// nebo paketu sluzby v cyklu), ne podle poctu toku.
-    pub sev_calib: bool,
+    /// nebo paketu sluzby v cyklu), ne podle poctu toku. Krok 24: zapina `attr_calib` (i `sev_calib`).
+    pub attr_calib: bool,
 }
 
 /// Prahy v3 (volba autora; verze kvůli dohledatelnosti, A05).
@@ -412,7 +412,7 @@ struct CycleFeatures {
     pkts: u64,
     rates: Vec<f64>,
     sources: HashMap<String, u32>,
-    /// Krok 23 (O2): bajty a pakety podle zdroje (jen se `sev_calib`).
+    /// Krok 23 (O2): bajty a pakety podle zdroje (jen se `attr_calib`).
     source_volume: HashMap<String, (u64, u64)>,
 }
 
@@ -597,7 +597,7 @@ pub(crate) fn detect_v3(
             } else if item.sources.len() < 4096 {
                 item.sources.insert(src.clone(), 1);
             }
-            if switches.sev_calib {
+            if switches.attr_calib {
                 if let Some(v) = item.source_volume.get_mut(src) {
                     v.0 += bytes;
                     v.1 += pkts;
@@ -880,7 +880,7 @@ pub(crate) fn detect_v3(
             {
                 flagged.insert((*key).clone());
                 // krok 23 (O2): anomalie vyhlasena bajty ma zdroj podle podilu bajtu
-                let (ips, text) = if switches.sev_calib && feature == "bajty" {
+                let (ips, text) = if switches.attr_calib && feature == "bajty" {
                     let dom = volume_dominant(&item.source_volume, item.bytes, true);
                     (
                         dom.iter().map(|(ip, _)| ip.clone()).collect::<Vec<_>>(),
@@ -927,7 +927,7 @@ pub(crate) fn detect_v3(
             {
                 flagged.insert((*key).clone());
                 // krok 23 (O2): spicka vyhlasena pakety za okno ma zdroj podle podilu paketu
-                let (ips, text) = if switches.sev_calib && feature == "pakety za okno" {
+                let (ips, text) = if switches.attr_calib && feature == "pakety za okno" {
                     let dom = volume_dominant(&item.source_volume, item.pkts, false);
                     (
                         dom.iter().map(|(ip, _)| ip.clone()).collect::<Vec<_>>(),
@@ -1541,7 +1541,7 @@ mod tests {
         unexpected: true,
         recall: false,
         scan_fresh: false,
-        sev_calib: false,
+        attr_calib: false,
     };
     const RECALL: V3Switches = V3Switches {
         recall: true,
@@ -2247,7 +2247,7 @@ mod tests {
     }
 
     const CALIB: V3Switches = V3Switches {
-        sev_calib: true,
+        attr_calib: true,
         ..ALL
     };
 
@@ -2341,7 +2341,7 @@ mod tests {
         assert!(volume_sources(CALIB, &split).is_empty());
     }
 
-    /// Krok 23 (O2) property: náhodné cykly (≥ 5 000) se stejným vstupem s `sev_calib` a bez.
+    /// Krok 23 (O2) property: náhodné cykly (≥ 5 000) se stejným vstupem s `attr_calib` a bez.
     /// Události (typ, cíl, závažnost, počet) jsou totožné; liší se nejvýš zdroj objemových
     /// událostí vyhlášených bajty nebo pakety, a ten má vždy ≥ 50 % bajtů, resp. paketů
     /// služby v cyklu. Ostatní zdroje a všechny zdroje bez přepínače beze změny.

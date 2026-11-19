@@ -233,6 +233,16 @@ pub struct V3Features {
     /// Výchozí vypnuto.
     #[serde(default)]
     pub sev_calib: bool,
+    /// Krok 24: jen atribuce zdroje z kroku 23 (O2 a O3) bez kalibrace závažnosti. Výchozí vypnuto.
+    #[serde(default)]
+    pub attr_calib: bool,
+    /// Krok 24: jen kalibrace závažnosti objemových nálezů z kroku 23 (O1). Výchozí vypnuto.
+    #[serde(default)]
+    pub sev_calib_o1: bool,
+    /// Krok 24: kontext (jakýkoli druh) nezavře ani nepodpoří nález hostu, který se v okně
+    /// záznamu účastní aktivity mimo pokrytí záznamu. Výchozí vypnuto.
+    #[serde(default)]
+    pub ctx_activity_guard: bool,
 }
 
 impl Default for V3Features {
@@ -242,7 +252,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 57] = [
+    pub const NAMES: [&'static str; 60] = [
         "memory",
         "rate",
         "volume",
@@ -300,6 +310,9 @@ impl V3Features {
         "close_gate",
         "ctx_host_first",
         "sev_calib",
+        "attr_calib",
+        "sev_calib_o1",
+        "ctx_activity_guard",
     ];
 
     pub fn all() -> Self {
@@ -361,6 +374,9 @@ impl V3Features {
             close_gate: true,
             ctx_host_first: true,
             sev_calib: true,
+            attr_calib: true,
+            sev_calib_o1: true,
+            ctx_activity_guard: true,
         }
     }
 
@@ -430,6 +446,9 @@ impl V3Features {
             close_gate: false,
             ctx_host_first: false,
             sev_calib: false,
+            attr_calib: false,
+            sev_calib_o1: false,
+            ctx_activity_guard: false,
             ..Self::all()
         }
     }
@@ -502,6 +521,9 @@ impl V3Features {
             close_gate: false,
             ctx_host_first: false,
             sev_calib: false,
+            attr_calib: false,
+            sev_calib_o1: false,
+            ctx_activity_guard: false,
         }
     }
 
@@ -588,6 +610,9 @@ impl V3Features {
             "close_gate" => &mut self.close_gate,
             "ctx_host_first" => &mut self.ctx_host_first,
             "sev_calib" => &mut self.sev_calib,
+            "attr_calib" => &mut self.attr_calib,
+            "sev_calib_o1" => &mut self.sev_calib_o1,
+            "ctx_activity_guard" => &mut self.ctx_activity_guard,
             _ => return None,
         })
     }
@@ -824,6 +849,18 @@ impl EngineConfig {
     pub fn sev_calib(&self) -> bool {
         self.on(|f| f.sev_calib)
     }
+    /// Krok 24: atribuce zdroje kroku 23 (O2, O3); `sev_calib` ji zapíná také.
+    pub fn attr_calib(&self) -> bool {
+        self.on(|f| f.attr_calib || f.sev_calib)
+    }
+    /// Krok 24: kalibrace závažnosti objemu kroku 23 (O1); `sev_calib` ji zapíná také.
+    pub fn sev_calib_o1(&self) -> bool {
+        self.on(|f| f.sev_calib_o1 || f.sev_calib)
+    }
+    /// Krok 24: pojistka souběžné aktivity hostu pro všechny druhy kontextu.
+    pub fn ctx_activity_guard(&self) -> bool {
+        self.on(|f| f.ctx_activity_guard)
+    }
     /// Přísné vyvrácení žebříku: `strict_close`, nebo brána zavření (krok 20).
     pub fn strict_refute(&self) -> bool {
         self.strict_close() || self.close_gate()
@@ -979,7 +1016,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext+endpoint_allow+endpoint_weak+refute_episode+ops_symptoms+ops_blast+upload_horizon+case_folder+confirm_evidence+close_gate+ctx_host_first+sev_calib]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext+endpoint_allow+endpoint_weak+refute_episode+ops_symptoms+ops_blast+upload_horizon+case_folder+confirm_evidence+close_gate+ctx_host_first+sev_calib+attr_calib+sev_calib_o1+ctx_activity_guard]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,
@@ -1053,5 +1090,36 @@ mod tests {
             toml::from_str("[engine]\nmode = \"v3\"\n[engine.v3]\ncontext = false\n").unwrap();
         assert!(parsed.engine.memory());
         assert!(!parsed.engine.context_gate());
+    }
+
+    /// Krok 24: `sev_calib` = `attr_calib` + `sev_calib_o1`; každá polovina zvlášť zapne jen
+    /// svou část; doporučené nastavení nemá zapnuté nic z kroku 23 a 24.
+    #[test]
+    fn k24_split_switches() {
+        let with = |names: &[&str]| {
+            let mut v3 = V3Features::recommended();
+            for name in names {
+                *v3.slot(name).expect("prepinac") = true;
+            }
+            EngineConfig {
+                mode: EngineMode::V3,
+                v3,
+            }
+        };
+        let rec = with(&[]);
+        assert!(!rec.attr_calib() && !rec.sev_calib_o1() && !rec.ctx_activity_guard());
+        let both = with(&["sev_calib"]);
+        assert!(both.attr_calib() && both.sev_calib_o1());
+        let attr = with(&["attr_calib"]);
+        assert!(attr.attr_calib() && !attr.sev_calib_o1() && !attr.sev_calib());
+        let o1 = with(&["sev_calib_o1"]);
+        assert!(!o1.attr_calib() && o1.sev_calib_o1());
+        let guard = with(&["ctx_activity_guard"]);
+        assert!(guard.ctx_activity_guard() && !guard.attr_calib());
+        let legacy = EngineConfig {
+            mode: EngineMode::Legacy,
+            v3: V3Features::all(),
+        };
+        assert!(!legacy.attr_calib() && !legacy.sev_calib_o1() && !legacy.ctx_activity_guard());
     }
 }

@@ -1541,7 +1541,7 @@ fn run_episode_inner(
                 unmapped,
             );
             run_report.findings = findings::generate_findings(&run_report);
-            if cfg.engine.sev_calib() {
+            if cfg.engine.sev_calib_o1() {
                 // krok 23 (O1): zavaznost objemovych nalezu podle udalosti detektoru
                 let mut list = std::mem::take(&mut run_report.findings);
                 findings::calibrate_volume_severity(&mut list, &run_report);
@@ -1819,7 +1819,7 @@ fn run_episode_inner(
                 let at = ts(t0);
                 let memory_on = runtime.memory.is_some();
                 let mut out = Vec::with_capacity(run_report.findings.len());
-                if runtime.gate.policy.scanner_guard {
+                if runtime.gate.records_activity() {
                     // krok 22 (K22-N3): vsechny nalezy cyklu do brany pred rozhodovanim
                     for finding in &run_report.findings {
                         let service_key = finding.service_key.as_deref().unwrap_or("-");
@@ -1846,7 +1846,7 @@ fn run_episode_inner(
                                 findings::finding_signal_with_unmapped(
                                     finding,
                                     report_services.get(service_key).copied(),
-                                    cfg.engine.sev_calib().then_some(&run_report),
+                                    cfg.engine.attr_calib().then_some(&run_report),
                                     |dst, proto, port, kind| {
                                         runtime.sources_of(dst, proto, port, kind)
                                     },
@@ -1890,7 +1890,7 @@ fn run_episode_inner(
                         None => findings::finding_signal_with_unmapped(
                             finding,
                             report_services.get(service_key).copied(),
-                            cfg.engine.sev_calib().then_some(&run_report),
+                            cfg.engine.attr_calib().then_some(&run_report),
                             |dst, proto, port, kind| runtime.sources_of(dst, proto, port, kind),
                         ),
                     };
@@ -1961,9 +1961,14 @@ fn run_episode_inner(
                             )
                         })
                         .flatten();
-                    if decision.as_ref().is_some_and(|d| d.note.is_some()) {
+                    match decision.as_ref().and_then(|d| d.note) {
                         // krok 22 (K22-N3): pripad jde cloveku, skener ho nevysvetli
-                        agg.output.k7_add("k22_scanner_foreign", 1);
+                        Some(crate::context_gate::SCANNER_FOREIGN) => {
+                            agg.output.k7_add("k22_scanner_foreign", 1);
+                        }
+                        // krok 24: kontext nevysvetli nalez hostu se soubeznou cizi aktivitou
+                        Some(_) => agg.output.k7_add("k24_activity_foreign", 1),
+                        None => {}
                     }
                     let explanation = decision.and_then(|d| d.explanation);
                     let gate_on = cfg.engine.close_gate();

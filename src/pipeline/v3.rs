@@ -280,7 +280,7 @@ impl V3Session {
                     unexpected: engine.unexpected_v3(),
                     recall: engine.recall(),
                     scan_fresh: engine.scan_fresh(),
-                    sev_calib: engine.sev_calib(),
+                    attr_calib: engine.attr_calib(),
                 },
                 known,
                 known_hosts,
@@ -356,7 +356,7 @@ impl V3Session {
             },
             ..Default::default()
         };
-        if self.engine.sev_calib() {
+        if self.engine.sev_calib_o1() {
             // krok 23 (O1): zavaznost objemovych nalezu podle udalosti detektoru
             let mut list = std::mem::take(&mut report.findings);
             findings::calibrate_volume_severity(&mut list, report);
@@ -610,7 +610,7 @@ impl V3Session {
         let severe = GatePolicy::default().most_severe;
         let mut keys: Vec<crate::finding_memory::FindingKey> = Vec::new();
         let mut signal_sources: Vec<Vec<String>> = Vec::new();
-        if gate.policy.scanner_guard {
+        if gate.records_activity() {
             // krok 22 (K22-N3): vsechny nalezy behu do brany pred rozhodovanim
             for finding in &report.findings {
                 let service_key = finding.service_key.as_deref().unwrap_or("-");
@@ -631,7 +631,7 @@ impl V3Session {
                         findings::finding_signal_with_unmapped(
                             finding,
                             services.get(service_key).copied(),
-                            self.engine.sev_calib().then_some(&*report),
+                            self.engine.attr_calib().then_some(&*report),
                             |dst, proto, port, kind| {
                                 self.sources
                                     .get(&(
@@ -679,7 +679,7 @@ impl V3Session {
                 None => findings::finding_signal_with_unmapped(
                     finding,
                     services.get(service_key).copied(),
-                    self.engine.sev_calib().then_some(&*report),
+                    self.engine.attr_calib().then_some(&*report),
                     |dst, proto, port, kind| {
                         self.sources
                             .get(&(dst.to_string(), proto.to_string(), port, kind.to_string()))
