@@ -66,3 +66,30 @@ Měření (párově, stejné seedy a sítě v obou ramenech, jednotka = síť, b
 - Po měření na držených seedech se kód nemění. Zhoršení se hlásí, prahy se neladí.
 
 Omezení předem: Council a sol-loop se podle zadání nespouštějí (odchylka od `CLAUDE.md` daná zadáním); review dělá autor kódu. Hrozba validity: množinu nezávislých zdrojů zvolil autor podle povahy dat, ne z měření; simulace je jediný zdroj pravdy o tom, které potvrzení bylo správné.
+
+## 4. Implementace
+
+- `verify_ladder`: `LadderPolicy::confirm_evidence`, `confirm_source` (pevná množina nezávislých zdrojů), `has_independent_evidence`, `has_suspicious_evidence`. Pravidlo se vynucuje v `Ladder::finish` (jediné místo pro všechny cesty k `Confirmed`); `run_check` při P ≥ `p_confirm` bez nezávislého důkazu pokračuje v kontrolách téhož cyklu, pokud další kontrola neběží na čekání (přetrvání) ani na limitu aktivních kontrol (L3). `Decision` nese `prior_hold` a `pending_check`; důvod „nepotvrzeno: P(utok) X jen z apriorni pravdepodobnosti, bez pozitivniho dukazu z nezavisleho zdroje; ceka na kontrolu L1 reputation (cena 0,10)“. Ochrana proti uzavření: `Ladder::held` (klíč a cyklus, serde s výchozí hodnotou, bez změny schématu SQLite) po `HOLD_CYCLES` = 48 cyklů (24 h) mění vyvrácení klíče na eskalaci s důvodem „drzeno: …“. Čítače `LadderStats::prior_held`, `hold_refused`.
+- `engine`: přepínač `confirm_evidence` (mimo `recommended()`, vyžaduje `ladder`), napojení v `pipeline/v3.rs` i `soak/v3.rs`.
+- Případová složka: nepotvrzený případ má jako první důvod předání „nepotvrzeno: vysoka apriorni P bez pozitivniho dukazu z nezavisleho zdroje, ceka na kontrolu X“ (nebo „nutne rucni overeni“).
+- Soak: `output.ladder_k18` (potvrzení podle druhu důkazu, nepotvrzená předání, odmítnutá vyvrácení, vše i s počtem útoků podle kontrafaktu) v obou ramenech; `K15_TRACE` nese `prior_hold` a `pending`. Měřicí skript `tools/k18_confirm.py`.
+- Testy: `prior_alone_does_not_confirm_with_confirm_evidence` (bez přepínače potvrdí, s přepínačem předá ve stejném cyklu), `independent_suspicious_result_confirms_with_confirm_evidence`, `dependent_evidence_alone_does_not_confirm`, `held_key_is_not_refuted_within_hold_window`, property/fuzz `confirmed_always_has_independent_evidence_fuzz` (20 000 náhodných případů: apriorní P, politiky včetně konkurenčních hypotéz, výsledky všech zdrojů, opakování nálezu; 0 porušení, 0 paniků; mutační kontrola: po vypnutí podmínky v `finish` test padá), `case_folder::tests::prior_hold_is_reported_as_unconfirmed_with_pending_check`, `engine::tests::confirm_evidence_is_opt_in_and_needs_ladder`. `cargo test --lib`: 659 prošlo, 5 selhalo (jen `broker::*` bez Redis, beze změny); `tests/engine_v3.rs` 4 prošly; clippy bez varování ve změněných řádcích.
+
+## 5. Výsledky
+
+### K18-8 regrese bez přepínače
+
+Kandidátská binárka `17bbd7e` bez přepínače proti základní `f4a44f3` (běhy kořenové analýzy), seedy 20261102, 20261103, 20266101, 20266105, sítě 0 a 1, konfigurace `off`, `ops`, `elying`: 24 párů sítí, **0 rozdílných** ve všech polích kromě časů a nového `ladder_k18`. **Splněno.**
+
+### Ladicí seedy (5 seedů x 4 sítě x 3 konfigurace, párově)
+
+| konfigurace | potvrzeno základ / kandidát | bez nezávislého důkazu základ → kandidát | přesnost potvrzení | nepotvrzeno předáno (útok) | omylem zavřeno | případy pro člověka | zobrazené FP | detekce |
+|---|---|---|---|---|---|---|---|---|
+| `off` | 4 297 / 2 729 | 76,2 % → **0 %** | 90,1 → 90,0 % | 1 576 (96,0 %), 8,1/síť-den | 0 / 0 | +0,11 % | ×1,0006 | 82,69 → 82,75 % |
+| `ops` | 3 588 / 2 541 | 61,5 % → **0 %** | 92,9 → 93,0 % | 1 241 (94,8 %), 6,4/síť-den | 0 / 0 | +0,21 % | ×1,0000 | 82,80 → 82,85 % |
+| `elying` | 3 811 / 2 490 | 67,1 % → **0 %** | 93,9 → 92,1 % | 1 248 (96,0 %), 6,4/síť-den | 0 / 0 | −0,26 % | ×1,0000 | 82,75 → 82,80 % |
+
+- Žádná rodina s ≥ 20 útoky neklesla; jediná změna detekce je `rogue_device` 81,0 → 85,7 % (n = 21, jeden útok) ve všech třech konfiguracích. Automatická zavření 0 v obou ramenech (`soak_ab.py`), vyvráceno žebříkem 2 až 8 shodně v obou ramenech, držení nemuselo odmítnout žádné vyvrácení.
+- Část případů, které základ potvrdil jen z apriorní P, kandidát dokončením kontrol téhož cyklu potvrdí s nezávislým důkazem (`off`: z 3 276 bez důkazu se 1 576 předalo jako nepotvrzené, zbytek dostal důkaz nebo se rozhodl jinak).
+- Po případech (stopy `K15_TRACE`, včetně kontrafaktuálních světů): 96,4 % rozhodnutí padlo ve stejném cyklu jako v základu, 3,6 % jinak. Rozdíly vznikají i mimo přímo dotčené případy (zpětná vazba učení apriorní P a rozpočtu), proto se v malém mění i počty eskalací.
+- Ladicí seedy neukázaly důvod ke změně kódu; na držené seedy jde binárka `17bbd7e` beze změny.
