@@ -212,3 +212,61 @@ Sestava `labs/k22`, skripty `tools/k22_lab.py` (běh, kalendář před první ú
 | zálohy a dávky se záznamem (BK, BA, BB) | 0 krytých nálezů | – | skutečný přenos 80 MB na úlohu nevytvořil v produkční cestě žádný objemový nález (jen `identification_gap`, `management_surface_exposure`, `packet_loss_signal`) |
 
 Všech 135 krytých nálezů v aktivním okně záznamu (všechny fáze, všechny vysoké závažnosti) brána nevysvětlila (`context_none`): u vysoké závažnosti vyžaduje vysvětlení explicitní `covers` a neprázdný rozsah (kalendář laboratoře má podle předregistrace `covers` prázdné) a i s ním by lístek odmítla R2 (vysoký dopad se nezavírá nikdy); u `unmapped_passive_event` chybí zdroj.
+
+### 8.2 Držená sada 22101 (jednou; skript i vyhodnocení beze změny proti 22001; 146 941 spojení, 47 oken, 715 nálezů)
+
+| třída | nálezů | stínový lístek |
+|---|---|---|
+| neškodný se záznamem (SC, SA) | 114 (89 `unmapped_passive_event` bez zdroje, 25 `connection_timeout_burst`; všechny vysoké závažnosti) | **0** |
+| útok A | 17 | 0 |
+| útok B | 3 | 0 |
+| útok C | 3 | 0 |
+| útok D (smíšeno) | 22 | 0 |
+| BKN | 0 krytých nálezů | 0 |
+| zálohy a dávky se záznamem | 0 krytých nálezů | – |
+
+Kalendář měl pro 138 krytých nálezů aktivní záznam; brána nevysvětlila žádný (`context_none`).
+
+### 8.3 Výsledek proti kritériím B6 (5.3)
+
+| kritérium | 22001 | 22101 | stav |
+|---|---|---|---|
+| lístek pro ≥ 90 % neškodných nálezů se záznamem | 0 ze 124 | 0 ze 114 | **nesplněno** |
+| 0 lístků na útocích A, B, C (každý ≥ 3 relace) | A 0/5, B 0/3, C 0/3 | A 0/17, B 0/3, C 0/3 | splněno |
+| BKN bez lístku | splněno (žádný krytý nález) | splněno | splněno, ale bez síly (úloha nevytvořila nález) |
+| D hlášeno zvlášť (očekáván lístek) | 0/16 | 0/22 | lístek nevznikl; zbytkové riziko (b) se v laboratoři neprojevilo, protože všechny kryté nálezy skenu jsou vysoké závažnosti |
+
+**Závěr B6:** laboratoř nedoložila, že brána umí v reálném provozu správně zavřít: v produkční cestě jsou všechny nálezy skutečného skenu vysoké závažnosti (R2 a pravidlo explicitního pokrytí je nezavírají nikdy) nebo bez zdroje, a skutečná záloha a dávka (80 MB a 60 MB za 120 s) nevytvořily žádný nález krytý záznamem. Odmítnutí útoků v okně je doloženo, ale triviálně (brána nezavřela nic). Hrozba validity: krátké fáze (120 s) bez zahřáté základní linie objemu; sedmidenní stínový provoz (plán 4.2) by objemové nálezy záloh pravděpodobně vytvořil.
+
+## 9. Check E2 (souhrn)
+
+| bod | výsledek | stav |
+|---|---|---|
+| K22-N1 (5.1) | všech 6 kritérií; K22-6 48/48 a 48/48 (binárka `23d8378`) i po celé E2 (`86e22f5`) | splněno |
+| bod (a) review | test: útok z jiného zdroje na host v rozsahu se nevysvětlí a nedoloží | splněno |
+| bod (b) review | svět v2: 2 omylem zavřené (útok `ssh_bruteforce` z kompromitovaného skeneru v jeho okně, typ `unexpected_traffic`) + 1 příčinný překryv (skener zároveň infikovaná stanice); laboratoř D: 0 lístků (nálezy vysoké závažnosti) | změřeno: **riziko reálné**, zachytil ho svět v2 |
+| validita světa V1 / V2 / V3 | 90,4 % / 21,4 % útoků v okně / R2 0 vs R1 10 zavření | V1 splněno, **V3 nesplněno** (příčina v pravidlech jádra, generátor neopravován, 7.1) |
+| K22-1 (FG2, ladicí) | 3 omylem ze 4 zavření | **nesplněno** |
+| K22-2, K22-3, K22-4 | +0,06 p. b., žádná rodina nižší; FP ×0,991 (FG2/F2 i F2c/F2); −0,01 % | splněno |
+| K22-5 | dny 6 a 7: žádný lístek v žádném rameni; žádná buňka, žádný kandidát | bez kandidáta (předpověď „žádná buňka s n ≥ 381“ potvrzena, ale silněji: n = 0) |
+| K22-6 | 48/48 + 48/48 (dvakrát) | splněno |
+| K22-7 | 7.2 | hlášeno |
+| B6 laboratoř C | 0 lístků na útocích; 0 lístků na neškodných (cíl ≥ 90 %) | **nesplněno** (pozitivní část) |
+
+**Kolik zavření by která buňka potřebovala (K22-5):** kandidát = horní mez Wilson 95 % < 1 %, tj. 381 zavření s 0 omyly (563 s 1, 726 se 2, 878 se 3). Buňky skeneru (`context:authorized_scanner × unexpected_traffic`, `× scan_attempts`): dnes 3 omyly ze 4, tedy by potřebovaly ≥ 874 dalších správných zavření bez jediného omylu, a to při chybovosti blízké 75 % nenastane; nejde o objem, ale o vadu (K22-N2). Buňky zálohy a dávky: 0 lístků za 140 síťodnů → při horní mezi míry 3/140 na síťoden ≥ 17 800 síťodnů na buňku (držená sada E3 má 280). Žebřík: 0 lístků (rozhoduje R2 a chybějící pozitivní důkaz). Laboratoř: 0 lístků za 2 × 95 min.
+
+**Nové nálezy (do registru v Check kroku):**
+
+- **K22-N2 (vysoká priorita):** záznam autorizovaného skeneru vysvětlí (a brána zavře) i útok jiného druhu než sken, pokud vychází ze zařízení skeneru v jeho okně a cíl je v rozsahu (`unexpected_traffic` je v `default_covers` skeneru). Doloženo ve světě v2 (20269801/0, cykly 144 a 145).
+- **K22-N3:** zařízení skeneru může být současně kompromitované; zavření nálezu skenu pak skryje souběžnou aktivitu útočníka (příčinný omyl 20269803/2).
+- **K22-N4:** v produkční cestě jsou nálezy skenu i objemů záloh téměř vždy vysoké závažnosti nebo bez zdroje; kontextová brána je tak v reálném provozu (laboratoř) i ve světě v2 prakticky nepoužitelná pro zavření. Hranice automatizace kontextu je dnes ≈ 0, ne „malá“.
+
+## 10. Act (doporučení vedoucímu)
+
+1. **E3 (držené seedy 20270301 až 20270310) nespouštět.** K22-1 neprošel už na ladicích seedech (brána zavřela útok z kompromitovaného skeneru); plán (1.3) pro lístek na útoku předepisuje opravu brány před E3. Držený běh by jen potvrdil známou vadu a spotřeboval držené seedy.
+2. **Oprava K22-N2 a K22-N3 s vlastní předregistrací (jeden malý krok):** (i) záznam skeneru vysvětlí jen tvar skenu: `scan_attempts`, `connection_timeout_burst` a `unmapped_passive_event` s převahou neúspěšných spojení, ne `unexpected_traffic` s navázanými relacemi (zúžit `default_covers` skeneru nebo vyžadovat explicitní `covers`); (ii) zdroj skeneru nesmí mít v okně jiný otevřený nález mimo pokrytí (jinak `ambiguous`); (iii) volitelně deklarovaný profil skenu (porty, rychlost). Kritérium: ve světě v2 na ladicích seedech 0 omylem zavřených a K22-6 beze změny. Odhad ≈ 60 tis. tokenů, 1 h stroje.
+3. **Rozhodnout o smyslu měření hranice kontextu (K22-N4):** při dnešních pravidlech (R2, P6, přísné doložení) nevzniká v simulaci ani v laboratoři žádný správný lístek. Nezmírňovat bránu (pravidla R2 a P6 jsou bezpečnostní minimum). Poctivý závěr pro práci: automatické zavírání kontextem je v tomto návrhu nedosažitelné bez nezávislého zdroje pozitivního důkazu u objemových nálezů (zdroj toku a nižší závažnost u plánovaných přenosů); místo dalšího soaku doporučuji sedmidenní stínový provoz laboratoře (plán 4.2), který ukáže, zda zahřátá základní linie vytvoří zavíratelné nálezy záloh.
+4. **V3 (validita světa v2):** přijmout svět v2 bez úprav generátoru a hlásit V3 jako nesplněné se změřenou příčinou, nebo V3 předregistrovat znovu jako „R2 má víc vysvětlitelných záznamů než R1“; úprava generátoru kvůli V3 by byla kruhová.
+5. B7 až B9 dál odložit; B9 (registr chráněných prostředků) má smysl až po bodu 2.
+
+**Neúspěchy a omezení E2:** K22-1 nesplněn (3/4 omylem); V3 nesplněno; B6 pozitivní část nesplněna (0/124, 0/114); K22-5 bez jediné buňky; laboratoř bez objemových nálezů záloh (krátké fáze); svět v2 dál odvozuje výpadky, CMDB a senzor z pravdy; tabulka hranice počítá síťodny z 20 sítí (nástroj hlásí jen sítě se záznamem stínu); nezávislé review diffu E2 (`sol-loop`) zadání vylučuje, diff sahá na logiku brány (K22-N1) a na produkční cestu (stín), review má proběhnout v hlavní konverzaci.
