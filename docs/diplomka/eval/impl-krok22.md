@@ -347,3 +347,25 @@ Zdůvodnění je nezávislé na výsledku brány: jde o konzistenci kalibrace a 
 
 **Měření (ladicí seedy 20269801 až 20269805, svět v2 a v1, `off`, 4 sítě, 168 h; ramena F2 a F2+`sev_calib`, FG2 a FG2+`sev_calib`):** primární a na bráně nezávislé: (a) atribuce zdroje objemových nálezů proti pravdě (podíl správný / cizí / žádný zdroj; čeká se nárůst správného), (b) posun závažnosti u **útoků** po rodinách (kolik nálezů útoků spadne z High na Medium; žádná rodina s poklesem detekce > 1 p. b., K22-2) a zobrazené FP (K22-3 ≤ 1,01); teprve sekundárně (c) K22-1 = 0 omylem zavřených a tabulka stínu. Prahy (a) až (c) se zapíší před během; držené seedy až po rozhodnutí vedoucího.
 
+
+## 14. Check K22-N2, K22-N3, K22-N4 a Act
+
+| bod | výsledek | stav |
+|---|---|---|
+| K22-N2 | testy (1) a (2) splněny; omyly 20269801/0 c144 a c145 zastaveny | splněno |
+| K22-N3 | test (3) splněn; 20269803/2 c170 zastaven (C2 zařízení skeneru viditelná nálezem `beacon_periodic`) | splněno |
+| K22-1 (FG2, ladicí, svět v2) | 3 → **0** omylem zavřených, 2 → 0 útoků, 5 → 0 pohlcených | splněno |
+| K22-2, K22-3, K22-4 | +0,06 p. b., žádná rodina níž; FP ×0,991; −0,01 % | splněno |
+| K22-6 | 48/48 a 48/48 | splněno |
+| správná zavření skenu | 1 → 0 (skutečný svět), 5 → 0 (kontrafaktuál) | **ztraceno** (N3 blokuje sken kvůli jeho vlastnímu `multi_target_pattern`) |
+| K22-N4 | kořenové příčiny nalezeny v kódu (13.3): kalibrace pravidel nálezů, atribuce zdroje, dané pravidlo skenu | analýza hotová, oprava jen navržena |
+
+**Co zůstává:** (1) Kontextová brána ve světě v2 nyní nezavře nic (0 lístků, 0 omylů): bezpečná, ale bez automatizace; skener je blokován vlastním `multi_target_pattern`, zálohy a dávky chybami kalibrace a atribuce (13). (2) Produkční cesta vidí aktivitu jen z aktuálního běhu (11.2, omezení). (3) Nezávislé review diffu `785b9b5` (`sol-loop`) zadání vylučuje; diff sahá na logiku zavírání, review patří do hlavní konverzace. (4) B6 pozitivní část a V3 beze změny nesplněny (E2).
+
+**Act (doporučení vedoucímu):**
+
+1. **E3 dál nespouštět.** Brána je na ladicích seedech bez omylu, ale nezavírá nic; držený běh by změřil jen nulu.
+2. **Přijmout N2 a N3** jako bezpečnostní opravu (review diffu v hlavní konverzaci před dalším krokem).
+3. **Další krok = K22-N4, oprava O1 až O3 s vlastní předregistrací** (13.4): kalibrace závažnosti objemu podle události, atribuce podle bajtů, zdroj u `unmapped_passive_event`, vše za přepínačem; primární metriky nezávislé na bráně (správnost atribuce proti pravdě, posun závažnosti útoků po rodinách), teprve pak K22-1 a stín. Odhad ≈ 80 tis. tokenů, 1 h stroje (ladicí seedy, 20 ramen-sítí).
+4. **Skener:** nezavírat kontextem nic, co má `multi_target_pattern` téhož zdroje; pro práci uvést, že autorizovaný sken je v tomto návrhu automaticky nezavíratelný bez deklarovaného profilu skenu (porty, rychlost, 5.3 bod (b)), a ten zařadit jako samostatnou položku po O1 až O3.
+5. R2 a P6 beze změny (schváleno).
