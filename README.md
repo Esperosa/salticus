@@ -108,8 +108,8 @@ Postup podle kroků je v [`docs/diplomka/eval/`](docs/diplomka/eval/) (`impl-kro
 <!-- STATUS:BEGIN -->
 _Tento blok generuje `tools/readme_status.py` z dokumentů v `docs/diplomka/eval/` a z gitu. Ručně se neupravuje._
 
-- Poslední commit: `a03be5d` ze dne 2026-11-19 (docs: krok 19 - drzene behy casti B, senior review a zaver)
-- Počet unit testů knihovny (`cargo test --lib -- --list`): 700
+- Poslední commit: `b9717d4` ze dne 2026-11-19 (docs: krok 20 - upresneni poctu zmen utoku)
+- Počet unit testů knihovny (`cargo test --lib -- --list`): 711
 
 - Výkon sítí XXXL (G4, držené seedy): p99 cyklu 1,08 s a 0,43 s, práh < 3 s, splněno.
 
