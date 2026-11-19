@@ -140,3 +140,22 @@ A na úrovni útoků v celých držených bězích kroku 19 (pole `attacks[]` v 
 - Všechna omylem zavřená rozhodnutí (A, B1–B4) by zastavila pravidla R1 a R2 vynucená **na jednom místě**: kontext jen s důkazem zdroje a rozsahem skeneru (A), žebřík jen s pozitivním důkazem s vlastníkem a druhou skupinou, nikdy vysoký dopad (B).
 - Metrika musí počítat i tiché pohlcení (C4), jinak oprava, která pohlcení odstraní, vypadá jako zhoršení. Předregistrace kroku 20 proto hlásí tři metriky: rozhodnutí (kontinuita s krokem 19), útoky s omylem zavřeným nálezem a útoky s pohlceným výskytem.
 - Cena: v `recommended()` je 97 % všech vyvrácení ve stopách na závislém důkazu (i neškodných), jejich odstranění zvýší zobrazené FP. To je cena R1, ne vada opravy; předpověď je v předregistraci.
+
+## 4. Návrh zjednodušení `V3Features` (co smazat, co sloučit)
+
+Vychází z mapy (sekce 1), matice (sekce 2) a měření kroků 9 až 20. Nic z toho se v kroku 20 neprovedlo (preset se nemění, `impl-krok20.md`); je to podklad pro další krok.
+
+| skupina | přepínače | návrh | důvod |
+|---|---|---|---|
+| zavírání | `strict_close`, `context_guard`, `sensor_strict`, `endpoint_weak`, `refute_episode`, držení `held` z `confirm_evidence`, `endpoint_allow` (jako dvě skupiny), uzavírací část `hypotheses` | **sloučit do `close_gate`** a po ověření ho udělat výchozím (nevypínatelným) chováním; staré přepínače smazat | všechny řeší kus téže otázky „kdy smím zavřít“ a mají účinek jen v kombinacích (M1–M7, M9, M18); brána je vynucuje jako invariant stavu |
+| vstup simulace | rozsah cílů skeneru vázaný na `strict_close` (`SimContext::for_cycle`) | **odpojit od přepínače enginu**: záznam skeneru má rozsah vždy | přepínač enginu nesmí měnit simulovaný svět (M4) |
+| provoz | `ops_class` | **smazat** | protiřečí `ops_annotate` a R4 (odklání z fronty podezření, M8); `ops_annotate` zůstává |
+| provoz | `ops_symptoms`, `ops_blast` | **smazat** | změřeno v kroku 15: zhoršují C1, C4 i C5 na ladicích i držených seedech |
+| detektory | `upload_horizon` | **smazat** | krok 15: bez přínosu pro exfiltrace, +1,8 p. b. FP u nočních záloh |
+| detektory | `breadth_volume`, `bulk_novel`, `peer_burst` | **smazat** nebo přesunout do experimentů | vypnuté od kroků 9 a 11 kvůli FP, bez dalšího měření |
+| zobrazení | `redisplay`, `redisplay_age` | **sloučit** do jednoho nastavení dedup (C7) | oba řeší, že otevřený klíč pohltí nový útok; dedup je po kroku 20 hlavní zbývající tichá cesta (sekce 5 `impl-krok20.md`) |
+| předpoklady | `step1`, `step2`, `step5`, `step6`, `all()` | přesunout do měřicího kódu | historické předvolby pro párová srovnání, ne produktové volby |
+| orchestrace | soak (`soak/episode.rs`) vs. produkce (`pipeline/v3.rs`) | **jedna sdílená funkce cyklu** (paměť, kontext, žebřík, zápis rozhodnutí, zobrazení) | dvě kopie se rozcházejí (M10–M14): apriorní P, uložená politika žebříku, okamžik zobrazení, tichá 0,15 |
+| apriorní P | `learning` (naučená apriorní P v soaku) | **sjednotit se produkcí** a apriorní P použít jen k pořadí, ne k vyvrácení | M10: naučená P pod 0,15 umožnila vyvrácení jediným slabým výsledkem; produkce používá 0,15 |
+| ochrana | `protection::PROTECTED_TYPES` a `type_protection` | jeden seznam | M15 |
+| R2 | chráněné prostředky | doplnit registr chráněných hostů (z inventáře) do `closure_gate::Subject` | M16: dnes jen typy a vysoký dopad |
