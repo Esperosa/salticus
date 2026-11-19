@@ -91,6 +91,7 @@ impl V3Runtime {
                     l7: engine.l7_ladder(),
                     ops: engine.ops_telemetry(),
                     endpoint_weak: engine.endpoint_weak(),
+                    confirm_evidence: engine.confirm_evidence(),
                     ..Default::default()
                 },
                 secret,

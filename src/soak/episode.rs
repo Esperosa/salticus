@@ -2997,6 +2997,8 @@ fn run_episode_inner(
                 "key": format!("{}|{}|{}", decision.key.entity, decision.key.finding_type, decision.key.service),
                 "type": decision.finding_type, "id": decision.finding_id,
                 "status": format!("{:?}", decision.status),
+                "prior_hold": decision.prior_hold,
+                "pending": decision.pending_check.map(|c| c.label()),
                 "opened": decision.opened, "decided": decision.decided,
                 "posterior": decision.posterior, "protected": decision.protected,
                 "high_impact": decision.high_impact,
@@ -3053,6 +3055,30 @@ fn run_episode_inner(
                     if caused { "attack" } else { "benign" }
                 ))
                 .or_default() += 1;
+            // krok 18: druh dukazu potvrzeni a nepotvrzene pripady (jen mereni)
+            {
+                let mut k18 = |name: &str| {
+                    *out.ladder_k18.entry(name.to_string()).or_default() += 1;
+                    if caused {
+                        *out.ladder_k18.entry(format!("{name}_attack")).or_default() += 1;
+                    }
+                };
+                if decision.status == Status::Confirmed {
+                    if !crate::verify_ladder::has_suspicious_evidence(&decision.notes) {
+                        k18("confirmed_prior_only");
+                    } else if !crate::verify_ladder::has_independent_evidence(&decision.notes) {
+                        k18("confirmed_dep_only");
+                    } else {
+                        k18("confirmed_independent");
+                    }
+                }
+                if decision.prior_hold {
+                    k18("prior_held");
+                }
+                if decision.reason.starts_with("drzeno:") {
+                    k18("hold_refused");
+                }
+            }
             match decision.status {
                 Status::Refuted => {
                     out.ladder_refuted += 1;

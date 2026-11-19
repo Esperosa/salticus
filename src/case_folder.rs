@@ -780,6 +780,15 @@ pub fn build(input: &FolderInput<'_>) -> CaseFolder {
             &d.host_ip,
         ));
     } else {
+        if d.prior_hold {
+            handoff.push(match d.pending_check {
+                Some(check) => format!(
+                    "nepotvrzeno: vysoka apriorni P bez pozitivniho dukazu z nezavisleho zdroje, ceka na kontrolu {}",
+                    check.label()
+                ),
+                None => "nepotvrzeno: vysoka apriorni P bez pozitivniho dukazu z nezavisleho zdroje, nutne rucni overeni".into(),
+            });
+        }
         if d.status == Status::Confirmed && evidence_for.is_empty() {
             handoff.push(
                 "potvrzeno bez dukazu z kontrol: jen apriorni pravdepodobnost, overit pred zasahem"

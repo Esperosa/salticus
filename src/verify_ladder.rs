@@ -303,6 +303,11 @@ pub struct Decision {
     pub steps: Vec<(CheckId, &'static str)>,
     /// Krok 16: kroky s cyklem, poměrem věrohodnosti a textem (podklad případové složky).
     pub notes: Vec<StepNote>,
+    /// Krok 18: případ by se potvrdil, ale chybí pozitivní důkaz z nezávislého zdroje
+    /// (`LadderPolicy::confirm_evidence`); předán člověku jako „nepotvrzeno, čeká na kontrolu“.
+    pub prior_hold: bool,
+    /// Krok 18: kontrola, na kterou nepotvrzený případ čeká (`None` = jen ruční ověření).
+    pub pending_check: Option<CheckId>,
 }
 
 /// Krok 16: jeden provedený krok žebříku pro případovou složku (nic nerozhoduje).
@@ -499,6 +504,9 @@ pub struct LadderPolicy {
     /// Krok 15 (P1): „nic podezřelého“ od agenta není silná skupina důkazu neškodnosti
     /// (agent může lhát); při `strict_refute` vyvrací jen s kontextem nebo živostí.
     pub endpoint_weak: bool,
+    /// Krok 18: stav `Confirmed` jen s aspoň jedním pozitivním výsledkem kontroly z nezávislého
+    /// zdroje (`confirm_source`); bez něj se případ předá člověku (`Decision::prior_hold`).
+    pub confirm_evidence: bool,
     pub costs: crate::competing::Costs,
 }
 
@@ -525,6 +533,7 @@ impl Default for LadderPolicy {
             l7: false,
             ops: false,
             endpoint_weak: false,
+            confirm_evidence: false,
             costs: crate::competing::Costs::default(),
             protect: false,
             endpoint: false,
@@ -597,6 +606,13 @@ pub struct LadderStats {
     pub cases_capped: u64,
     /// Krok 7: chráněné případy, které by se vyvrátily, a šly člověku.
     pub protect_escalated: u64,
+    /// Krok 18: případy, které by se potvrdily bez pozitivního důkazu z nezávislého zdroje
+    /// a šly člověku jako nepotvrzené.
+    #[serde(default)]
+    pub prior_held: u64,
+    /// Krok 18: vyvrácení odmítnutá kvůli nedávnému nepotvrzenému podezření (`HOLD_CYCLES`).
+    #[serde(default)]
+    pub hold_refused: u64,
 }
 
 fn mix(mut x: u64) -> u64 {
@@ -768,6 +784,47 @@ pub fn benign_group(check: CheckId) -> Option<u8> {
     }
 }
 
+/// Krok 18: kontrola, jejíž podezřelý výsledek je pozitivní důkaz z nezávislého zdroje, a smí
+/// tedy nést potvrzení. Nezávislý = data nepocházejí z toku, který nález vytvořil, ani z paměti
+/// případů. Nepočítá se historie toků a naučený profil hostu (L0, týž tok dat jako detektor),
+/// přetrvání (týž detektor znovu) a provozní telemetrie (je jen důkazem poruchy). Množina je
+/// předregistrovaná v `docs/diplomka/eval/impl-krok18.md`.
+pub fn confirm_source(check: CheckId) -> bool {
+    match check {
+        CheckId::Reputation
+        | CheckId::Intel
+        | CheckId::DeviceProfile
+        | CheckId::Peers
+        | CheckId::Liveness
+        | CheckId::Pivot
+        | CheckId::Endpoint
+        | CheckId::L7 => true,
+        CheckId::History
+        | CheckId::Profile
+        | CheckId::Persistence
+        | CheckId::Context
+        | CheckId::Ops => false,
+    }
+}
+
+/// Krok 18: existuje mezi kroky podezřelý výsledek (LR > 1) z nezávislého zdroje?
+pub fn has_independent_evidence(notes: &[StepNote]) -> bool {
+    notes
+        .iter()
+        .any(|n| confirm_source(n.check) && n.lr.is_some_and(|lr| lr > 1.0))
+}
+
+/// Krok 18: existuje mezi kroky jakýkoli podezřelý výsledek (LR > 1), i ze závislého zdroje?
+pub fn has_suspicious_evidence(notes: &[StepNote]) -> bool {
+    notes.iter().any(|n| n.lr.is_some_and(|lr| lr > 1.0))
+}
+
+fn steps_have_independent_evidence(steps: &[Step]) -> bool {
+    steps.iter().any(|s| {
+        confirm_source(s.check) && matches!(s.outcome, Outcome::Evidence { lr, .. } if lr > 1.0)
+    })
+}
+
 /// Kontrola žebříku → druh kontroly řetězu a tabulky věrohodnosti (`competing`).
 pub fn competing_kind(check: CheckId) -> Option<crate::verification_chain::CheckKind> {
     use crate::verification_chain::CheckKind as K;
@@ -922,7 +979,16 @@ pub struct Ladder {
     /// Kalibrace posteriory před pravidly zastavení (krok 2C); fit offline.
     #[serde(skip)]
     pub calibrator: Option<crate::calibration::IsotonicCalibrator>,
+    /// Krok 18: klíče nepotvrzených případů (`prior_hold`) a cyklus předání. Po dobu
+    /// `HOLD_CYCLES` se klíč automaticky nevyvrací (stejná ochrana, jakou dřív dávalo
+    /// potvrzení v paměti nálezů), jen se předá člověku.
+    #[serde(default)]
+    held: Vec<(FindingKey, u64)>,
 }
+
+/// Krok 18: jak dlouho (cykly po 30 min) drží nepotvrzené podezření zákaz automatického
+/// vyvrácení klíče: 24 h, stejně jako `quiet_close_s` paměti nálezů pro potvrzený klíč.
+pub const HOLD_CYCLES: u64 = 48;
 
 /// JSON neumi strukturovane klice map: pripady se ukladaji jako seznam.
 mod cases_as_list {
@@ -960,6 +1026,7 @@ impl Ladder {
             stats: LadderStats::default(),
             learner: None,
             calibrator: None,
+            held: Vec::new(),
         }
     }
 
@@ -1073,6 +1140,8 @@ impl Ladder {
     /// rozhodnuté případy (ty se z žebříku odeberou).
     pub fn step(&mut self, cycle: u64, env: &mut dyn LadderEvidence) -> Vec<Decision> {
         self.reset_forbidden_novelty_evidence();
+        self.held
+            .retain(|(_, at)| cycle.saturating_sub(*at) <= HOLD_CYCLES);
         let mut decisions = Vec::new();
         let mut budget = self.policy.budget_per_cycle;
         let mut active_left = self.policy.active_per_cycle;
@@ -1355,6 +1424,23 @@ impl Ladder {
         } else {
             None
         };
+        // krok 18: vysoka P bez nezavisleho dukazu jeste neni potvrzeni; dokud dalsi kontrola
+        // planu bezi hned (ne cekani na pretrvani, ne aktivni L3 s limitem za cyklus), pokracuje
+        // se ve stejnem cyklu, jinak `finish` pripad preda cloveku jako nepotvrzeny
+        let status = match status {
+            Some(Status::Confirmed)
+                if self.policy.confirm_evidence
+                    && !steps_have_independent_evidence(&case.steps)
+                    && executed < self.policy.max_checks
+                    && case
+                        .plan
+                        .front()
+                        .is_some_and(|c| *c != CheckId::Persistence && c.level() != Level::L3) =>
+            {
+                None
+            }
+            other => other,
+        };
         status.and_then(|status| self.finish(key, status, cycle, false))
     }
 
@@ -1366,6 +1452,37 @@ impl Ladder {
         budget: bool,
     ) -> Option<Decision> {
         let case = self.cases.remove(key)?;
+        // krok 18: potvrzeni jen s pozitivnim dukazem z nezavisleho zdroje (jedine misto,
+        // plati pro prah posteriory i rezim konkurencnich hypotez); jinak predat cloveku
+        let prior_hold = status == Status::Confirmed
+            && self.policy.confirm_evidence
+            && !steps_have_independent_evidence(&case.steps);
+        let held_refute = status == Status::Refuted
+            && self.policy.confirm_evidence
+            && self
+                .held
+                .iter()
+                .any(|(k, at)| k == key && cycle.saturating_sub(*at) <= HOLD_CYCLES);
+        let status = if prior_hold {
+            self.stats.prior_held += 1;
+            self.held.retain(|(k, _)| k != key);
+            self.held.push((key.clone(), cycle));
+            Status::Escalated
+        } else if held_refute {
+            self.stats.hold_refused += 1;
+            Status::Escalated
+        } else {
+            status
+        };
+        let pending_check = prior_hold
+            .then(|| {
+                case.plan
+                    .iter()
+                    .copied()
+                    .find(|c| confirm_source(*c))
+                    .or_else(|| case.plan.front().copied())
+            })
+            .flatten();
         match status {
             Status::Confirmed => self.stats.confirmed += 1,
             Status::Refuted => self.stats.refuted += 1,
@@ -1408,7 +1525,24 @@ impl Ladder {
             posterior: calibrated,
             opened: case.opened,
             decided: cycle,
-            reason: if budget {
+            reason: if prior_hold {
+                let waiting = match pending_check {
+                    Some(check) => format!(
+                        "ceka na kontrolu {} {} (cena {:.2})",
+                        check.level().label(),
+                        check.label(),
+                        cost(check)
+                    ),
+                    None => "automaticka kontrola nezbyva, nutne rucni overeni".to_string(),
+                };
+                format!(
+                    "nepotvrzeno: P(utok) {calibrated:.2} jen z apriorni pravdepodobnosti, bez pozitivniho dukazu z nezavisleho zdroje; {waiting}; {reason}"
+                )
+            } else if held_refute {
+                format!(
+                    "drzeno: klic ma nedavne nepotvrzene podezreni, automaticke vyvraceni zakazano; {reason}"
+                )
+            } else if budget {
                 format!("rozpocet vycerpan opakovane; {reason}")
             } else {
                 reason
@@ -1440,6 +1574,8 @@ impl Ladder {
                     }
                 })
                 .collect(),
+            prior_hold,
+            pending_check,
         })
     }
 }
@@ -2647,5 +2783,254 @@ mod tests {
             let d3 = decide(strict, kind, &mut mk());
             assert_ne!(d3.status, Status::Refuted, "{kind}: {}", d3.reason);
         }
+    }
+
+    fn high_prior(kind: &str) -> CaseInput {
+        CaseInput {
+            prior: 0.95,
+            ..input(kind, "10.0.0.5", &["203.0.113.9"])
+        }
+    }
+
+    fn decide_input(policy: LadderPolicy, case: CaseInput, env: &mut Env) -> Decision {
+        let mut ladder = Ladder::new(policy, 7);
+        ladder.open(case, 0);
+        run_until_decided(&mut ladder, env)
+    }
+
+    /// Krok 18: bez prepinace potvrdi vysoka apriorni P sama po prvni kontrole bez vysledku
+    /// (stav kroku 17, koren nalezu K16-4); s prepinacem jde pripad cloveku jako nepotvrzeny
+    /// s kontrolou, na kterou ceka, a apriorni P zustava v rozhodnuti (poradi).
+    #[test]
+    fn prior_alone_does_not_confirm_with_confirm_evidence() {
+        let off = decide_input(
+            LadderPolicy::default(),
+            high_prior("unexpected_traffic"),
+            &mut Env::default(),
+        );
+        assert_eq!(off.status, Status::Confirmed, "{}", off.reason);
+        assert!(!has_suspicious_evidence(&off.notes));
+        let policy = LadderPolicy {
+            confirm_evidence: true,
+            ..LadderPolicy::default()
+        };
+        let mut ladder = Ladder::new(policy, 7);
+        ladder.open(high_prior("unexpected_traffic"), 0);
+        let on = run_until_decided(&mut ladder, &mut Env::default());
+        assert_eq!(on.status, Status::Escalated, "{}", on.reason);
+        assert!(on.prior_hold && on.posterior >= 0.9);
+        assert!(
+            on.reason.starts_with("nepotvrzeno: P(utok)"),
+            "{}",
+            on.reason
+        );
+        assert!(on.pending_check.is_some(), "{}", on.reason);
+        assert!(on.reason.contains("ceka na kontrolu"), "{}", on.reason);
+        assert_eq!(ladder.stats.prior_held, 1);
+        assert_eq!(ladder.stats.confirmed, 0);
+        // rozhodnuto ve stejnem cyklu jako bez prepinace (zobrazeni se neposouva)
+        assert_eq!(on.decided, off.decided);
+    }
+
+    /// Krok 18: podezrely vysledek z nezavisleho zdroje (reputace zdroje) potvrzeni nese.
+    #[test]
+    fn independent_suspicious_result_confirms_with_confirm_evidence() {
+        let policy = LadderPolicy {
+            confirm_evidence: true,
+            ..LadderPolicy::default()
+        };
+        let mut env = Env {
+            bad: ["203.0.113.9".to_string()].into_iter().collect(),
+            ..Env::default()
+        };
+        let d = decide_input(policy, high_prior("unexpected_traffic"), &mut env);
+        assert_eq!(d.status, Status::Confirmed, "{}", d.reason);
+        assert!(has_independent_evidence(&d.notes) && !d.prior_hold);
+    }
+
+    /// Krok 18: historie toku („novy jev“) a pretrvani jsou tyz tok dat jako detektor, ne
+    /// nezavisly zdroj; samy potvrzeni nenesou.
+    #[test]
+    fn dependent_evidence_alone_does_not_confirm() {
+        assert!(!confirm_source(CheckId::History) && !confirm_source(CheckId::Persistence));
+        assert!(!confirm_source(CheckId::Profile) && !confirm_source(CheckId::Ops));
+        let policy = LadderPolicy {
+            confirm_evidence: true,
+            ..LadderPolicy::default()
+        };
+        let mut env = Env {
+            recurrence: Some(Recurrence::New { history_days: 14 }),
+            ..Env::default()
+        };
+        let mut case = high_prior("unexpected_traffic");
+        case.prior = 0.85;
+        let d = decide_input(policy, case, &mut env);
+        assert_ne!(d.status, Status::Confirmed, "{}", d.reason);
+        assert!(has_suspicious_evidence(&d.notes) && !has_independent_evidence(&d.notes));
+    }
+
+    /// Krok 18: klic s nedavnym nepotvrzenym podezrenim se automaticky nevyvraci (drive to
+    /// branilo potvrzeni v pameti nalezu); po `HOLD_CYCLES` ochrana konci.
+    #[test]
+    fn held_key_is_not_refuted_within_hold_window() {
+        let policy = LadderPolicy {
+            confirm_evidence: true,
+            ..LadderPolicy::default()
+        };
+        let benign = || Env {
+            recurrence: Some(Recurrence::Seen { days: 9 }),
+            context: Some("planovana zaloha".into()),
+            liveness: Some(Liveness::Down),
+            peers: Some((5, 6)),
+            ..Env::default()
+        };
+        let low = || input("connection_timeout_burst", "10.0.0.5", &[]);
+        // bez drzeni se pripad s neskodnymi dukazy vyvrati
+        let free = decide_input(policy, low(), &mut benign());
+        assert_eq!(free.status, Status::Refuted, "{}", free.reason);
+        let mut ladder = Ladder::new(policy, 7);
+        let mut first = low();
+        first.prior = 0.95;
+        ladder.open(first, 0);
+        let held = run_until_decided(&mut ladder, &mut Env::default());
+        assert!(held.prior_hold, "{}", held.reason);
+        ladder.open(low(), held.decided + 1);
+        let mut env = benign();
+        let mut again = None;
+        for cycle in held.decided + 1..held.decided + 20 {
+            if let Some(d) = ladder.step(cycle, &mut env).into_iter().next() {
+                again = Some(d);
+                break;
+            }
+        }
+        let again = again.expect("rozhodnuto");
+        assert_eq!(again.status, Status::Escalated, "{}", again.reason);
+        assert!(again.reason.starts_with("drzeno:"), "{}", again.reason);
+        assert_eq!(ladder.stats.hold_refused, 1);
+        // po okne drzeni se klic opet vyvraci
+        let late = held.decided + HOLD_CYCLES + 5;
+        ladder.open(low(), late);
+        let mut env = benign();
+        let mut after = None;
+        for cycle in late..late + 20 {
+            if let Some(d) = ladder.step(cycle, &mut env).into_iter().next() {
+                after = Some(d);
+                break;
+            }
+        }
+        assert_eq!(after.expect("rozhodnuto").status, Status::Refuted);
+    }
+
+    /// Krok 18 (K18-7): property/fuzz test invariantu „confirmed ⇒ existuje pozitivni dukaz
+    /// z nezavisleho zdroje“ na 20 000 nahodnych pripadech (apriorni P, politika, typ nalezu,
+    /// vysledky vsech zdroju, opakovani nalezu). Zaroven: nepotvrzeny pripad je vzdy
+    /// eskalovany a nikdy vyvraceny, P konecna v [0, 1].
+    #[test]
+    fn confirmed_always_has_independent_evidence_fuzz() {
+        use crate::endpoint::correlate::EndpointSignal;
+        let kinds = [
+            "unexpected_traffic",
+            "pivot_chain",
+            "suricata_alert",
+            "packet_rate_spike",
+            "connection_timeout_burst",
+            "service_unreachable",
+            "scan_attempts",
+            "beacon_periodic",
+            "egress_volume_anomaly",
+            "unmapped_passive_event",
+        ];
+        let mut state = 0x1818_2026u64;
+        let mut next = |n: u64| {
+            state = mix(state);
+            state % n.max(1)
+        };
+        let (mut confirmed, mut held) = (0u64, 0u64);
+        for i in 0..20_000u64 {
+            let policy = LadderPolicy {
+                confirm_evidence: true,
+                strict_refute: next(2) == 0,
+                competing: next(4) == 0,
+                protect: next(2) == 0,
+                endpoint: next(2) == 0,
+                endpoint_weak: next(2) == 0,
+                max_checks: 1 + next(9) as usize,
+                ..LadderPolicy::default()
+            };
+            let kind = kinds[next(kinds.len() as u64) as usize];
+            let mut case = input(
+                kind,
+                &format!("10.0.{}.{}", next(4), 1 + next(200)),
+                &["203.0.113.9"],
+            );
+            case.prior = match next(4) {
+                0 => 0.5 + next(500) as f64 / 1000.0,
+                1 => 0.9 + next(100) as f64 / 1000.0,
+                2 => next(1000) as f64 / 1000.0,
+                _ => 0.15,
+            };
+            case.high_impact = next(5) == 0;
+            let mut env = Env {
+                recurrence: match next(4) {
+                    0 => Some(Recurrence::Seen {
+                        days: 1 + next(9) as u32,
+                    }),
+                    1 => Some(Recurrence::New { history_days: 14 }),
+                    _ => None,
+                },
+                context: (next(6) == 0).then(|| "kalendar".to_string()),
+                bad: if next(5) == 0 {
+                    ["203.0.113.9".to_string()].into_iter().collect()
+                } else {
+                    HashSet::new()
+                },
+                peers: match next(3) {
+                    0 => Some((0, 6)),
+                    1 => Some((5, 6)),
+                    _ => None,
+                },
+                liveness: match next(5) {
+                    0 => Some(Liveness::Down),
+                    1 => Some(Liveness::NeedsApproval),
+                    2 => Some(Liveness::OutOfScope),
+                    _ => None,
+                },
+                kev: next(6) == 0,
+                suspicious: if next(4) == 0 {
+                    ["10.0.0.9".to_string()].into_iter().collect()
+                } else {
+                    HashSet::new()
+                },
+                edges: [(case.host_ip.clone(), vec!["10.0.0.9".to_string()])]
+                    .into_iter()
+                    .collect(),
+                endpoint: match next(5) {
+                    0 => Some(EndpointSignal::Suspicious("proces".into())),
+                    1 => Some(EndpointSignal::Benign("updater".into())),
+                    2 => Some(EndpointSignal::Allowed("seznam povolenych".into())),
+                    _ => None,
+                },
+                ..Env::default()
+            };
+            let mut ladder = Ladder::new(policy, i);
+            ladder.open(case, 0);
+            let sources: &[&str] = if next(2) == 0 { &["203.0.113.9"] } else { &[] };
+            let d = run_observed(&mut ladder, &mut env, sources);
+            assert!(d.posterior.is_finite() && (0.0..=1.0).contains(&d.posterior));
+            if d.status == Status::Confirmed {
+                confirmed += 1;
+                assert!(has_independent_evidence(&d.notes), "{i}: {}", d.reason);
+            }
+            if d.prior_hold {
+                held += 1;
+                assert_eq!(d.status, Status::Escalated, "{i}: {}", d.reason);
+                assert!(!has_independent_evidence(&d.notes), "{i}: {}", d.reason);
+            }
+        }
+        // generator musi pokryt obe vetve, jinak test nic nedokazuje
+        assert!(
+            confirmed > 500 && held > 500,
+            "potvrzeno {confirmed}, drzeno {held}"
+        );
     }
 }

@@ -196,6 +196,10 @@ pub struct OutputStats {
     pub ladder_latency_max: u64,
     /// Výsledky kontrol rozhodnutých případů podle pravdy: "kontrola:značka|attack|benign".
     pub ladder_outcome_truth: BTreeMap<String, u64>,
+    /// Krok 18: potvrzení podle druhu důkazu a nepotvrzené případy podle pravdy
+    /// (`confirmed_prior_only`, `confirmed_dep_only`, `prior_held`, `hold_refused`, `*_attack`).
+    #[serde(default)]
+    pub ladder_k18: BTreeMap<String, u64>,
     /// Krok 12: incidenty (>= 2 nalezy), nalezy v nich, nalezy nejvetsi pravdy, smisene (utok i porucha).
     #[serde(default)]
     pub incident_n: u64,
@@ -323,6 +327,7 @@ impl OutputStats {
         self.ladder_audit_wrong += o.ladder_audit_wrong;
         self.ladder_latency_max = self.ladder_latency_max.max(o.ladder_latency_max);
         merge_map(&mut self.ladder_outcome_truth, &o.ladder_outcome_truth);
+        merge_map(&mut self.ladder_k18, &o.ladder_k18);
         self.ladder_log.extend(o.ladder_log.iter().copied());
         self.incident_n += o.incident_n;
         self.incident_findings += o.incident_findings;

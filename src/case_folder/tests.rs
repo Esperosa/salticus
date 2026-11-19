@@ -33,6 +33,8 @@ fn decision(status: Status, posterior: f64, notes: Vec<StepNote>) -> Decision {
         protected: false,
         steps: notes.iter().map(|n| (n.check, n.tag)).collect(),
         notes,
+        prior_hold: false,
+        pending_check: None,
     }
 }
 
@@ -299,6 +301,38 @@ fn confirmation_without_suspicious_evidence_is_reported_as_prior_only() {
     assert!(!f.summary.contains("potvrdil"));
     assert!(f.handoff[0].starts_with("potvrzeno bez dukazu z kontrol"));
     assert!(f.recommended_step.starts_with("Pred zasahem"));
+}
+
+/// Krok 18: nepotvrzený případ (vysoká apriorní P bez nezávislého důkazu) je eskalovaný,
+/// složka netvrdí útok a jako první důvod předání uvádí kontrolu, na kterou čeká.
+#[test]
+fn prior_hold_is_reported_as_unconfirmed_with_pending_check() {
+    let mut d = decision(
+        Status::Escalated,
+        0.93,
+        vec![note(
+            CheckId::Profile,
+            "undetermined",
+            None,
+            "profil nezraly",
+        )],
+    );
+    d.prior_hold = true;
+    d.pending_check = Some(CheckId::Reputation);
+    let f = build(&input(&d));
+    assert!(validate(&f, &d).is_empty(), "{:?}", validate(&f, &d));
+    assert_eq!(f.verdict.level, "L3");
+    assert!(f.handoff[0].starts_with("nepotvrzeno"), "{:?}", f.handoff);
+    assert!(f.handoff[0].contains("reputation"), "{:?}", f.handoff);
+    assert!(
+        f.summary.starts_with("Nerozhodnuty pripad"),
+        "{}",
+        f.summary
+    );
+    assert!(!f.summary.contains("potvrdil"));
+    d.pending_check = None;
+    let f = build(&input(&d));
+    assert!(f.handoff[0].contains("rucni overeni"), "{:?}", f.handoff);
 }
 
 /// Senior review (held seedy): složka doporučovala znovu kontrolu, která už proběhla bez dat.

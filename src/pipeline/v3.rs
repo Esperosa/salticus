@@ -551,6 +551,7 @@ impl V3Session {
                         l7: self.engine.l7_ladder(),
                         ops: self.engine.ops_telemetry(),
                         endpoint_weak: self.engine.endpoint_weak(),
+                        confirm_evidence: self.engine.confirm_evidence(),
                         ..Default::default()
                     },
                     u64::from_le_bytes(
@@ -581,6 +582,7 @@ impl V3Session {
         ladder.policy.endpoint = self.engine.endpoint();
         ladder.policy.ops = self.engine.ops_telemetry();
         ladder.policy.endpoint_weak = self.engine.endpoint_weak();
+        ladder.policy.confirm_evidence = self.engine.confirm_evidence();
         if self.engine.protect() {
             let reset = ladder.reset_forbidden_novelty_evidence();
             if reset > 0 {
@@ -1110,6 +1112,8 @@ impl V3Session {
                 protected: r.protection.is_some(),
                 steps: Vec::new(),
                 notes: Vec::new(),
+                prior_hold: false,
+                pending_check: None,
             });
         }
         for d in decisions.iter().chain(open.iter()) {
