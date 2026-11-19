@@ -166,6 +166,11 @@ impl ContextEntry {
         at >= self.start && at <= self.end && at <= self.expires
     }
 
+    /// Záznam je v čase aktivní a pokrývá typ (jen pro měření stínu, krok 22).
+    pub fn applies_at(&self, finding_type: &str, at: DateTime<Utc>) -> bool {
+        self.active(at) && self.covers(finding_type)
+    }
+
     fn validate(&self) -> std::result::Result<(), String> {
         if self.approved_by.trim().is_empty() {
             return Err(format!("{}: chybi schvalovatel", self.kind.label()));

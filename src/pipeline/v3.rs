@@ -675,6 +675,46 @@ impl V3Session {
                 .then(|| crate::protection::protection(&finding.finding_type, signals))
                 .flatten();
             let explanation = decision.explanation;
+            if crate::closure_gate::shadow_on()
+                && explanation.is_none()
+                && crate::context_gate::ContextProvider::entries(&calendar)
+                    .iter()
+                    .any(|e| e.applies_at(&finding.finding_type, now))
+            {
+                // krok 22 (laborator C): kalendar ma aktivni zaznam pro typ, ale nevysvetlil
+                // (nelze urcit); jen mereni, rozhodnuti beze zmeny
+                crate::closure_gate::shadow_log(serde_json::json!({
+                    "ev": "context_none", "at": now.to_rfc3339(),
+                    "key": format!("{}|{}|{}", key.entity, key.finding_type, key.service),
+                    "type": finding.finding_type, "id": finding.finding_id,
+                    "host": ids[0], "sources": sources, "targets": targets,
+                    "ambiguous": decision.ambiguous,
+                    "shadow": {"admitted": false, "refusal": "nevysvetleno kontextem"},
+                }));
+            }
+            if crate::closure_gate::shadow_on()
+                && let Some(e) = explanation.as_ref()
+            {
+                // krok 22 (B4, laborator C): stinovy listek kontextu nad tymiz vstupy
+                crate::closure_gate::shadow_log(serde_json::json!({
+                    "ev": "context", "at": now.to_rfc3339(),
+                    "key": format!("{}|{}|{}", key.entity, key.finding_type, key.service),
+                    "type": finding.finding_type, "id": finding.finding_id,
+                    "host": ids[0], "kind": e.kind.label(), "sources": sources,
+                    "targets": targets,
+                    "shadow": crate::closure_gate::shadow_context(
+                        e,
+                        &finding.finding_type,
+                        &sources,
+                        now,
+                        crate::closure_gate::Subject {
+                            protected: protection.is_some(),
+                            high_impact: finding.severity == crate::model::Severity::High
+                                || severe.contains(&finding.finding_type),
+                        },
+                    ),
+                }));
+            }
             let observation = Observation {
                 key: key.clone(),
                 severity: finding.severity,
@@ -843,6 +883,20 @@ impl V3Session {
                 ops_policy: &diag_policy,
             };
             let mut decisions = ladder.step(cycle, &mut env);
+            if crate::closure_gate::shadow_on() {
+                for d in decisions.iter().filter(|d| {
+                    d.status == crate::verify_ladder::Status::Refuted
+                        || d.posterior <= crate::closure_gate::P_REFUTE
+                }) {
+                    crate::closure_gate::shadow_log(serde_json::json!({
+                        "ev": "ladder", "at": now.to_rfc3339(),
+                        "key": format!("{}|{}|{}", d.key.entity, d.key.finding_type, d.key.service),
+                        "type": d.finding_type, "id": d.finding_id, "host": d.host_ip,
+                        "status": format!("{:?}", d.status), "posterior": d.posterior,
+                        "shadow": crate::closure_gate::shadow_ladder(d),
+                    }));
+                }
+            }
             if self.engine.close_gate() {
                 // krok 20: rozhodnuti zebriku do pameti jedinou cestou (brana zavreni); vysledek
                 // (vcetne odmitnuteho vyvraceni) je to, co jde do reportu

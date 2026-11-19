@@ -1,0 +1,89 @@
+# Krok 22, laboratoř C: nezávislý zdroj pozitivního důkazu (skutečná záloha, dávka a sken) a útoky
+# v okně kontextu. Bez NAT a bez výchozích tras ven, směrovač zahazuje vše mimo 10.77.0.0/16;
+# wan 10.77.9.0/24 je emulovaný vnějšek. Obraz k17lab:1 (nic se nestahuje). Spouští tools/k22_lab.py.
+x-node: &node
+  image: k17lab:1
+  restart: "no"
+  volumes:
+    - ./roles:/lab:ro
+    - ${LOGDIR:-/tmp/k22-nolog}:/out
+  cap_add: [NET_ADMIN, NET_RAW]
+
+networks:
+  lan:
+    driver_opts: {com.docker.network.bridge.enable_ip_masquerade: "false"}
+    ipam:
+      config: [{subnet: 10.77.1.0/24, ip_range: 10.77.1.192/26}]
+  srv:
+    driver_opts: {com.docker.network.bridge.enable_ip_masquerade: "false"}
+    ipam:
+      config: [{subnet: 10.77.2.0/24, ip_range: 10.77.2.192/26}]
+  wan:
+    driver_opts: {com.docker.network.bridge.enable_ip_masquerade: "false"}
+    ipam:
+      config: [{subnet: 10.77.9.0/24, ip_range: 10.77.9.192/26}]
+
+services:
+  router:
+    <<: *node
+    hostname: router
+    sysctls: {net.ipv4.ip_forward: "1"}
+    networks:
+      lan: {ipv4_address: 10.77.1.254}
+      srv: {ipv4_address: 10.77.2.254}
+      wan: {ipv4_address: 10.77.9.254}
+    command: ["sh", "/lab/router.sh"]
+  cap:
+    <<: *node
+    network_mode: "service:router"
+    command: ["sh", "/lab/cap.sh"]
+  web:
+    <<: *node
+    hostname: web
+    networks: {srv: {ipv4_address: 10.77.2.10}}
+    command: ["sh", "/lab/node.sh", "srv", "http"]
+  fs:
+    <<: *node
+    hostname: fs
+    networks: {srv: {ipv4_address: 10.77.2.20}}
+    command: ["sh", "/lab/node.sh", "srv", "share", "db"]
+  app:
+    <<: *node
+    hostname: app
+    networks: {srv: {ipv4_address: 10.77.2.30}}
+    command: ["sh", "/lab/node.sh", "srv", "share"]
+  sink:
+    <<: *node
+    hostname: sink
+    networks: {wan: {ipv4_address: 10.77.9.9}}
+    command: ["sh", "/lab/node.sh", "wan", "sink"]
+  ext:
+    <<: *node
+    hostname: ext
+    networks: {wan: {ipv4_address: 10.77.9.10}}
+    command: ["sh", "/lab/node.sh", "wan", "http"]
+  c1:
+    <<: *node
+    hostname: c1
+    networks: {lan: {ipv4_address: 10.77.1.11}}
+    command: ["sh", "/lab/node.sh", "lan", "client"]
+  c2:
+    <<: *node
+    hostname: c2
+    networks: {lan: {ipv4_address: 10.77.1.12}}
+    command: ["sh", "/lab/node.sh", "lan", "client"]
+  backup:
+    <<: *node
+    hostname: backup
+    networks: {lan: {ipv4_address: 10.77.1.20}}
+    command: ["sh", "/lab/node.sh", "lan", "idle"]
+  scanner:
+    <<: *node
+    hostname: scanner
+    networks: {lan: {ipv4_address: 10.77.1.30}}
+    command: ["sh", "/lab/node.sh", "lan", "idle"]
+  batch:
+    <<: *node
+    hostname: batch
+    networks: {lan: {ipv4_address: 10.77.1.40}}
+    command: ["sh", "/lab/node.sh", "lan", "idle"]
