@@ -103,3 +103,64 @@ Binárky: před opravou `17bbd7e`, po opravách `b159503`, `da017a9`, `d9731f9` 
 3. *Kontroly vázané na typ nálezu:* složka nedoporučí srovnání s peery ani aktivní kontrolu dostupnosti u typu, pro který je žebřík nepoužívá (sdílená funkce `verify_ladder::type_applies`, žebřík beze změny chování), a reputaci bez protějšku. Po `da017a9` složka doporučovala „aktivně ověřit dostupnost služby“ u úniku dat a tunelu.
 
 Důsledek odchylek: u 53 % předaných případů složka na ladicích seedech výslovně říká, že žádná další dostupná kontrola rozhodnutí nezmění. To je poctivý stav enginu (nezávislé zdroje v simulaci většinou chybí, viz krok 18), ne vlastnost složky.
+
+## 4. Výsledky části B (držené seedy 20269801 až 20269810, použity jednou)
+
+Binárka `salticus-k19-d9731f9.exe` (`recommended()` beze změny, viz část A), konfigurace `final`, 10 seedů x 2 sítě, 10 běhů, všechny doběhly. 25 109 složek (3 796 potvrzeno, 21 310 eskalováno, 3 zavřeno).
+
+| rameno | složek | porušení validátoru / skriptu | p50 / p95 / max B | slepá místa jako důvod předání (pravidlo kroku 16) | uživatel vyplněn |
+|---|---|---|---|---|---|
+| vše | 25 109 | 0 / 0 | 7 127 / 7 920 / 8 435 | 6,1 % (84,5 %) | 18,0 % |
+| `off` | 6 746 | 0 / 0 | 6 854 / 7 629 / 7 873 | 0,2 % (78,1 %) | 0 % (bez koncové telemetrie) |
+| `ops` | 1 800 | 0 / 0 | 7 154 / 7 738 / 8 083 | 0,1 % (98,8 %) | 0 % |
+| `elying` | 4 890 | 0 / 0 | 7 631 / 7 990 / 8 435 | 8,4 % (89,9 %) | 92,6 % |
+| `mixops` | 8 845 | 0 / 0 | 7 045 / 7 649 / 8 094 | 9,8 % (81,3 %) | 0 % |
+| `opsnoise` | 2 828 | 0 / 0 | 7 137 / 7 750 / 8 146 | 8,0 % (91,6 %) | 0 % |
+
+- **K19-B1 (= K16-4) splněno:** 0 porušení validátoru i nezávislého skriptu (krok 16 na držených seedech: 2 500, 7,0 %). Potvrzení jen podle apriorní P (2 280) složka všechna výslovně označuje.
+- **K19-B3 splněno:** „slepá místa“ jako důvod předání u 6,1 % předaných (stejné složky pravidlem kroku 16: 84,5 %), validátor ověřil, že každé slepé místo pochází z kontroly, kterou nešlo provést.
+- **K19-B4 splněno:** 0 doporučení kontroly, která nerozlišuje nebo už proběhla. Doporučení předaných: žádná další kontrola rozhodnutí nezmění 50,0 % (výslovně řečeno), reputace protějšku 22,2 %, procesy a přihlášení na hostu 16,4 %, provozní telemetrie 3,6 %, historie 1,0 %, aktivní kontrola dostupnosti 0,8 %; všechna jako ruční kroky.
+- **K19-B5 splněno:** v `elying` mají uživatele všechny případy s živým agentem na hostu (92,6 % složek; zbylých 7,4 % jsou hosté bez agenta, důvod uveden). Mimo `elying` koncová telemetrie není, takže „nelze určit“ s tímto důvodem.
+- **K19-B6 splněno:** K16-1, -2, -3, -5, -6 (p95 7 920 B ≤ 8 KiB, max 8 435 B ≤ 16 KiB) a -7 (shoda `networks.jsonl` na ladicích seedech, část 3).
+- K16-8: 3 uzávěry L1 (2 výpadky služby podle živosti, 1 podle koncové telemetrie), 0 % s vlastníkem a expirací. **Jeden z nich je útok** (`scan_attempts`, rodina `lateral_cautious_one_target`, `elying`): lhoucí agent hlásí pravidelné spojení podepsaného `msedge.exe` a s historií to stačí k zavření. Je to přesně mechanismus kroku 15, který odstraňují `endpoint_weak` a `refute_episode`; ty v `final` nejsou.
+
+### K19-B2 (= K16-9) senior review na držených seedech: nesplněno
+
+30 složek (`k16_case_folders.py sample 30 16`), posuzuje autor kódu. Pravidlo posouzení stanovené před čtením: „ví, co dělat“, když složka dává konkrétní krok, nebo výslovně říká, že žádná kontrola nerozliší, a P(útok) je daleko od hranice (≤ 0,10 nebo ≥ 0,90); při P mezi tím a bez kontroly senior neví, jak rozhodnout. Zavádějící = složka vůči pravdě simulace tvrdí víc, než důkazy unesou.
+
+**Ví, co dělat: 19 z 30 (63 %). Zavádějící: 4. Neví: 7.** (Krok 16 na držených: 17 z 30, 8 zavádějících.)
+
+Chyby složky:
+
+1. **Potvrzení stojící jen na závislém zdroji podané jako potvrzené podezření (3 případy, všechny neškodné):** `connection_timeout_burst` a dvakrát `service_unreachable`, jediný důkaz pro je historie „za N dní nikdy“. Složka píše „potvrdil žebřík (nezávislých podezřelých skupin: 1)“; „nezávislá“ tu znamená první důkaz své skupiny, ne nezávislý zdroj ve smyslu kroku 18 (historie je týž tok dat jako detektor). Zavádějící. Kořen: složka označuje jen potvrzení bez jakéhokoli podezřelého důkazu, ne potvrzení bez nezávislého (`verify_ladder::has_independent_evidence`). V `final` není `confirm_evidence`.
+2. **Omylem zavřený útok (1 případ, viz výše):** složka věrně uvádí důkazy, ale jde o chybné L1 zavření enginu; počítá se jako zavádějící.
+3. **Reputace protějšku doporučená tam, kde protějšek není (2 případy):** `unmapped_passive_event` na broadcastové adrese a `packet_rate_spike` bez protějšku. Kořen: pravidlo použitelnosti reputace pouští případ, jehož nález soak nenajde podle id (`finding = None`), jako použitelný.
+4. **Nerozhodnutelné případy se středním P(útok) (5 případů, P 0,15 až 0,59):** složka správně říká, že žádná dostupná kontrola nerozliší, ale senior pak nemá podle čeho rozhodnout. Tři z nich jsou útoky (`share_encryption_wave_slow`, `lateral_smb_admin_shares`, `c2_ntp_port_misuse`). To je limit zdrojů enginu (krok 18, bod 1), ne textu složky.
+
+Opravy bodů 1 a 3 jsou zřejmé (označit potvrzení bez nezávislého důkazu; reputace jen s protějškem), ale po drženém běhu se kód nemění; patří do dalšího kroku s novými drženými seedy.
+
+## 5. Implementace a testy
+
+- `endpoint::correlate`: `HostAssessment::users` (vlastník procesu, úspěšné přihlášení v okně), `EndpointView::users`; skóre ani signál se nemění.
+- `case_folder`: aktér `uzivatel` z koncové telemetrie (pseudonym podle `Privacy::user`), slepé místo jen z kontroly `Unavailable`, zbývající kontroly řazené podle hrubé hodnoty informace (`competing::evoi`), použitelnost podle typu (`verify_ladder::type_applies`, vyčleněno z `checks_for` beze změny chování), doporučení jako ruční krok s rozsahem P(útok); validátor hlídá nová pravidla. Soak předává složce pokrytí a uživatele z koncové telemetrie.
+- `tools/k16_case_folders.py`: stejná pravidla nezávisle, metriky K19-B3 až B5; `tools/k19_preset.py`: kritéria části A s Wilsonem a párovým bootstrapem.
+- Testy: `inconclusive_check_is_not_a_blind_spot`, `recommendation_names_a_discriminating_check_and_its_effect`, `recommendation_respects_checks_applicable_to_finding_type`, `user_actor_comes_from_endpoint_telemetry`, `assessment_collects_users_without_changing_score`, fuzz složky rozšířen o uživatele (20 000 případů, 0 porušení). `cargo test --lib`: 663 prošlo, 6 selhalo (5 `broker::*` bez Redis jako dřív, `platform::tests::concurrent_claim_due_job_never_double_claims_across_real_threads` jen pod zátěží souběžných běhů, samostatně prochází); `tests/engine_v3.rs` 4 prošly; clippy bez varování ve změněných řádcích.
+
+## 6. Závěr a co se nepodařilo
+
+**A:** `recommended()` zůstává beze změny. Kombinace `endpoint_weak`, `refute_episode` a `confirm_evidence` nad samotným `recommended()` zvyšuje omylem zavřené útoky (39–42 → 44–59 na 3 443) a mírně zobrazené FP (+0,3 až +0,5 %, interval nad 0). Nula omylem zavřených neplatí ani pro současné `recommended()` (horní mez 1,5 až 1,6 %), protože neobsahuje přísné zavírání z `final`.
+
+**B:** Tři slabiny kroku 16 mají opravené kořenové příčiny a na držených seedech prošly předregistrované prahy K19-B1 (0 porušení místo 7 %), B3 (slepá místa 6 % místo 85 %), B4 (0 nerozlišujících doporučení) a B5 (uživatel u 100 % případů s agentem) bez změny rozhodnutí. Senior review (B2) neprošlo: 63 % místo 80 %, 4 zavádějící.
+
+Co se nepodařilo:
+
+1. K19-A: žádná konfigurace nesplnila kritéria; preset se nemění. Mechanismus přírůstku omylem zavřených u kandidáta je jen hypotéza (konec okna držení), stopy se nesbíraly.
+2. K19-B2: 19 z 30, 4 zavádějící (3 potvrzení jen na historii popsaná jako potvrzené podezření, 1 omylem zavřený útok lhoucím agentem). Hodnotitel je autor kódu, takže i 63 % je horní odhad.
+3. Polovina předaných případů nemá žádnou kontrolu, která by rozhodnutí změnila; složka to teď říká, ale seniorovi u středního P(útok) nepomůže. Příčina je v pokrytí zdrojů (krok 18), ne ve složce.
+4. Reputace se doporučuje i bez protějšku, když soak nenajde nález podle id (2 z 30).
+5. Uživatel je jen tam, kde je koncová telemetrie (v simulaci jen `elying`); síťová data uživatele nenesou.
+6. Na držených seedech B se objevil jeden omylem zavřený útok v `final` (lhoucí agent + historie), tedy mechanismus, který opravují `endpoint_weak` a `refute_episode`. Spolu s částí A to ukazuje, že doporučený preset je potřeba poskládat a ověřit jako celek (`final` + přepínače), ne po částech.
+7. Opravy složky na ladicích seedech se odchýlily od předregistrovaného návrhu (EVOI místo informace na cenu, rozsah místo směru, použitelnost podle typu); odchylky jsou zapsané v části 3 a proběhly před drženým během.
+8. Council, sol-loop ani delegování se podle zadání nespouštěly; review jen autorské.
+
+Návrh dalšího kroku (neprovedeno): předregistrovat a na nových držených seedech ověřit preset `final` + `endpoint_weak`, `refute_episode`, `confirm_evidence` proti `final`, a ve složce označit potvrzení bez nezávislého důkazu a omezit reputaci na případy s protějškem.

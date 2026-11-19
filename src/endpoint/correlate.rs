@@ -1446,7 +1446,7 @@ mod tests {
     #[test]
     fn assessment_collects_users_without_changing_score() {
         let p = Policy::default();
-        let events = vec![
+        let events = [
             conn(T0, "C:\\a.exe", "8.8.8.8", Some(true), None),
             ev(
                 T0 + 1,

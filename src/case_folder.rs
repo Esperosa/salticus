@@ -1181,14 +1181,13 @@ pub fn validate(f: &CaseFolder, d: &Decision) -> Vec<String> {
     }
     // krok 19: slepé místo jen z kontroly, kterou nešlo provést
     for b in &f.blind_spots {
-        if let Some((label, _)) = b.split_once(": nelze provest") {
-            if !d
+        if let Some((label, _)) = b.split_once(": nelze provest")
+            && !d
                 .notes
                 .iter()
                 .any(|n| n.check.label() == label && n.tag == "unavailable")
-            {
-                v.push(format!("slepe misto {label} bez nedostupne kontroly"));
-            }
+        {
+            v.push(format!("slepe misto {label} bez nedostupne kontroly"));
         }
     }
     // krok 19: uživatel jako aktér jen z koncové telemetrie
