@@ -204,6 +204,40 @@ fn k21_suspicion_lock_survives_restart() {
     assert_ne!(settled.status, Status::Refuted, "{}", settled.reason);
 }
 
+/// O3: databáze se schématem 1 (před krokem 21) se migruje na 2 bez ztráty řádků; nové sloupce
+/// mají výchozí 0 a uloží se.
+#[test]
+fn k21_schema_v1_database_migrates() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE finding_state (entity TEXT NOT NULL, finding_type TEXT NOT NULL,
+            service TEXT NOT NULL, state TEXT NOT NULL, first_seen INTEGER NOT NULL,
+            last_seen INTEGER NOT NULL, last_displayed INTEGER, occurrences INTEGER NOT NULL,
+            max_severity INTEGER NOT NULL, max_count INTEGER NOT NULL, sources TEXT NOT NULL,
+            auto_reason TEXT, PRIMARY KEY (entity, finding_type, service));
+         CREATE TABLE finding_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
+            actor TEXT NOT NULL, action TEXT NOT NULL, entity TEXT NOT NULL,
+            finding_type TEXT NOT NULL, service TEXT NOT NULL, detail TEXT NOT NULL);
+         INSERT INTO finding_state VALUES ('10.0.0.5','unexpected_traffic','tcp/80','open',
+            1800000000,1800000060,NULL,2,1,3,'[]',NULL);
+         PRAGMA user_version = 1;",
+    )
+    .unwrap();
+    let key = FindingKey::new("10.0.0.5", "unexpected_traffic", "tcp/80");
+    let mut memory = FindingMemory::load(&conn, cfg()).unwrap();
+    let e = memory.get(&key).unwrap();
+    assert_eq!(e.state, FindingState::Open);
+    assert!(!e.suspected && !e.shield);
+    memory.mark_suspected(&key, at(2));
+    memory.flush(&mut conn).unwrap();
+    let back = FindingMemory::load(&conn, cfg()).unwrap();
+    assert!(back.get(&key).unwrap().suspected);
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, crate::finding_memory::SCHEMA_VERSION);
+}
+
 /// N2 a N1 po restartu: signál ochrany ani High se restartem neztratí.
 #[test]
 fn k21_shield_survives_restart() {
@@ -323,6 +357,26 @@ fn known_gap_ticket_is_not_bound_to_key() {
     memory.observe_gated(&observe(&b, 0, Severity::Low, &none, false), None);
     let ticket = admit_ladder(&refuted(&a, vec![habit(), approved_context()])).unwrap();
     assert!(memory.refute_gated(&b, ticket, at(1)));
+}
+
+/// C7 (otevřený bod 1, známá mezera): otevřený klíč pohltí nový výskyt po odmlce, která je u
+/// zavřeného klíče už novou epizodou (1 h). Bez změny závažnosti, zdroje nebo objemu ×4 se
+/// nová epizoda útoku pod týmž klíčem nezobrazí ani nejde do žebříku.
+#[test]
+fn known_gap_open_key_absorbs_new_episode_silently() {
+    let mut memory = FindingMemory::new(cfg());
+    let key = FindingKey::new("10.0.0.5", "unexpected_traffic", "tcp/80");
+    let s = src("203.0.113.9");
+    assert_eq!(
+        memory.observe_gated(&observe(&key, 0, Severity::Medium, &s, false), None),
+        Disposition::First
+    );
+    // odmlka 6 h (< 24 h zavreni klidem), tataz adresa, nova epizoda
+    assert_eq!(
+        memory.observe_gated(&observe(&key, 6 * 60, Severity::Medium, &s, false), None),
+        Disposition::Suppressed
+    );
+    assert_eq!(memory.get(&key).unwrap().state, FindingState::Open);
 }
 
 /// N8 (hodiny): skok hodin dopředu o > 24 h uzavře klidem i potvrzený a podezřelý klíč a

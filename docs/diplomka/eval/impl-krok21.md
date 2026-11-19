@@ -45,6 +45,7 @@ Opravy mění rozhodování jen v režimu brány, a to jen u klíčů, které by
 
 - **K21-6 regrese bez přepínače:** nová binárka, rameno R a F (bez `close_gate`), ladicí seedy 20269701 a 20269703, 3 konfigurace, 4 sítě: `networks.jsonl` shodný s krokem 20 (`F:\work-tmp\k20\reg`, `F:\work-tmp\k20\tune`) ve všech polích kromě časů.
 - **Nové držené seedy (zapsáno dopředu, použít jednou): 20270201, 20270202, 20270203, 20270204, 20270205, 20270206, 20270207, 20270208, 20270209, 20270210.** Ramena: **F** (`final`), **FG20** (`final` + `close_gate`, binárka kroku 20 `salticus-k20-fb1546c.exe`), **FG21** (totéž, nová binárka). Konfigurace `off`, `ops`, `elying` a společné volby jako v kroku 20. Seed se sítí nad 2 h se vynechá ve všech ramenech a zapíše. RG se neměří (nebylo navrženo do presetu; zůstává neověřené).
+- **Doplněno před během (otevřený bod 2, soak vs. produkce):** rameno **FG21P** = FG21 s proměnnou prostředí `K21_FIXED_PRIOR=1` (soak dá případu pevnou apriorní P 0,15 jako `pipeline/v3.rs`, naučené LR zůstávají). Měří, zda výsledek brány závisí na naučené apriorní P, kterou produkce nemá. Hlásí se K21-1 až K21-4 proti F (bez prahu pro rozhodnutí o presetu; jen diagnostika rozdílu).
 - Žádné ladění; po drženém běhu se kód nemění.
 
 | práh | metrika | splněno, když |
@@ -55,5 +56,7 @@ Opravy mění rozhodování jen v režimu brány, a to jen u klíčů, které by
 | K21-4 | případy pro člověka (FG21 vs. F) | nárůst ≤ 2 % |
 | K21-5 | invariant | fuzz pravdivého invariantu (5 000 posloupností s restarty) 0 porušení; K20-5 dál 0 |
 | K21-7 | účinek opravy (FG21 vs. FG20, diagnostika) | hlásí se počet vyvrácení a automatických zavření, které oprava odmítla, a změna FP; bez prahu |
+
+**Předpověď pro FG21P (analyticky před během):** s bránou rozhoduje o vyvrácení hlavně pozitivní důkaz (kontext LR 0,3, seznam povolených 0,05) a druhá skupina; z apriorní P 0,15 (šance 0,176) stačí kontext + historie (0,3 × 0,25) na P 0,013 ≤ 0,03, takže pro typy s naučenou P ≤ 0,15 se výsledek nezmění. U typů s naučenou P nad 0,15 (útokem zatížené typy) bude produkce s pevnou 0,15 vyvracet **snáz** než soak, tedy nebezpečným směrem. Očekávám víc vyvrácení u FG21P než u FG21 a otázku, zda některé z nich jsou omylem zavřené útoky (K21-1 pro FG21P).
 
 **Předpověď:** v `final` je vysoká závažnost většinou už u otevření případu (žebřík ji nese), takže O1 změní jen klíče eskalované během života; O2 jen klíče s P4/P5 signálem po otevření; O3 se v soaku projeví jen při restartech (`restart_cycles`). Očekávám změnu zobrazených FP FG21 proti FG20 pod 0,5 % a K21-1 až K21-4 splněné.

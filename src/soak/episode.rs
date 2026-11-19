@@ -561,6 +561,15 @@ fn k16_dump_on() -> bool {
     *ON.get_or_init(|| std::env::var_os("K16_CASE_DUMP").is_some())
 }
 
+/// Krok 21: měřicí rameno „apriorní P jako v produkci“ (K21_FIXED_PRIOR=1): případ žebříku
+/// dostane pevnou `DEFAULT_PRIOR` místo naučené z paměti případů (naučené LR zůstávají, jako
+/// v `pipeline/v3.rs`). Jen soak; bez proměnné prostředí se nic nemění.
+fn k21_fixed_prior() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("K21_FIXED_PRIOR").is_some())
+}
+
 fn k16_dump(line: serde_json::Value) {
     use std::sync::{Mutex, OnceLock};
     static SINK: OnceLock<Option<Mutex<std::io::BufWriter<std::fs::File>>>> = OnceLock::new();
@@ -1934,7 +1943,7 @@ fn run_episode_inner(
                                     &sources,
                                 ),
                                 high_impact: high,
-                                prior: if learning_on {
+                                prior: if learning_on && !k21_fixed_prior() {
                                     learned_prior(
                                         &memory,
                                         &mut prior_cache,

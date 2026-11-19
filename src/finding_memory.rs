@@ -27,7 +27,7 @@ use crate::{
 };
 
 /// Verze schématu SQLite. Zvýšit + přidat krok do `migrate` při každé změně.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 /// Maximální délka složky klíče (ochrana paměti před extrémními vstupy).
 const MAX_KEY_PART: usize = 200;
 
@@ -314,10 +314,25 @@ pub struct Entry {
     /// Krok 20: klíč byl předán jako nepotvrzené podezření; nezavře se, dokud je aktivní.
     #[serde(default)]
     pub suspected: bool,
+    /// Krok 21 (O2): v aktivním životě klíče přišel výskyt se signálem ochrany (P4/P5); v režimu
+    /// brány se klíč nezavře, dokud je aktivní.
+    #[serde(default)]
+    pub shield: bool,
     #[serde(skip)]
     persisted_last_seen: Option<DateTime<Utc>>,
     #[serde(skip)]
     dirty: bool,
+}
+
+impl Entry {
+    /// Režim brány: klíč se nesmí zavřít (potvrzený, podezřelý, se štítem ochrany nebo kdykoli
+    /// pozorovaný s vysokou závažností; R2 platí pro klíč, ne jen pro aktuální výskyt).
+    pub fn gate_locked(&self) -> bool {
+        self.state == FindingState::Confirmed
+            || self.suspected
+            || self.shield
+            || self.max_severity == Severity::High
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -434,6 +449,19 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         )
         .map_err(db_error)?;
     }
+    if version < 2 {
+        // krok 21 (O3): zamek podezreni a stit ochrany preziji restart
+        conn.execute_batch(
+            "
+            BEGIN;
+            ALTER TABLE finding_state ADD COLUMN suspected INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE finding_state ADD COLUMN shield INTEGER NOT NULL DEFAULT 0;
+            PRAGMA user_version = 2;
+            COMMIT;
+            ",
+        )
+        .map_err(db_error)?;
+    }
     Ok(())
 }
 
@@ -533,7 +561,8 @@ impl FindingMemory {
         let mut stmt = conn
             .prepare(
                 "SELECT entity, finding_type, service, state, first_seen, last_seen, last_displayed,
-                        occurrences, max_severity, max_count, sources, auto_reason
+                        occurrences, max_severity, max_count, sources, auto_reason,
+                        suspected, shield
                  FROM finding_state",
             )
             .map_err(db_error)?;
@@ -554,12 +583,14 @@ impl FindingMemory {
                     row.get::<_, i64>(9)?,
                     row.get::<_, String>(10)?,
                     row.get::<_, Option<String>>(11)?,
+                    (row.get::<_, i64>(12)? != 0, row.get::<_, i64>(13)? != 0),
                 ))
             })
             .map_err(db_error)?;
         for row in rows {
-            let (key, state, first, last, displayed, occ, sev, max_count, sources, reason) =
+            let (key, state, first, last, displayed, occ, sev, max_count, sources, reason, locks) =
                 row.map_err(db_error)?;
+            let (suspected, shield) = locks;
             let Some(state) = FindingState::parse(&state) else {
                 continue; // neznamy stav (poskozeny radek) se preskoci, ne pad
             };
@@ -578,7 +609,8 @@ impl FindingMemory {
                     sources,
                     auto_reason: reason,
                     ticket: None,
-                    suspected: false,
+                    suspected,
+                    shield,
                     persisted_last_seen: Some(last_seen),
                     dirty: false,
                 },
@@ -598,13 +630,15 @@ impl FindingMemory {
             let mut upsert = tx
                 .prepare_cached(
                     "INSERT INTO finding_state (entity, finding_type, service, state, first_seen,
-                        last_seen, last_displayed, occurrences, max_severity, max_count, sources, auto_reason)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                        last_seen, last_displayed, occurrences, max_severity, max_count, sources, auto_reason,
+                        suspected, shield)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
                      ON CONFLICT(entity, finding_type, service) DO UPDATE SET
                         state = excluded.state, last_seen = excluded.last_seen,
                         last_displayed = excluded.last_displayed, occurrences = excluded.occurrences,
                         max_severity = excluded.max_severity, max_count = excluded.max_count,
-                        sources = excluded.sources, auto_reason = excluded.auto_reason",
+                        sources = excluded.sources, auto_reason = excluded.auto_reason,
+                        suspected = excluded.suspected, shield = excluded.shield",
                 )
                 .map_err(db_error)?;
             for (key, entry) in self.entries.iter_mut().filter(|(_, e)| e.dirty) {
@@ -623,6 +657,8 @@ impl FindingMemory {
                         entry.max_count as i64,
                         sources,
                         entry.auto_reason,
+                        entry.suspected as i64,
+                        entry.shield as i64,
                     ])
                     .map_err(db_error)?;
                 entry.dirty = false;
@@ -709,11 +745,11 @@ impl FindingMemory {
         self.stats.observed += 1;
         let cfg = self.cfg;
         // krok 20: v rezimu brany zavira jen listek; potvrzeny nebo podezrely klic nic
+        // krok 21 (O1, O2): ani klic s High nebo se stitem ochrany (R2 na urovni klice)
         let locked = cfg.gate
-            && self
-                .entries
-                .get(&obs.key)
-                .is_some_and(|e| e.suspected || e.state == FindingState::Confirmed);
+            && (obs.severity == Severity::High
+                || obs.protected
+                || self.entries.get(&obs.key).is_some_and(|e| e.gate_locked()));
         let (explanation, ticket) = if cfg.gate && (ticket.is_none() || locked) {
             if locked && ticket.is_some() {
                 self.stats.gate_refused += 1;
@@ -778,6 +814,7 @@ impl FindingMemory {
                         auto_reason: explanation.map(ToString::to_string),
                         ticket: explanation.and(ticket.clone()),
                         suspected: false,
+                        shield: cfg.gate && obs.protected,
                         persisted_last_seen: None,
                         dirty: true,
                     },
@@ -786,6 +823,9 @@ impl FindingMemory {
             }
             Some(entry) => {
                 entry.occurrences += 1;
+                if cfg.gate && obs.protected {
+                    entry.shield = true;
+                }
                 let gap_s = (obs.at - entry.last_seen).num_seconds();
                 if obs.at > entry.last_seen {
                     entry.last_seen = obs.at;
@@ -847,11 +887,14 @@ impl FindingMemory {
                     && cfg.gate
                     && matches!(previous, FindingState::Refuted | FindingState::AutoResolved)
                 {
-                    let covered = ticket.as_ref().or(entry.ticket.as_ref()).is_some_and(|t| {
-                        obs.sources
-                            .iter()
-                            .all(|s| t.sources().iter().any(|x| x == s))
-                    });
+                    // krok 21: vyskyt s High nebo se signalem ochrany zavreny klic nepohlti
+                    let covered = obs.severity != Severity::High
+                        && !obs.protected
+                        && ticket.as_ref().or(entry.ticket.as_ref()).is_some_and(|t| {
+                            obs.sources
+                                .iter()
+                                .all(|s| t.sources().iter().any(|x| x == s))
+                        });
                     (!covered).then_some(Escalation::NewSource)
                 } else {
                     escalation
@@ -947,6 +990,7 @@ impl FindingMemory {
                 entry.state = FindingState::Closed;
                 entry.ticket = None;
                 entry.suspected = false;
+                entry.shield = false;
                 entry.dirty = true;
                 closed.push(key.clone());
             } else if !entry.state.active() && quiet > cfg.retention_s {
@@ -1012,6 +1056,7 @@ impl FindingMemory {
         }
         if state == FindingState::Closed {
             entry.suspected = false;
+            entry.shield = false;
         }
         entry.dirty = true;
         self.log(at, actor, action, key, format!("z {}", previous.label()));
@@ -1087,7 +1132,7 @@ impl FindingMemory {
         let Some(entry) = self.entries.get_mut(key) else {
             return false;
         };
-        if entry.state == FindingState::Confirmed || entry.suspected {
+        if entry.gate_locked() {
             self.stats.gate_refused += 1;
             self.log(at, "verify_ladder", "gate_lock", key, clip(ticket.reason()));
             return false;
@@ -1177,6 +1222,12 @@ impl FindingMemory {
             }
             if e.suspected {
                 out.push(format!("{tag}: podezrely klic zavren"));
+            }
+            if e.max_severity == Severity::High {
+                out.push(format!("{tag}: klic s High zavren"));
+            }
+            if e.shield {
+                out.push(format!("{tag}: klic se stitem ochrany zavren"));
             }
         }
         out.sort();
