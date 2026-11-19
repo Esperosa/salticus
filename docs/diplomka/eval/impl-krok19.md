@@ -61,3 +61,45 @@ Ladění oprav jen na ladicích seedech kroku 16 (20261102 `off`, 20261103 `ops`
 | K19-B6 | regrese K16-1, -2, -3, -5, -6, -7 | beze změny splněno (p95 ≤ 8 KiB, max ≤ 16 KiB); bez dumpu `networks.jsonl` shodný s binárkou `17bbd7e` (ladicí seed, 2 sítě, 3 konfigurace) |
 
 Omezení předem: council, sol-loop a delegování se podle zadání nespouštějí (odchylka od `CLAUDE.md` daná zadáním); review dělá autor. K19-B2 posuzuje autor kódu, ne nezávislý senior, takže jde o horní odhad použitelnosti. Tabulky věrohodnosti pro řazení kontrol jsou ze simulace (krok 12).
+
+## 2. Výsledky části A (držené seedy 20269701 až 20269710, použity jednou)
+
+Binárka `salticus-k18-17bbd7e.exe`, 10 seedů x 4 sítě x 3 konfigurace x 2 ramena, 60 běhů, všechny doběhly (kód 0), 0 nespárovaných sítí, žádná síť nad 2 h. Na konfiguraci 40 párů sítí, 371 síť-dní, 3 443 útoků. Skript `tools/k19_preset.py`.
+
+| konfigurace | omylem zavřeno základ → kandidát (Wilson horní mez kandidáta) | detekce | zobrazené FP (poměr; 95% interval) | případy pro člověka (95% interval) | rodina s poklesem > 1 p. b. | verdikt |
+|---|---|---|---|---|---|---|
+| `off` | 39 → **44** (1,71 %) | 81,88 → 81,99 % [+0,00; +0,23] | ×1,0052 [+0,04; +1,30] % | +0,26 % [−0,01; +0,65] | žádná | A1, A5 nesplněno |
+| `ops` | 42 → **59** (2,20 %) | 82,05 → 82,05 % [−0,07; +0,07] | ×1,0027 [+0,08; +0,57] % | −0,29 % [−1,78; +0,71] | `credential_stuffing` 89,7 → 88,5 % (n = 78) | A1, A2, A5 nesplněno |
+| `elying` | 39 → **50** (1,91 %) | 82,02 → 82,08 % [+0,00; +0,13] | ×1,0032 [+0,06; +0,63] % | +0,25 % [+0,01; +0,50] | žádná | A1, A5 nesplněno |
+
+**Rozhodnutí: `recommended()` zůstává beze změny.** Žádná konfigurace nesplnila všechna kritéria.
+
+- **K19-A1 nesplněno, a to už v základu.** Samotné `recommended()` (bez `strict_close` a `bulk_clear` z konfigurace `final`) zavírá útoky: 12 automatických zavření a 27 až 30 vyvrácení žebříkem na 3 443 útoků v každé konfiguraci (horní mez 1,5 až 1,6 %). V krocích 15 a 18 se kandidátní přepínače měřily nad `final`, kde přísné zavírání tyto cesty odstraňuje, proto tam nula vyšla.
+- **Kandidát omylem zavřené útoky zvyšuje** (+5, +17, +11), vždy ve vyvráceních žebříkem: přibývají `unexpected_traffic|rogue_device_in_network` (10 → 15 ve všech konfiguracích) a `scan_attempts|c2_beacon` (0 → 7). Držení klíče z kroku 18 (`hold_refused`) neodmítlo ani jedno vyvrácení, takže přírůstek nevzniká v okně držení. Hypotéza (neověřená, stopy se v tomto běhu nesbíraly): potvrzený klíč je proti vyvrácení chráněn trvale, kdežto nepotvrzený případ s `prior_hold` jen 48 cyklů; bez přísného zavírání se po uplynutí okna takový klíč dá vyvrátit slabým neškodným důkazem.
+- **K19-A5:** zobrazené FP rostou systematicky (interval celý nad 0 ve všech konfiguracích, +0,3 až +0,5 %), i když pod prahem A3 (1 %).
+- Detekce se nezhoršila (+0,00 až +0,12 p. b.); případy pro člověka v pásmu ±0,3 %. Kandidát přesouvá 4 300 až 4 800 potvrzení do eskalací (nepotvrzené případy s `prior_hold`).
+
+Co z toho plyne: návrh kroků 15 a 18 zapnout tři přepínače do `recommended()` platí jen nad `final`; nad samotným `recommended()` přepínače chybovost zavírání zhoršují. Smysluplnější preset k ověření je `final` (s přísným zavíráním) + tři přepínače; to je nový předregistrovaný krok, ne ladění na těchto seedech.
+
+## 3. Část B: průběh na ladicích seedech (před drženým během)
+
+Binárky: před opravou `17bbd7e`, po opravách `b159503`, `da017a9`, `d9731f9` (konečná). Ladicí seedy podle předregistrace, po 2 sítích, 8 168 složek v každém běhu.
+
+| | před opravou | `b159503` | `da017a9` | `d9731f9` |
+|---|---|---|---|---|
+| porušení validátoru / skriptu | 0 / 0 | 0 / 0 | 0 / 0 | 0 / 0 |
+| slepá místa jako důvod předání | 90,6 % | 2,0 % | 2,0 % | 2,0 % |
+| doporučení bez rozlišující kontroly | 90,7 % „nejlevnější neprovedená“ | 0 % | 0 % | 0 % |
+| žádná kontrola nerozliší (výslovně řečeno) | – | 2,0 % | 21,6 % | 53,4 % |
+| uživatel vyplněn (vše / `elying`) | 0 % / 0 % | 14,4 % / 94,2 % | stejně | stejně |
+| velikost p50 / p95 / max B | 7 276 / 8 159 / 8 592 | 6 996 / 7 766 / 8 201 | 7 073 / 7 811 / 8 274 | 7 032 / 7 753 / 8 203 |
+
+`networks.jsonl` všech tří opravených binárek je s binárkou `17bbd7e` shodný ve všech 10 sítích (`off`, `ops`, `elying`, `mixops`, `opsnoise`; mimo časy), oprava rozhodnutí nemění (K19-B6). V `elying` mají uživatele všechny případy, jejichž host má živého agenta; zbylých 5,8 % jsou hosté bez agenta („host nema zivou koncovou telemetrii“).
+
+**Odchylky od předregistrovaného návrhu opravy 1 (provedené na ladicích seedech, před drženým během):**
+
+1. *Řazení podle informace na cenu nahrazeno hrubou hodnotou informace (EVOI s nulovou cenou, `competing::evoi`).* Ruční čtení 30 složek (semínko 16) po `b159503` ukázalo, že informace na cenu upřednostňuje levnou historii (`CaseHistory`), jejíž výsledek P(útok) posune jen o setiny a rozhodnutí nezmění, a že u historie je „podezřelý“ výsledek ve změřených tabulkách častější u neškodných případů (P po „podezřelém“ výsledku klesá). „Rozlišuje“ teď znamená „výsledek může změnit rozhodnutí (zavřít, potvrdit, předat)“.
+2. *Text účinku jako rozsah* („výsledek posune P(útok) z X na A až B“) místo „podezřelý → A, neškodný → B“, ze stejného důvodu (směr by byl u historie zavádějící).
+3. *Kontroly vázané na typ nálezu:* složka nedoporučí srovnání s peery ani aktivní kontrolu dostupnosti u typu, pro který je žebřík nepoužívá (sdílená funkce `verify_ladder::type_applies`, žebřík beze změny chování), a reputaci bez protějšku. Po `da017a9` složka doporučovala „aktivně ověřit dostupnost služby“ u úniku dat a tunelu.
+
+Důsledek odchylek: u 53 % předaných případů složka na ladicích seedech výslovně říká, že žádná další dostupná kontrola rozhodnutí nezmění. To je poctivý stav enginu (nezávislé zdroje v simulaci většinou chybí, viz krok 18), ne vlastnost složky.
