@@ -90,3 +90,45 @@ Rozbor poklesů po útocích (`F:\work-tmp\k20\diffatt.py`; v každé konfigurac
 - Ostatní ztráty (`clicks_to_rare_destination`, `uplink_saturation`) a zisky (`disk_full_backup_failure`, `dns_ttl_misconfig`, `data_destruction_smb_wave`, `c2_dns_txt_beacon`, `ssh_bruteforce`) mají týž mechanismus: když se klíč nevyvrátí, zůstane otevřený a dedup (C7) pohltí pozdější výskyt bez eskalace; opačně zmizí pohlcení pod vyvráceným klíčem.
 
 Podle předregistrace se po ladicím běhu kód **nemění**: K20-2 neprošlo jen kvůli jednotlivým útokům s výše uvedeným mechanismem (dedup otevřeného klíče, cesta C7, kterou krok 20 neřeší) a kvůli neškodné rodině `hn_*`, kterou kritérium kroku 19 počítá mezi „rodiny“. Definice kritéria se nemění; na držených seedech se hlásí tak, jak byla předregistrována, a pokles `hn_*` se uvede zvlášť. Předpověď z auditu (FP u RG o několik procent) se nepotvrdila: zobrazené FP rostou o 1,8 %, protože většina vyvrácených nálezů s vysokým dopadem se zobrazovala už při otevření případu a eskalace přidá zobrazení jen u zbytku.
+
+### Držené seedy 20270101 až 20270110 (použity jednou)
+
+Binárka `salticus-k20-fb1546c.exe` beze změny od ladicího běhu, 10 seedů x 4 sítě x 3 konfigurace x 4 ramena = 120 běhů, všechny doběhly (480 sítí, 0 paniků, nejdelší síť 778 s, žádná nad 2 h), 40 párů sítí na konfiguraci, 4 420 útoků (4 426 v `attacks[]`). Výstupy `F:\work-tmp\k20\held`, souhrn `F:\work-tmp\k20\report-held.txt`. Po měření se kód nezměnil.
+
+| srovnání | konfigurace | omylem zavřeno (rozhodnutí) | útoky s omylem zavřeným | útoky s pohlceným výskytem | detekce (95% interval rozdílu) | rodiny s poklesem > 1 p. b. | zobrazené FP (95% interval) | případy pro člověka | verdikt |
+|---|---|---|---|---|---|---|---|---|---|
+| RG / R | `off` | 56 → **0** | 42 → **0** | 107 → **0** | 81,45 → 81,54 % [+0,00; +0,17] | `vlan_hop_or_misconfig` 92,9 → 90,5 (1 z 42) | ×1,0324 [+1,38; +5,50] % | +0,81 % | K20-2, K20-3 nesplněno |
+| RG / R | `ops` | 67 → **0** | 61 → **0** | 148 → **0** | 81,36 → 81,49 % [+0,03; +0,23] | `vlan_hop_or_misconfig` (1 z 42) | ×1,0336 [+1,47; +5,59] % | +1,00 % | K20-2, K20-3 nesplněno |
+| RG / R | `elying` | 50 → **0** | 33 → **0** | 98 → **0** | 81,65 → 81,74 % [+0,00; +0,19] | `drive_by_bulk_download` 5,0 → 0,0 (1 z 20) | ×1,0295 [+1,21; +4,97] % | +0,87 % | K20-2, K20-3 nesplněno |
+| FG / F | `off` | 0 → 0 | 0 → 0 | 0 → 0 | 83,30 → 83,30 % | žádná | ×1,0000 | +0,00 % | **vše splněno** |
+| FG / F | `ops` | 0 → 0 | 0 → 0 | 0 → 0 | 83,28 → 83,28 % | žádná | ×1,0000 | +0,00 % | **vše splněno** |
+| FG / F | `elying` | 3 → **0** | 7 → **0** | 9 → **0** | 83,48 → 83,48 % [−0,05; +0,05] | žádná | ×1,0000 | −0,25 % | **vše splněno** |
+
+Horní mez Wilson 95 % pro 0 omylem zavřených z 4 420 útoků je **0,087 %** (všechna ramena s branou, všechny konfigurace). Obchvat brány 0, porušení invariantu na stavu 0.
+
+- **K20-1, K20-1b, K20-1c splněno ve všech šesti srovnáních.** Základ R zavíral omylem 50 až 67 rozhodnutí (31 automaticky kontextem, 19 až 36 vyvrácení), tedy víc než na ladicích seedech (39 až 42), a skrýval výskyty 98 až 148 útoků pod zavřeným klíčem. F v `elying` 3 omylem vyvrácená rozhodnutí (7 útoků): lhoucí agent „vše v pořádku“ jako silná skupina (`k7.endpoint_benign_refuted` 16 vyvrácení), tedy mechanismus kroku 15 a 19-B; brána ho odstraní.
+- **K20-2:** souhrnná detekce RG +0,09 až +0,14 p. b. (interval nikde pod 0), FG beze změny. U RG po jednom útoku poklesly dvě rodiny (`vlan_hop_or_misconfig`, provozní porucha, a `drive_by_bulk_download`); oba případy jsou dedup pod otevřeným klíčem (`hidden.state_open` 47, resp. 11 výskytů), tedy cesta C7, kterou brána neřeší: nevyvrácený klíč zůstane otevřený a pohltí pozdější výskyt. Na úrovni útoků se v RG změní 48 útoků oběma směry, v FG 4.
+- **K20-3:** zobrazené FP u RG **+3,0 až +3,4 %** (interval 1,2 až 5,6 %), nad prahem 2 %. To je předpovězená cena pravidel R1 a R2 v `recommended()`: zmizí 337 až 432 vyvrácení na závislém důkazu, z toho většina neškodných. Na ladicích seedech to bylo +1,8 %, odhad na jedné sadě seedů tedy cenu podhodnotil. U FG beze změny.
+- **K20-4:** případy pro člověka RG +0,8 až +1,0 %, FG −0,25 až 0,00 %.
+
+**Rozhodnutí podle předregistrace:** FG splnila K20-1 až K20-4 ve všech třech konfiguracích na držených seedech, RG ne (K20-3 a K20-2). Navrhuje se preset `final` + `close_gate` (místo samotného `recommended()`); `recommended()` se v tomto kroku nemění.
+
+## 6. Závěr a co se nepodařilo
+
+Audit ukázal, že „nespolupracující přepínače“ mají jednoho společného jmenovatele: o zavření nálezu rozhodovaly tři moduly a pravidla R1 a R2 platila jen v některých kombinacích. Všech 84 omylem vyvrácených rozhodnutí kroku 19 stálo na závislém nebo žádném neškodném důkazu (historie, profil hostu, peeři), 8 z nich u vysokého dopadu; 12 automatických zavření byl záznam skeneru bez rozsahu cílů. „Zhoršení“ kandidáta kroku 19 vzniklo hlavně tím, že `refute_episode` převedl tiché pohlcení pod vyvráceným klíčem (které metrika nevidí) na počítaná opakovaná vyvrácení; na úrovni útoků kandidát skrýval méně.
+
+Jediná brána zavření (`close_gate`) dělá z R1 a R2 invariant stavu paměti: zavřený stav má vždy lístek s pozitivním důkazem a vlastníkem, chráněný a vysoký dopad se nezavře, podezřelý klíč je zamčený, zavřený klíč pohltí jen svou epizodu. Na držených seedech: **0 omylem zavřených ve všech ramenech s branou (horní mez 0,087 %)**, u `final` bez jakékoli ceny v detekci, FP a zátěži člověka.
+
+Co se nepodařilo nebo zůstává otevřené:
+
+1. **Brána nad `recommended()` nesplnila FP (+3,0 až +3,4 %) ani kritérium rodin** (dva útoky). Pravidla R1 a R2 v presetu bez přísného zavírání stojí ~3 % zobrazených FP; ladit se to nedá bez porušení R1.
+2. **Dedup otevřeného klíče (C7) zůstává tichou cestou:** útok pod už otevřeným klíčem bez eskalace se nezobrazí. Brána ho nezhoršuje systematicky, ale když klíč přestane být vyvracen, pohltí ho otevřený stav (oba poklesy rodin na držených seedech). Je to další kandidát na opravu (sloučit `redisplay` a `redisplay_age`, eskalace podle nové pravdy, ne jen zdroje).
+3. **Kritérium rodin počítá i neškodné vzory `hn_*`** (na ladicích seedech pokles `hn_mail_newsletter_burst` byl pokles FP, ne detekce); definice se po předregistraci neměnila.
+4. **Předpověď FP (několik procent) se na ladicích seedech nepotvrdila (+1,8 %), na držených ano (+3,0 až +3,4 %).** Jeden ladicí soubor seedů cenu podhodnotil.
+5. **Produkce:** brána je zapojena i v `pipeline/v3.rs`, ale soak a produkce dál mají dvě kopie orchestrace (M10–M14: učená vs. pevná apriorní P, okamžik zobrazení, `LifecycleRecord` před žebříkem, tichá 0,15 ve složce otevřených případů). Lístek se neukládá do SQLite (po restartu se zavřená položka bezpečně převede na `Closed`). Reálná data se neměřila: na CTU-13 a LUFlow žebřík nic nevyvrací (kroky 15 a 16), brána by tam nic neměnila.
+6. **Chráněné prostředky (hosty) v kódu dál nejsou** (M16); brána chrání typy, signály P4/P5 a vysoký dopad.
+7. **„Vlastník“ pozitivního důkazu je schvalovatel záznamu kontextu nebo položky seznamu povolených** (volba autora); v simulaci mají všechny záznamy schvalovatele „sim-spravce“, takže kontrola vlastníka se v soaku neprojeví.
+8. Běhy se po prvních rozdílných rozhodnutích rozcházejí (jiná čísla `asset:N`, jiné pozdní eskalace), takže rozdíly jednotlivých útoků mezi rameny jsou z části chaos zpětné vazby, ne příčina; hodnoceno párově na 40 sítích.
+9. Council, sol-loop ani delegování se podle zadání nespouštěly; review jen autorské.
+
+Návrh, co ve `V3Features` smazat a sloučit, je v `audit-jadra.md`, sekce 4: sloučit sedm „zavíracích“ přepínačů do `close_gate` a ten po ověření udělat výchozím; smazat `ops_class`, `ops_symptoms`, `ops_blast`, `upload_horizon` (změřeně škodí nebo nepomáhají) a vypnuté detektory bez dalšího měření; odpojit rozsah skeneru v simulaci od `strict_close`; sloučit `redisplay` a `redisplay_age`; jedna sdílená funkce cyklu pro soak i produkci.
