@@ -86,11 +86,11 @@ impl V3Runtime {
                     profile: engine.profile(),
                     protect: engine.protect(),
                     endpoint: engine.endpoint(),
-                    strict_refute: engine.strict_close(),
+                    strict_refute: engine.strict_refute(),
                     competing: engine.hypotheses(),
                     l7: engine.l7_ladder(),
                     ops: engine.ops_telemetry(),
-                    endpoint_weak: engine.endpoint_weak(),
+                    endpoint_weak: engine.endpoint_weak_effective(),
                     confirm_evidence: engine.confirm_evidence(),
                     ..Default::default()
                 },

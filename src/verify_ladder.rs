@@ -3078,7 +3078,12 @@ mod tests {
             },
         );
         assert_eq!(peers.status, Status::Refuted, "{}", peers.reason);
-        assert!(peers.steps.iter().all(|(c, t)| *t != "benign" || benign_group(*c).is_none()));
+        assert!(
+            peers
+                .steps
+                .iter()
+                .all(|(c, t)| *t != "benign" || benign_group(*c).is_none())
+        );
     }
 
     /// Audit K20: `endpoint_weak` meni jen skupinu dukazu, kterou cte pouze `strict_refute`

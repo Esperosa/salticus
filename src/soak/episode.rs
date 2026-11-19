@@ -1834,9 +1834,10 @@ fn run_episode_inner(
                         })
                         .flatten();
                     let explanation = decision.and_then(|d| d.explanation);
+                    let gate_on = cfg.engine.close_gate();
                     let disposition = match runtime.memory.as_mut() {
-                        Some(memory) => memory.observe(
-                            &Observation {
+                        Some(memory) => {
+                            let observation = Observation {
                                 key,
                                 severity: finding.severity,
                                 count,
@@ -1846,9 +1847,32 @@ fn run_episode_inner(
                                     .as_ref()
                                     .is_some_and(|e| e.kind.explains_volume()),
                                 protected: protection.is_some(),
-                            },
-                            explanation.as_ref().map(|e| e.reason.as_str()),
-                        ),
+                            };
+                            if gate_on {
+                                // krok 20: kontext zavre jen s listkem jedine brany
+                                let ticket = explanation.as_ref().and_then(|e| {
+                                    crate::closure_gate::admit_explanation(
+                                        e,
+                                        &finding.finding_type,
+                                        &sources,
+                                        at,
+                                        crate::closure_gate::Subject {
+                                            protected: protection.is_some(),
+                                            high_impact: finding.severity
+                                                == crate::model::Severity::High
+                                                || severe_types.contains(&finding.finding_type),
+                                        },
+                                    )
+                                    .ok()
+                                });
+                                memory.observe_gated(&observation, ticket)
+                            } else {
+                                memory.observe(
+                                    &observation,
+                                    explanation.as_ref().map(|e| e.reason.as_str()),
+                                )
+                            }
+                        }
                         None => match &explanation {
                             Some(e) => Disposition::AutoResolved(e.reason.clone()),
                             None => Disposition::First,
@@ -1994,9 +2018,26 @@ fn run_episode_inner(
                             .as_ref()
                             .map(|r| (&r.store, &r.policy, t0 + crate::soak::traffic::CYCLE_SECS)),
                     };
-                    let decisions = runtime.ladder.step(cycle as u64, &mut env);
+                    let mut decisions = runtime.ladder.step(cycle as u64, &mut env);
                     agg.output.ladder_liveness_runs += env.liveness_runs;
                     agg.output.ladder_liveness_failures += env.liveness_failures;
+                    let gate_on = cfg.engine.close_gate();
+                    if gate_on && let Some(memory) = runtime.memory.as_mut() {
+                        // krok 20: rozhodnuti do pameti jedinou cestou; zobrazeni a citace se
+                        // ridi skutecnym vysledkem (odmitnute vyvraceni = eskalace)
+                        decisions = decisions
+                            .into_iter()
+                            .map(|d| {
+                                let sources = lc
+                                    .keys
+                                    .iter()
+                                    .position(|k| k.as_ref() == Some(&d.key))
+                                    .map(|i| lc.sources[i].clone())
+                                    .unwrap_or_default();
+                                crate::closure_gate::settle(memory, d, &sources, at)
+                            })
+                            .collect();
+                    }
                     for decision in &decisions {
                         use crate::verify_ladder::Status;
                         // krok 8: pocitadla vlivu koncove telemetrie (E10)
@@ -2018,7 +2059,7 @@ fn run_episode_inner(
                             .keys
                             .iter()
                             .position(|k| k.as_ref() == Some(&decision.key));
-                        if let Some(memory) = runtime.memory.as_mut() {
+                        if let Some(memory) = runtime.memory.as_mut().filter(|_| !gate_on) {
                             match decision.status {
                                 Status::Refuted => {
                                     memory.refute(&decision.key, &decision.reason, at);
@@ -3860,6 +3901,13 @@ fn run_episode_inner(
     if let Some(memory) = v3.as_ref().and_then(|runtime| runtime.memory.as_ref()) {
         agg.output.memory_peak_entries = memory.stats.peak_entries;
         agg.output.memory_evicted = memory.stats.evicted;
+        // krok 20: brana zavreni (jen v jejim rezimu, jinak se klice nezapisuji)
+        if memory.config().gate {
+            agg.output.k7_add("gate_bypass", memory.stats.gate_bypass);
+            agg.output.k7_add("gate_refused", memory.stats.gate_refused);
+            agg.output
+                .k7_add("gate_violations", memory.gate_violations().len() as u64);
+        }
     }
     agg.verification.skipped_budget += plan_queue.dropped;
     agg.verification.deferred += plan_queue.deferred;

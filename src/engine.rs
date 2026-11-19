@@ -219,6 +219,10 @@ pub struct V3Features {
     /// kterou čeká). Vyžaduje žebřík.
     #[serde(default)]
     pub confirm_evidence: bool,
+    /// Krok 20: jediná brána zavření (`closure_gate`): zavřít jen s pozitivním důkazem a
+    /// vlastníkem, nikdy chráněné ani vysoký dopad, zámek podezření, rozsah epizody. Vyžaduje paměť.
+    #[serde(default)]
+    pub close_gate: bool,
 }
 
 impl Default for V3Features {
@@ -228,7 +232,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 54] = [
+    pub const NAMES: [&'static str; 55] = [
         "memory",
         "rate",
         "volume",
@@ -283,6 +287,7 @@ impl V3Features {
         "upload_horizon",
         "case_folder",
         "confirm_evidence",
+        "close_gate",
     ];
 
     pub fn all() -> Self {
@@ -341,6 +346,7 @@ impl V3Features {
             upload_horizon: true,
             case_folder: true,
             confirm_evidence: true,
+            close_gate: true,
         }
     }
 
@@ -407,6 +413,7 @@ impl V3Features {
             upload_horizon: false,
             case_folder: false,
             confirm_evidence: false,
+            close_gate: false,
             ..Self::all()
         }
     }
@@ -476,6 +483,7 @@ impl V3Features {
             upload_horizon: false,
             case_folder: false,
             confirm_evidence: false,
+            close_gate: false,
         }
     }
 
@@ -559,6 +567,7 @@ impl V3Features {
             "upload_horizon" => &mut self.upload_horizon,
             "case_folder" => &mut self.case_folder,
             "confirm_evidence" => &mut self.confirm_evidence,
+            "close_gate" => &mut self.close_gate,
             _ => return None,
         })
     }
@@ -783,6 +792,18 @@ impl EngineConfig {
     pub fn confirm_evidence(&self) -> bool {
         self.on(|f| f.confirm_evidence && f.ladder)
     }
+    /// Krok 20: jediná brána zavření (jen s pamětí nálezů, která drží stav a lístek).
+    pub fn close_gate(&self) -> bool {
+        self.on(|f| f.close_gate && f.memory)
+    }
+    /// Přísné vyvrácení žebříku: `strict_close`, nebo brána zavření (krok 20).
+    pub fn strict_refute(&self) -> bool {
+        self.strict_close() || self.close_gate()
+    }
+    /// „Vše v pořádku“ od agenta jako slabá skupina: `endpoint_weak`, nebo brána (krok 20).
+    pub fn endpoint_weak_effective(&self) -> bool {
+        self.endpoint_weak() || (self.close_gate() && self.endpoint())
+    }
     pub fn case_files(&self) -> bool {
         self.on(|f| f.case_files && f.ladder && f.memory)
     }
@@ -830,11 +851,17 @@ impl EngineConfig {
     /// Konfigurace paměti nálezů podle zapnutých změn.
     pub fn memory_config(&self) -> crate::finding_memory::MemoryConfig {
         crate::finding_memory::MemoryConfig {
-            escalate_first_source: self.recall() || self.strict_close(),
+            escalate_first_source: self.recall() || self.strict_close() || self.close_gate(),
             reopen_stale: self.strict_close(),
             redisplay_age_s: if self.redisplay_age() { 6 * 3600 } else { 0 },
-            // krok 15: odmlka delsi nez hodina = nova epizoda (dva cykly po 30 min)
-            refute_episode_s: if self.refute_episode() { 3600 } else { 0 },
+            // krok 15: odmlka delsi nez hodina = nova epizoda (dva cykly po 30 min);
+            // krok 20: brana zavreni ma rozsah epizody vzdy
+            refute_episode_s: if self.refute_episode() || self.close_gate() {
+                3600
+            } else {
+                0
+            },
+            gate: self.close_gate(),
             protect: self.protect(),
             volume_factor: if self.redisplay() { 2.0 } else { 4.0 },
             min_escalation_count: if self.redisplay() { 8 } else { 20 },
@@ -860,6 +887,35 @@ mod tests {
         assert_eq!(cfg.mode, EngineMode::Legacy);
         assert!(!cfg.memory() && !cfg.v3_detector() && !cfg.context_gate());
         assert_eq!(cfg.label(), "legacy");
+    }
+
+    /// Krok 20: brána zavření je mimo preset, potřebuje paměť a zapíná pravidla, která dřív
+    /// visela na kombinacích přepínačů (přísné vyvrácení, slabý agent, rozsah epizody).
+    #[test]
+    fn close_gate_is_opt_in_needs_memory_and_subsumes_combinations() {
+        assert!(!V3Features::recommended().close_gate);
+        let base = EngineConfig::v3();
+        assert!(!base.close_gate() && !base.memory_config().gate);
+        assert_eq!(base.strict_refute(), base.strict_close());
+        let gate = EngineConfig {
+            v3: V3Features::recommended()
+                .enable_list("close_gate,endpoint")
+                .unwrap(),
+            ..EngineConfig::v3()
+        };
+        assert!(gate.close_gate() && gate.strict_refute() && gate.endpoint_weak_effective());
+        let cfg = gate.memory_config();
+        assert!(cfg.gate && cfg.escalate_first_source && cfg.refute_episode_s == 3600);
+        assert!(crate::context_gate::GatePolicy::for_engine(&gate).strict_close);
+        let no_memory = EngineConfig {
+            v3: V3Features::recommended()
+                .enable_list("close_gate")
+                .unwrap()
+                .disable_list("memory")
+                .unwrap(),
+            ..EngineConfig::v3()
+        };
+        assert!(!no_memory.close_gate());
     }
 
     /// Krok 18: politika potvrzování je mimo preset a bez žebříku nic nedělá.
@@ -895,7 +951,7 @@ mod tests {
         };
         assert_eq!(
             cfg.label(),
-            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext+endpoint_allow+endpoint_weak+refute_episode+ops_symptoms+ops_blast+upload_horizon+case_folder+confirm_evidence]"
+            "v3[memory+unexpected+context+identity+recall+ladder+learning+devices+peers+egress+beacon+interactive+graph+profile+sensor_strict+ops_class+novelty+context_guard+protect+ops_annotate+graph_incident+novel_burst+fanout2+cross_source+saas_group+endpoint+breadth+breadth_volume+bulk_novel+peer_burst+scan_fresh+bulk_clear+strict_close+l7_tls+l7_dns+hypotheses+redisplay+icmp_payload+slow_fanin+case_files+l7_ladder+redisplay_age+ops_telemetry+endpoint_ext+endpoint_allow+endpoint_weak+refute_episode+ops_symptoms+ops_blast+upload_horizon+case_folder+confirm_evidence+close_gate]"
         );
         let step2 = EngineConfig {
             mode: EngineMode::V3,

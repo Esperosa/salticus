@@ -546,11 +546,11 @@ impl V3Session {
                 Some(ladder) => ladder,
                 None => crate::verify_ladder::Ladder::new(
                     crate::verify_ladder::LadderPolicy {
-                        strict_refute: self.engine.strict_close(),
+                        strict_refute: self.engine.strict_refute(),
                         competing: self.engine.hypotheses(),
                         l7: self.engine.l7_ladder(),
                         ops: self.engine.ops_telemetry(),
-                        endpoint_weak: self.engine.endpoint_weak(),
+                        endpoint_weak: self.engine.endpoint_weak_effective(),
                         confirm_evidence: self.engine.confirm_evidence(),
                         ..Default::default()
                     },
@@ -581,8 +581,12 @@ impl V3Session {
         ladder.policy.protect = self.engine.protect();
         ladder.policy.endpoint = self.engine.endpoint();
         ladder.policy.ops = self.engine.ops_telemetry();
-        ladder.policy.endpoint_weak = self.engine.endpoint_weak();
+        ladder.policy.endpoint_weak = self.engine.endpoint_weak_effective();
         ladder.policy.confirm_evidence = self.engine.confirm_evidence();
+        // krok 20 (audit M11): s branou zavreni plati prisne vyvraceni i pro ulozeny zebrik
+        if self.engine.close_gate() {
+            ladder.policy.strict_refute = true;
+        }
         if self.engine.protect() {
             let reset = ladder.reset_forbidden_novelty_evidence();
             if reset > 0 {
@@ -663,20 +667,40 @@ impl V3Session {
                 .then(|| crate::protection::protection(&finding.finding_type, signals))
                 .flatten();
             let explanation = decision.explanation;
-            let disposition = memory.observe(
-                &Observation {
-                    key: key.clone(),
-                    severity: finding.severity,
-                    count,
-                    sources: &sources,
-                    at: now,
-                    volume_explained: explanation
-                        .as_ref()
-                        .is_some_and(|e| e.kind.explains_volume()),
-                    protected: protection.is_some(),
-                },
-                explanation.as_ref().map(|e| e.reason.as_str()),
-            );
+            let observation = Observation {
+                key: key.clone(),
+                severity: finding.severity,
+                count,
+                sources: &sources,
+                at: now,
+                volume_explained: explanation
+                    .as_ref()
+                    .is_some_and(|e| e.kind.explains_volume()),
+                protected: protection.is_some(),
+            };
+            let disposition = if self.engine.close_gate() {
+                // krok 20: kontext zavre jen s listkem jedine brany
+                let ticket = explanation.as_ref().and_then(|e| {
+                    crate::closure_gate::admit_explanation(
+                        e,
+                        &finding.finding_type,
+                        &sources,
+                        now,
+                        crate::closure_gate::Subject {
+                            protected: protection.is_some(),
+                            high_impact: finding.severity == crate::model::Severity::High
+                                || severe.contains(&finding.finding_type),
+                        },
+                    )
+                    .ok()
+                });
+                memory.observe_gated(&observation, ticket)
+            } else {
+                memory.observe(
+                    &observation,
+                    explanation.as_ref().map(|e| e.reason.as_str()),
+                )
+            };
             let behavioral = !crate::finding_kinds::is_static_exposure(&finding.finding_type);
             let auto_closed = matches!(
                 disposition,
@@ -809,8 +833,52 @@ impl V3Session {
                 ops: ops_ladder_store.as_ref(),
                 ops_policy: &diag_policy,
             };
-            let decisions = ladder.step(cycle, &mut env);
-            for decision in &decisions {
+            let mut decisions = ladder.step(cycle, &mut env);
+            if self.engine.close_gate() {
+                // krok 20: rozhodnuti zebriku do pameti jedinou cestou (brana zavreni); vysledek
+                // (vcetne odmitnuteho vyvraceni) je to, co jde do reportu
+                decisions = decisions
+                    .into_iter()
+                    .map(|mut decision| {
+                        if decision.status == crate::verify_ladder::Status::Refuted
+                            && !ladder_closes
+                        {
+                            decision.status = crate::verify_ladder::Status::Escalated;
+                            decision.reason = format!(
+                                "audit uzavreni: vyvraceni pozastaveno; {}",
+                                decision.reason
+                            );
+                        }
+                        let sources = keys
+                            .iter()
+                            .position(|k| *k == decision.key)
+                            .map(|i| signal_sources[i].clone())
+                            .unwrap_or_default();
+                        let settled =
+                            crate::closure_gate::settle(&mut memory, decision, &sources, now);
+                        if settled.status == crate::verify_ladder::Status::Refuted
+                            && let Some(sample) = audit.maybe_sample(
+                                &audit_policy,
+                                crate::closure_audit::LADDER_KIND,
+                                &settled.key,
+                                &settled.finding_id,
+                                &settled.reason,
+                                now,
+                            )
+                        {
+                            memory.record(
+                                now,
+                                "engine",
+                                "audit_sample",
+                                &settled.key,
+                                &format!("vzorek {} do {}", sample.id, sample.deadline),
+                            );
+                        }
+                        settled
+                    })
+                    .collect();
+            }
+            for decision in decisions.iter().filter(|_| !self.engine.close_gate()) {
                 use crate::verify_ladder::Status;
                 match decision.status {
                     Status::Refuted if !ladder_closes => {

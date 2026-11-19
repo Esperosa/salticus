@@ -85,6 +85,12 @@ pub struct MemoryConfig {
     /// epizoda, kterou žebřík ověří znovu (důkaz neškodnosti z minula nemusí platit).
     #[serde(default)]
     pub refute_episode_s: i64,
+    /// Krok 20: jediná brána zavření. Do `AutoResolved` a `Refuted` se vstupuje jen s lístkem
+    /// `closure_gate::CloseTicket` (uloží se k položce); textové vysvětlení a `refute` bez
+    /// lístku nic nezavřou. Potvrzený nebo podezřelý klíč se nezavře, dokud je aktivní;
+    /// zavřený klíč pohltí jen výskyt se zdroji z lístku.
+    #[serde(default)]
+    pub gate: bool,
 }
 
 impl Default for MemoryConfig {
@@ -103,6 +109,7 @@ impl Default for MemoryConfig {
             reopen_stale: false,
             redisplay_age_s: 0,
             refute_episode_s: 0,
+            gate: false,
         }
     }
 }
@@ -301,6 +308,12 @@ pub struct Entry {
     pub max_count: u32,
     pub sources: BTreeSet<String>,
     pub auto_reason: Option<String>,
+    /// Krok 20: lístek brány zavření, se kterým položka vstoupila do zavřeného stavu.
+    #[serde(default)]
+    pub ticket: Option<crate::closure_gate::CloseTicket>,
+    /// Krok 20: klíč byl předán jako nepotvrzené podezření; nezavře se, dokud je aktivní.
+    #[serde(default)]
+    pub suspected: bool,
     #[serde(skip)]
     persisted_last_seen: Option<DateTime<Utc>>,
     #[serde(skip)]
@@ -324,6 +337,11 @@ pub struct MemoryStats {
     pub protect_reset: u64,
     #[serde(default)]
     pub protect_refused: u64,
+    /// Krok 20: pokusy o zavření mimo bránu (text bez lístku) a odmítnutá zavření (zámek).
+    #[serde(default)]
+    pub gate_bypass: u64,
+    #[serde(default)]
+    pub gate_refused: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -464,6 +482,7 @@ impl FindingMemory {
                 let when = at.unwrap_or(entry.last_seen);
                 entry.state = FindingState::Closed;
                 entry.auto_reason = None;
+                entry.ticket = None;
                 entry.dirty = true;
                 self.log(
                     when,
@@ -558,6 +577,8 @@ impl FindingMemory {
                     max_count: max_count.clamp(0, u32::MAX as i64) as u32,
                     sources,
                     auto_reason: reason,
+                    ticket: None,
+                    suspected: false,
                     persisted_last_seen: Some(last_seen),
                     dirty: false,
                 },
@@ -565,6 +586,7 @@ impl FindingMemory {
         }
         memory.stats.peak_entries = memory.entries.len() as u64;
         memory.reset_protected(None);
+        memory.reset_unticketed(None);
         Ok(memory)
     }
 
@@ -659,8 +681,47 @@ impl FindingMemory {
     /// Zpracuje jedno pozorování. `explanation` = neškodné vysvětlení z kontextové brány
     /// (už prošlé jejími mantinely); `None` = bez vysvětlení.
     pub fn observe(&mut self, obs: &Observation<'_>, explanation: Option<&str>) -> Disposition {
+        if self.cfg.gate && explanation.is_some() {
+            // krok 20: textove vysvetleni bez listku brany nic nezavre
+            self.stats.gate_bypass += 1;
+            return self.observe_inner(obs, None, None);
+        }
+        self.observe_inner(obs, explanation, None)
+    }
+
+    /// Krok 20: pozorování v režimu brány; zavřít (`AutoResolved`) smí jen lístek
+    /// `closure_gate::admit_context`.
+    pub fn observe_gated(
+        &mut self,
+        obs: &Observation<'_>,
+        ticket: Option<crate::closure_gate::CloseTicket>,
+    ) -> Disposition {
+        let reason = ticket.as_ref().map(|t| t.reason().to_string());
+        self.observe_inner(obs, reason.as_deref(), ticket)
+    }
+
+    fn observe_inner(
+        &mut self,
+        obs: &Observation<'_>,
+        explanation: Option<&str>,
+        ticket: Option<crate::closure_gate::CloseTicket>,
+    ) -> Disposition {
         self.stats.observed += 1;
         let cfg = self.cfg;
+        // krok 20: v rezimu brany zavira jen listek; potvrzeny nebo podezrely klic nic
+        let locked = cfg.gate
+            && self
+                .entries
+                .get(&obs.key)
+                .is_some_and(|e| e.suspected || e.state == FindingState::Confirmed);
+        let (explanation, ticket) = if cfg.gate && (ticket.is_none() || locked) {
+            if locked && ticket.is_some() {
+                self.stats.gate_refused += 1;
+            }
+            (None, None)
+        } else {
+            (explanation, ticket)
+        };
         // krok 7 (A1): chraneny nalez zadne vysvetleni neprijme, zakazany stav se zrusi
         let shielded = self.shielded(&obs.key, obs.protected);
         let explanation = if shielded { None } else { explanation };
@@ -674,6 +735,7 @@ impl FindingMemory {
             let previous = entry.state;
             entry.state = FindingState::Closed;
             entry.auto_reason = None;
+            entry.ticket = None;
             entry.dirty = true;
             self.stats.protect_reset += 1;
             self.log(
@@ -714,6 +776,8 @@ impl FindingMemory {
                         max_count: obs.count,
                         sources,
                         auto_reason: explanation.map(ToString::to_string),
+                        ticket: explanation.and(ticket.clone()),
+                        suspected: false,
                         persisted_last_seen: None,
                         dirty: true,
                     },
@@ -777,6 +841,21 @@ impl FindingMemory {
                 } else {
                     escalation
                 };
+                // krok 20: zavreny klic pohlti jen vyskyt se zdroji z listku (novy nebo
+                // dosud neznamy zdroj = nova skutecnost, overi se znovu)
+                let escalation = if escalation.is_none()
+                    && cfg.gate
+                    && matches!(previous, FindingState::Refuted | FindingState::AutoResolved)
+                {
+                    let covered = ticket.as_ref().or(entry.ticket.as_ref()).is_some_and(|t| {
+                        obs.sources
+                            .iter()
+                            .all(|s| t.sources().iter().any(|x| x == s))
+                    });
+                    (!covered).then_some(Escalation::NewSource)
+                } else {
+                    escalation
+                };
                 // Objem v okne s neskodnym vysvetlenim (zaloha, davka) je ocekavany;
                 // vyssi zavaznost nebo novy zdroj se ale zobrazi i v okne kontextu.
                 let escalation = match (escalation, explanation) {
@@ -814,6 +893,12 @@ impl FindingMemory {
                     Disposition::AutoResolved(reason) => Some(reason.clone()),
                     _ => None,
                 };
+                // krok 20: listek plati pro zavreny stav, ktery z nej vznikl
+                match (&disposition, state) {
+                    (Disposition::AutoResolved(_), _) => entry.ticket = ticket.clone(),
+                    (_, FindingState::Refuted) => {}
+                    _ => entry.ticket = None,
+                }
                 let changed = state != entry.state;
                 entry.state = state;
                 if disposition.displayed() {
@@ -860,6 +945,8 @@ impl FindingMemory {
             let quiet = (now - entry.last_seen).num_seconds();
             if entry.state.active() && quiet > cfg.quiet_close_s {
                 entry.state = FindingState::Closed;
+                entry.ticket = None;
+                entry.suspected = false;
                 entry.dirty = true;
                 closed.push(key.clone());
             } else if !entry.state.active() && quiet > cfg.retention_s {
@@ -921,6 +1008,10 @@ impl FindingMemory {
         entry.state = state;
         if state != FindingState::AutoResolved {
             entry.auto_reason = None;
+            entry.ticket = None;
+        }
+        if state == FindingState::Closed {
+            entry.suspected = false;
         }
         entry.dirty = true;
         self.log(at, actor, action, key, format!("z {}", previous.label()));
@@ -940,6 +1031,12 @@ impl FindingMemory {
     /// Ověření vyvrátilo hypotézu (žebřík, krok 2B): stav `Refuted` s důvodem v auditu.
     /// Vratné (`reopen`), změna příznaků se zobrazí jako eskalace.
     pub fn refute(&mut self, key: &FindingKey, reason: &str, at: DateTime<Utc>) -> bool {
+        if self.cfg.gate {
+            // krok 20: vyvraceni bez listku brany nic nezavre
+            self.stats.gate_bypass += 1;
+            self.log(at, "verify_ladder", "gate_bypass", key, clip(reason));
+            return false;
+        }
         if self.shielded(key, false) {
             self.stats.protect_refused += 1;
             self.log(at, "verify_ladder", "protect_refuse", key, clip(reason));
@@ -963,6 +1060,127 @@ impl FindingMemory {
             format!("z {}: {}", previous.label(), clip(reason)),
         );
         true
+    }
+
+    /// Krok 20: vyvrácení s lístkem brány. Odmítne chráněný klíč, potvrzený nebo podezřelý
+    /// klíč (zámek podezření) a klíč bez položky. Bez režimu brány = `refute`.
+    pub fn refute_gated(
+        &mut self,
+        key: &FindingKey,
+        ticket: crate::closure_gate::CloseTicket,
+        at: DateTime<Utc>,
+    ) -> bool {
+        if !self.cfg.gate {
+            return self.refute(key, ticket.reason(), at);
+        }
+        if crate::protection::is_protected_type(&key.finding_type) || self.shielded(key, false) {
+            self.stats.protect_refused += 1;
+            self.log(
+                at,
+                "verify_ladder",
+                "protect_refuse",
+                key,
+                clip(ticket.reason()),
+            );
+            return false;
+        }
+        let Some(entry) = self.entries.get_mut(key) else {
+            return false;
+        };
+        if entry.state == FindingState::Confirmed || entry.suspected {
+            self.stats.gate_refused += 1;
+            self.log(at, "verify_ladder", "gate_lock", key, clip(ticket.reason()));
+            return false;
+        }
+        let previous = entry.state;
+        entry.state = FindingState::Refuted;
+        entry.auto_reason = Some(clip(ticket.reason()));
+        let detail = format!(
+            "z {}: vlastnik {}, skupiny {:?}: {}",
+            previous.label(),
+            ticket.owner(),
+            ticket.groups(),
+            clip(ticket.reason())
+        );
+        entry.ticket = Some(ticket);
+        entry.dirty = true;
+        self.log(at, "verify_ladder", "verify_refute", key, detail);
+        true
+    }
+
+    /// Krok 20: klíč předaný jako nepotvrzené podezření se nezavře, dokud je aktivní.
+    pub fn mark_suspected(&mut self, key: &FindingKey, at: DateTime<Utc>) {
+        if let Some(entry) = self.entries.get_mut(key)
+            && !entry.suspected
+        {
+            entry.suspected = true;
+            if matches!(
+                entry.state,
+                FindingState::Refuted | FindingState::AutoResolved
+            ) {
+                entry.state = FindingState::Open;
+                entry.ticket = None;
+                entry.auto_reason = None;
+            }
+            entry.dirty = true;
+            self.log(at, "verify_ladder", "suspect_hold", key, String::new());
+        }
+    }
+
+    /// Krok 20: zavřené položky bez lístku (uložené před režimem brány nebo po restartu, lístek
+    /// se do SQLite neukládá) se převedou na `Closed`: další výskyt je znovu otevře a zobrazí.
+    pub fn reset_unticketed(&mut self, at: Option<DateTime<Utc>>) -> usize {
+        if !self.cfg.gate {
+            return 0;
+        }
+        let mut keys: Vec<FindingKey> = self
+            .entries
+            .iter()
+            .filter(|(_, e)| {
+                matches!(e.state, FindingState::AutoResolved | FindingState::Refuted)
+                    && e.ticket.is_none()
+            })
+            .map(|(k, _)| k.clone())
+            .collect();
+        keys.sort();
+        for key in &keys {
+            if let Some(entry) = self.entries.get_mut(key) {
+                let when = at.unwrap_or(entry.last_seen);
+                entry.state = FindingState::Closed;
+                entry.auto_reason = None;
+                entry.dirty = true;
+                self.log(when, "engine", "gate_reset", key, String::new());
+            }
+        }
+        keys.len()
+    }
+
+    /// Krok 20: porušení invariantu brány na stavu (prázdné = v pořádku). Zavřený stav musí
+    /// mít lístek s pozitivním důkazem a vlastníkem, nesmí být chráněného typu ani podezřelý.
+    pub fn gate_violations(&self) -> Vec<String> {
+        if !self.cfg.gate {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for (key, e) in &self.entries {
+            if !matches!(e.state, FindingState::AutoResolved | FindingState::Refuted) {
+                continue;
+            }
+            let tag = format!("{}|{}|{}", key.entity, key.finding_type, key.service);
+            match &e.ticket {
+                None => out.push(format!("{tag}: zavreno bez listku")),
+                Some(t) if !t.is_positive() => out.push(format!("{tag}: listek bez dukazu")),
+                Some(_) => {}
+            }
+            if crate::protection::is_protected_type(&key.finding_type) {
+                out.push(format!("{tag}: chraneny typ zavren"));
+            }
+            if e.suspected {
+                out.push(format!("{tag}: podezrely klic zavren"));
+            }
+        }
+        out.sort();
+        out
     }
 
     /// Záznam rozhodnutí žebříku bez změny stavu (eskalace člověku, potvrzení).

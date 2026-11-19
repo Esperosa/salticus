@@ -270,7 +270,8 @@ impl GatePolicy {
             sensor_strict: engine.sensor_strict(),
             require_identified_source: engine.context_guard(),
             protect: engine.protect(),
-            strict_close: engine.strict_close(),
+            // krok 20: brana zavreni prijme jen kontext s doloženym zdrojem
+            strict_close: engine.strict_close() || engine.close_gate(),
             ..Self::default()
         }
     }
@@ -289,18 +290,7 @@ impl GatePolicy {
     /// Krok 12: pozitivni dukaz o zdroji. Nalez musi mit identifikovane zdroje a VSECHNY
     /// musi patrit zaznamu (zdroj zaznamu nebo jeho host); jinak kontext nalez nevysvetli.
     fn source_proven(&self, entry: &ContextEntry, input: &GateInput<'_>) -> bool {
-        if !self.strict_close {
-            return true;
-        }
-        // skener bez rozsahu cilu by vysvetlil celou sit: pozitivni dukaz chybi
-        if entry.kind == ContextKind::AuthorizedScanner && entry.hosts.is_empty() {
-            return false;
-        }
-        !input.sources.is_empty()
-            && input
-                .sources
-                .iter()
-                .all(|s| entry.sources.contains(s) || entry.hosts.contains(s))
+        !self.strict_close || strictly_proven(entry, input)
     }
 
     /// Smí záznam vysvětlit nález vzhledem k pravidlům kroku 6?
@@ -324,6 +314,20 @@ impl GatePolicy {
         }
         true
     }
+}
+
+/// Zdroje nálezu jsou neprázdné a všechny patří záznamu; skener má rozsah cílů (krok 12;
+/// pro bránu zavření kroku 20 se počítá vždy, nezávisle na `strict_close`).
+fn strictly_proven(entry: &ContextEntry, input: &GateInput<'_>) -> bool {
+    // skener bez rozsahu cilu by vysvetlil celou sit: pozitivni dukaz chybi
+    if entry.kind == ContextKind::AuthorizedScanner && entry.hosts.is_empty() {
+        return false;
+    }
+    !input.sources.is_empty()
+        && input
+            .sources
+            .iter()
+            .all(|s| entry.sources.contains(s) || entry.hosts.contains(s))
 }
 
 impl Default for GatePolicy {
@@ -374,6 +378,10 @@ pub struct GateInput<'a> {
 pub struct Explanation {
     pub kind: ContextKind,
     pub reason: String,
+    /// Krok 20: schvalovatel záznamu, expirace a přísný důkaz zdroje (pro bránu zavření).
+    pub approved_by: String,
+    pub expires: DateTime<Utc>,
+    pub sources_proven: bool,
 }
 
 /// Rozhodnutí brány včetně nejednoznačnosti (krok 7, P5).
@@ -642,6 +650,9 @@ impl ContextGate {
                 Some(kinds) => format!("{base}; potvrzeno druhy {kinds}"),
                 None => base,
             },
+            approved_by: entry.approved_by.clone(),
+            expires: entry.expires,
+            sources_proven: strictly_proven(entry, input),
         })
     }
 

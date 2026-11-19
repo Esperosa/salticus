@@ -10,6 +10,7 @@ pub mod case_folder;
 pub mod case_history;
 pub mod case_memory;
 pub mod closure_audit;
+pub mod closure_gate;
 pub mod competing;
 pub mod config;
 pub mod conformal;
