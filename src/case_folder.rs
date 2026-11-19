@@ -181,18 +181,23 @@ pub struct FolderInput<'a> {
     pub endpoint_users: Option<Vec<String>>,
 }
 
-/// Krok 19: kontrola „rozlišuje“, když má změřenou vzájemnou informaci s třídou útok/neškodné
-/// (tabulky kroku 12); neutrální tabulka (poměr 1) dá 0.
-const MIN_INFO: f64 = 1e-6;
+/// Krok 19: kontrola „rozlišuje“, když její výsledek může změnit rozhodnutí o případu
+/// (kladná hrubá hodnota informace, EVOI bez ceny, tabulky kroku 12); neutrální tabulka
+/// (poměr 1) i kontrola, která P(útok) přes žádnou hranici rozhodnutí neposune, dají 0.
+const MIN_INFO: f64 = 1e-4;
 /// Začátek důvodu u zbývající kontroly, která rozlišuje (validátor a skript ho hledají).
 pub const DISCRIMINATES: &str = "neprovedeno; rozlisuje";
 
-/// Informace kontroly na jednotku ceny při P(útok) `p` (bity na cenu, `competing`).
+/// Hrubá hodnota informace kontroly při P(útok) `p` (`competing::evoi` s nulovou cenou):
+/// očekávané snížení ztráty rozhodnutí (uzavřít, potvrdit, předat) po jejím výsledku.
 fn discrimination(p: f64, kind: CheckKind) -> f64 {
-    let v = crate::competing::information_per_cost(
+    let v = crate::competing::evoi(
         p.clamp(1e-6, 1.0 - 1e-6),
+        &[],
         kind,
         crate::competing::measured_static(),
+        &crate::competing::Costs::default(),
+        0.0,
     );
     if v.is_finite() { v.max(0.0) } else { 0.0 }
 }
@@ -239,8 +244,12 @@ fn step_text(p: f64, c: &PendingCheck) -> String {
         return format!("Overit: {} (cena {:.2}).", c.check, c.cost);
     };
     use crate::competing::Result3;
+    // rozsah, ne směr: u některých kontrol je „podezřelý“ výsledek ve změřených tabulkách
+    // častější u neškodných případů (historie), takže popisek směru by byl zavádějící
+    let a = shifted(p, kind, Result3::Suspicious);
+    let b = shifted(p, kind, Result3::Benign);
     format!(
-        "Rucne {} ({}, cena {:.2}{}); podezrely vysledek -> P(utok) {:.2}, neskodny -> {:.2}.",
+        "Rucne {} ({}, cena {:.2}{}); vysledek posune P(utok) z {:.2} na {:.2} az {:.2}.",
         manual_step(kind),
         c.check,
         c.cost,
@@ -249,8 +258,9 @@ fn step_text(p: f64, c: &PendingCheck) -> String {
         } else {
             ""
         },
-        shifted(p, kind, Result3::Suspicious),
-        shifted(p, kind, Result3::Benign),
+        p,
+        a.min(b),
+        a.max(b),
     )
 }
 
@@ -741,8 +751,10 @@ pub fn build(input: &FolderInput<'_>) -> CaseFolder {
                         "pasivni: bez vlivu na provoz".into()
                     },
                     why: match rank {
-                        0 => format!("{DISCRIMINATES}, {info:.2} b/cena"),
-                        1 => "neprovedeno; rozlisovaci schopnost nezmerena".into(),
+                        0 => format!(
+                            "{DISCRIMINATES}: vysledek muze zmenit rozhodnuti (EVOI {info:.2})"
+                        ),
+                        1 => "neprovedeno; rozhodnuti nezmeni nebo nezmereno".into(),
                         _ => "provedeno bez vysledku: znovu ma smysl az s novymi daty".into(),
                     },
                 },

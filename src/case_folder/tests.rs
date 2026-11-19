@@ -608,7 +608,10 @@ fn recommendation_names_a_discriminating_check_and_its_effect() {
         "{}",
         f.recommended_step
     );
-    assert!(f.recommended_step.contains("podezrely vysledek -> P(utok)"));
+    assert!(
+        f.recommended_step
+            .contains("vysledek posune P(utok) z 0.30 na")
+    );
     // první v seznamu je kontrola, která rozlišuje
     assert!(
         f.to_verify[0].why.starts_with(DISCRIMINATES),
