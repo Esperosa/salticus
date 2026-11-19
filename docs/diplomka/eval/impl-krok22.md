@@ -292,3 +292,58 @@ Vedoucí po E2 schválil Act: E3 (držené seedy 20270301 až 20270310) se nespo
 ### 11.3 K22-N4: jen analýza
 
 Rozbor, kdo přiděluje nálezům záloh, dávek a skenu závažnost a zdroj (kód, ne výsledek brány); návrh opravy s měřením na ladicích seedech se jen zapíše, pravidla ani závažnosti se nemění.
+
+## 12. K22-N2 a K22-N3: výsledek (DO)
+
+Commit `785b9b5` (přepínač `scanner_guard` zapínaný s `ctx_host_first`; `SCAN_SHAPED`, `ContextGate::note_activity`, předběžná registrace nálezů cyklu v soaku i v produkční cestě, důvod do paměti a čítač `k22_scanner_foreign`). Binárka `F:\work-tmp\k22\bin\salticus-k22-785b9b5.exe`. Běhy `F:\work-tmp\k22\e2n23` (F2c a FG2, seedy 20269801 až 20269805, svět v2, `off`, 4 sítě, 168 h, se stínem) a `F:\work-tmp\k22\{reg4,regsh4}`; 34 úloh s kódem 0, ≈ 20 min. Vyhodnocení `F:\work-tmp\k22\e2n23-gate.txt` (F2 z E2 jako základ: bez `ctx_host_first` je kód beze změny, potvrzeno K22-6). Stopy dvou sítí `F:\work-tmp\k22\trace\n23-FG2-{20269803,20269804}.trace.jsonl`. Držené seedy nepoužity.
+
+| kritérium (11) | výsledek | stav |
+|---|---|---|
+| (1) N2 test | `k22_n2_scanner_record_explains_only_scan_shape`: `unexpected_traffic` ze skeneru na host v rozsahu (rekonstrukce 20269801/0) nevysvětlen ani nepodpořen i s explicitním `covers`; bez přepínače dál vysvětlen (chování E2); `scan_attempts` vysvětlen a doložen | splněno |
+| (2) property | `k22_scanner_guard_property`: 6 000 kalendářů × 2 politiky; skener nikdy nevysvětlí ani nepodpoří typ mimo `SCAN_SHAPED`; pro skenové typy a kalendáře bez skeneru rozhodnutí i podpora s přepínačem = bez něj; bez přepínače aktivita nic nemění (pokrytí: 184 zavření skenerem, 32 blokací N3) | splněno |
+| (3) N3 test | `k22_n3_scanner_foreign_activity_blocks_closure`: cizí typ, `unexpected_traffic`, sken mimo rozsah i skener jako cíl jiné aktivity → nevysvětleno, nejednoznačné, důvod; obě pořadí registrace stejně; aktivita mimo okno nebo cizího zařízení beze změny | splněno |
+| (4) ladicí seedy | FG2 a F2c: **0 omylem zavřených** (dříve 3), 0 útoků s omylem zavřeným nálezem (dříve 2), 0 pohlcených (dříve 5); 20269801/0 c144 a c145 i 20269803/2 c170 bez zavření; K22-2 85,32 → 85,37 % (žádná rodina níž), K22-3 FP ×0,991, K22-4 −0,01 % (tytéž hodnoty jako v E2) | splněno |
+| (5) K22-6 | `reg4` 48/48, `regsh4` 48/48 | splněno |
+| (6) testy | `cargo test --lib` 701 prošlo, 6 známých selhání (5 `broker` bez Redis, 1 `identity_lab` bez Dockeru); `fmt` čisté; `clippy` 125 varování proti 126 dříve, žádné ve změněném kódu | splněno |
+
+**Jak byly zastaveny tři omyly (stopa):** 20269801/0 c144 a c145 zastavilo N2 (`unexpected_traffic` není tvar skenu). 20269803/2 c170: v okně skenu má zařízení skeneru nález `beacon_periodic` (host = skener, cíl 178.204.162.247, tedy C2 kompromitované stanice) a `multi_target_pattern` se zdrojem skeneru; N3 zablokuje zavření kvůli oběma, takže C2 aktivita byla nálezem viditelná a N3 ji zachytil, ale **zablokoval by i bez ní**.
+
+**Cena (zapsáno jako neúspěch, ne jako ladění):** N3 blokuje i správná zavření. V E2 zavřela FG2 ve skutečném světě 1 sken správně (20269804/1 c96) a v kontrafaktuálním světě 5 skenů správně; nyní **0 zavření celkem** (24 blokací N3 ve FG2 a 24 v F2c, 16 z 20 sítí). Stopa 20269804/1 c96: autorizovaný sken sám vytváří `multi_target_pattern` se zdrojem skeneru (sken správcovských portů mnoha hostů), typ mimo `SCAN_SHAPED`, tedy cizí aktivita podle 11.2. Rozšířit `SCAN_SHAPED` o `multi_target_pattern` (typ z `most_severe`, detektor laterálního pohybu) by bylo laděním po výsledku a otevřelo by cestu laterálnímu pohybu z kompromitovaného skeneru; nedělá se. Hranice automatizace kontextu skeneru ve světě v2 je tím **0** při 0 omylech.
+
+**Laboratoř C** se nespouštěla (11.2): lístky jen ubírá, v laboratoři nevznikl žádný.
+
+## 13. K22-N4: proč jsou nálezy záloh, dávek a skenu vysoké závažnosti nebo bez zdroje (jen analýza)
+
+Rozbor kódu (kdo přiděluje závažnost a zdroj) a stopy `F:\work-tmp\k22\trace\off-FG2-20269801` (síť 0 až 3, svět v2; nálezy přiřazené k cyklům úloh podle pravdy simulátoru, skript `F:\work-tmp\k22\n4_sev.py`). Žádné pravidlo ani závažnost se neměnily.
+
+### 13.1 Kdo přiděluje závažnost
+
+| typ | kde | pravidlo | důsledek |
+|---|---|---|---|
+| `inductive_volume_anomaly` | `findings.rs`, `rule_inductive_volume_anomaly` | **pevně `Severity::High`**; závažnost události z detektoru (`anomaly_v3.rs`: High jen při poměru ≥ 10× nad baseline, jinak Medium) se zahodí | každý objemový nález je High; kalibrace detektoru se do nálezu nepropíše |
+| `packet_rate_spike` | `findings.rs`, `rule_packet_rate_spike` | High, když `count` události ≥ 5; detektor v3 do `count` dává **počet toků služby v cyklu** (`item.count`), ne poměr | u každé služby s ≥ 5 toky za cyklus High bez ohledu na velikost odchylky |
+| `connection_timeout_burst` | `findings.rs`, `rule_connection_timeout_burst` | High, když počet timeoutů ≥ 4 (událost sama: High jen při podílu ≥ 0,45) | s recall vrstvou zůstane timeout se zdrojem jen při ≥ 5 selháních jednoho zdroje (`dominant_min`), tedy **se zdrojem vždy High**, bez zdroje P6 |
+| `scan_attempts` | `anomaly_v3.rs` | High při ≥ 50 distinktních cílech zdroje za 24 h | autorizovaný sken sítě (/24) práh vždy překročí; pravidlo měří šíři, ne úmysl |
+| `unmapped_passive_event` | `findings.rs`, `rule_unmapped_passive_event` | závažnost původní události | v laboratoři z `connection_timeout_burst`/skenu, tedy High |
+
+### 13.2 Kdo přiděluje zdroj
+
+- **Objem (záloha, dávka):** dominantní zdroj (`anomaly_v3.rs`, `dominant_by_key`) se počítá **podle počtu toků** (≥ `dominant_min` = 5 toků a ≥ 20 % toků služby), i když detektor nález vyhlásil podle **bajtů**. Záloha ve světě v2 je jeden dlouhý tok na cíl a cyklus → nikdo nemá 5 toků → nález bez zdroje. Dávka (3 až 10 toků po 2 GB) na databázi s běžnými klienty: zdrojem se stane **pravidelný klient s nejvíc toky**, ne hostitel dávky. Stopa: všech 21 nálezů `inductive_volume_anomaly` a 21 `packet_rate_spike` dávky má zdroj, ale **cizí** (např. 10.188.2.85 místo hostitele dávky 10.188.3.38), všech 42 High. Přísné doložení je pak správně odmítne (zdroj mimo záznam).
+- **`unmapped_passive_event`:** `findings::finding_signal` čte zdroje jen z událostí `ServiceReport`; nespárovaná událost žádnou službu nemá, funkce vrací prázdné zdroje hned na začátku, přestože událost `src_ip` nese. Bez zdroje je tedy **vždy**, z principu kódu (chybějící propojení).
+- **Zálohy ve v2** navíc objemové nálezy na cílech skoro nevytváří; jejich nálezy jsou `multi_target_pattern` (12, High, správný zdroj; typ v `most_severe`, kontext zálohy ho nepokrývá) a `unexpected_traffic` (20, Low, smíšené zdroje). To je chování detektoru laterálního pohybu, ne chyba.
+
+### 13.3 Závěr (kořenová příčina)
+
+Nejde o artefakt generátoru. Příčiny jsou tři a všechny v jádře: (1) **chyba kalibrace v pravidlech nálezů**: `inductive_volume_anomaly` pevně High a prahy `packet_rate_spike` (počet toků) a `connection_timeout_burst` (počet timeoutů) přebíjejí kalibrovanou závažnost události; (2) **chyba atribuce zdroje**: dominance podle počtu toků u anomálie vyhlášené podle bajtů a chybějící propojení zdroje u `unmapped_passive_event`; (3) **dané pravidlo jádra** u skenu: ≥ 50 cílů = High je záměr (šíře skenu je riziko, dokud není doložen kontext), a R2 vysoký dopad nezavírá nikdy. Generátor k tomu přispívá jen tím, že v2 modeluje zálohu jedním tokem na cíl (realistické pro SMB/rsync) a laboratoř měla krátké fáze bez zahřáté baseline; obojí odhaluje chyby (1) a (2), nevytváří je.
+
+### 13.4 Návrh opravy (nezavádí se; vyžaduje vlastní předregistraci)
+
+Zdůvodnění je nezávislé na výsledku brány: jde o konzistenci kalibrace a správnost atribuce, měřené proti pravdě simulátoru, ne proti počtu zavření.
+
+- **O1 (závažnost):** pravidla `inductive_volume_anomaly` a `packet_rate_spike` přeberou závažnost nejsilnější události (jako už `scan_attempts` a recall typy); `connection_timeout_burst` ponechat (High při ≥ 0,45 selhání je obhajitelné). Sken a R2 beze změny.
+- **O2 (atribuce objemu):** u anomálie vyhlášené podle bajtů dominantní zdroj podle podílu bajtů (např. ≥ 50 % bajtů služby v cyklu), počet toků jen u anomálie podle toků.
+- **O3 (`unmapped_passive_event`):** zdroj z `src_ip` události (přímý zdroj jako u recall typů).
+- Vše za novým přepínačem (`sev_calib`), bez něj K22-6 beze změny.
+
+**Měření (ladicí seedy 20269801 až 20269805, svět v2 a v1, `off`, 4 sítě, 168 h; ramena F2 a F2+`sev_calib`, FG2 a FG2+`sev_calib`):** primární a na bráně nezávislé: (a) atribuce zdroje objemových nálezů proti pravdě (podíl správný / cizí / žádný zdroj; čeká se nárůst správného), (b) posun závažnosti u **útoků** po rodinách (kolik nálezů útoků spadne z High na Medium; žádná rodina s poklesem detekce > 1 p. b., K22-2) a zobrazené FP (K22-3 ≤ 1,01); teprve sekundárně (c) K22-1 = 0 omylem zavřených a tabulka stínu. Prahy (a) až (c) se zapíší před během; držené seedy až po rozhodnutí vedoucího.
+
