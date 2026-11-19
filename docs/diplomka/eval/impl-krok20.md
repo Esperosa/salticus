@@ -1,0 +1,53 @@
+# Krok 20: jediná brána zavření
+
+Datum zahájení 2026-11-19. Výchozí stav: konec kroku 19 (commit `b0ddf5c`, rozhodování shodné s `17bbd7e`). Zadání: `F:\work-tmp\briefs\krok20-forenzni-audit-jadra.txt`. Závazný rozsah: `docs/diplomka/rozsah-autonomie.md`. Forenzní audit, mapa cest zavření, matice přepínačů a rozbor omylem zavřených útoků kroku 19: `audit-jadra.md`.
+
+## 1. Kořenové příčiny (z auditu, před kódem)
+
+1. **Zavření nemá jednoho vlastníka.** O stavu klíče rozhoduje kontextová brána (přes `FindingMemory::observe`), žebřík (`FindingMemory::refute`), paměť sama (pohlcení pod vyvráceným klíčem, TTL) a v soaku přepis zobrazení. Pravidla R1 a R2 platí jen v některých kombinacích přepínačů (audit, cesty C1 až C7).
+2. **V `recommended()` žebřík vyvrací na závislý nebo žádný neškodný důkaz.** Bez `strict_refute` stačí P ≤ 0,03 a jakýkoli výsledek s LR < 1 (historie, profil hostu, peeři, přetrvání). Ve stopách kroku 19 mají všechna omylem vyvrácená rozhodnutí jen takový důkaz; 8 z nich je s vysokým dopadem (R2).
+3. **Pohlcení pod zavřeným klíčem (C4) je skryté zavření bez důkazu** a metrika kroku 19 ho nepočítá. `refute_episode` ho převádí na nová (počítaná) vyvrácení, protože žebřík bez `strict_refute` epizodu znovu vyvrátí na historii; proto kandidát kroku 19 na počtu rozhodnutí „zhoršil“, ačkoli na úrovni útoků zlepšil (audit, sekce 3).
+4. **Dva zdroje pravdy o podezřelém klíči** (`Confirmed` v paměti trvale, `Ladder::held` 48 cyklů) a přepínače, které mají účinek jen v kombinaci (`endpoint_weak` bez `strict_refute` mrtvý, `strict_close` mění čtyři věci a vstup simulace).
+5. **Kontextová uzávěra podle zdroje, ne podle činnosti:** bez `strict_close` záznam skeneru bez rozsahu cílů zavře každý nález `scan_attempts` svého zdroje (12 automatických zavření kroku 19).
+
+## 2. Návrh (předregistrováno před kódem)
+
+Nový přepínač `V3Features::close_gate` (výchozí vypnuto, mimo `recommended()`, vyžaduje `memory`). Bez něj se chování nemění (bajtově, viz K20-6).
+
+**Jediná brána** `closure_gate::admit(&CloseRequest) -> Result<CloseTicket, Refusal>`. `CloseTicket` (druh, vlastník, skupiny důkazu, důvod, zdroje, platnost) vzniká jen v ní. `FindingMemory` v režimu brány vstoupí do `AutoResolved` nebo `Refuted` jen s lístkem a uloží ho k položce (invariant je kontrolovatelný na stavu). Starší vstupy (`observe` s textovým vysvětlením, `refute` s textem) v režimu brány nikdy nezavřou a počítají se jako `gate_bypass`. Soak i produkce zapisují rozhodnutí žebříku jednou funkcí `closure_gate::settle`, která vrací skutečný výsledek (vyvrácení odmítnuté bránou nebo pamětí se stává eskalací s důvodem); zobrazení a čítače se řídí tímto výsledkem.
+
+Podmínky lístku (všechny):
+
+- **R2:** nález není chráněný (typ P1 až P3, signál P4/P5) a nemá vysoký dopad (závažnost High nebo typ z `most_severe`). Bez výjimky.
+- **Vlastník:** neprázdný schvalovatel (záznam kontextu: `approved_by` a expirace; seznam povolených: vlastník položky).
+- **Kontext (C1):** druh není výpadek senzoru (R5), zdroje nálezu jsou neprázdné a všechny patří záznamu, skener má rozsah cílů (sémantika `strict_close`).
+- **Žebřík (C2, C3):** P ≤ práh vyvrácení a neškodné výsledky aspoň ze dvou nezávislých skupin, z nichž jedna je **pozitivní důkaz s vlastníkem**: schválený kontext (skupina 1) nebo seznam povolených (skupina 4, počítá se jednou). „Vše v pořádku“ od agenta, výpadek služby (živost, R4: porucha jde člověku viditelně), historie, profil hostu, peeři, přetrvání a profil zařízení jsou jen podpůrné (smí být druhou skupinou). Režim konkurenčních hypotéz zavírá jen přes tutéž bránu.
+- **Zámek podezření:** klíč, který byl potvrzen nebo předán jako nepotvrzené podezření (`prior_hold`), se nezavře, dokud je aktivní (jeden zdroj pravdy: položka paměti, ne `Ladder::held`).
+- **Rozsah epizody (C4):** zavřený klíč pohltí jen souvislé pokračování (odmlka < 1 h) se zdroji obsaženými v lístku; jinak eskalace `Episode` a nové ověření.
+
+Co tím odpadá (v režimu brány se ignoruje nebo je zahrnuto): `strict_close` pro žebřík a kontext, `endpoint_weak`, `refute_episode`, `reopen_stale`, `held` z `confirm_evidence`, `context_guard`, `sensor_strict` (pro zavírání). Simulovaný vstup se nemění: rozsah cílů skeneru dostává simulace jen se `strict_close` jako dosud (bez něj brána takový záznam odmítne, nic nezavře).
+
+## 3. Předregistrace měření
+
+Ramena (párově, stejný seed a síť): **R** = `recommended()`, **RG** = R + `close_gate`, **F** = `final` (R + `breadth,bulk_clear,strict_close,l7_tls,l7_dns,icmp_payload,slow_fanin,ops_annotate`), **FG** = F + `close_gate`. Konfigurace sítí jako v kroku 19: `off`, `ops` (`--ops-telemetry on`), `elying` (`endpoint_ext`, `--endpoint on --endpoint-agent ok`). Společné volby: `soak run --max-networks 4 --threads 1 --block-size 2 --no-legs --engine v3 --no-feedback --counterfactual --l7 cal --coverage k10`. Srovnání RG proti R a FG proti F.
+
+- **Ladicí seedy:** 20269701 až 20269710 (držené seedy kroku 19, po něm diagnostické; na nich proběhl forenzní rozbor). Rameno R se nepouští znovu, pokud K20-6 potvrdí shodu nové binárky s `17bbd7e`.
+- **Nové držené seedy (zapsáno dopředu, použít jednou): 20270101, 20270102, 20270103, 20270104, 20270105, 20270106, 20270107, 20270108, 20270109, 20270110.** Všechna čtyři ramena. Seed se sítí, jejíž běh přesáhne 2 h, se vynechá ve všech ramenech a zapíše.
+- Žádné ladění prahů (`p_refute`, LR, apriorní P, detektory). Změna kódu po prvním běhu na ladicích seedech se zapíše jako odchylka; po drženém běhu se kód nemění.
+
+| práh | metrika | splněno, když |
+|---|---|---|
+| K20-1 | omylem zavřené (definice kroku 19: `auto_closures_wrong` + `ladder_refuted_wrong_cf`) | RG a FG 0 v každé konfiguraci; hlásí se horní mez Wilson 95 % (jmenovatel = útoky) |
+| K20-1b | útoky s omylem zavřeným nálezem (`attacks[].k7.wrong_closed > 0`, úroveň útoku) | RG a FG 0; Wilson |
+| K20-1c | útoky s výskytem pohlceným pod zavřeným klíčem (`diag.hidden` `state_refuted` nebo `state_auto_resolved`) | RG ≤ R a FG ≤ F; cíl 0 |
+| K20-2 | detekce po rodinách (zobrazeno, kontrafakt) | žádná rodina s ≥ 20 útoky nepoklesne o víc než 1 p. b.; 95% interval rozdílu souhrnné detekce (párový bootstrap po sítích, stratifikovaný podle seedu, B = 2000, semínko 20) nesmí ležet celý pod −1 p. b. |
+| K20-3 | zobrazené FP | poměr ≤ 1,02 |
+| K20-4 | případy pro člověka (potvrzeno + eskalováno) | nárůst ≤ 2 % |
+| K20-5 | invariant | property/fuzz test (≥ 20 000 náhodných posloupností operací paměti a rozhodnutí žebříku v režimu brány): zavřený stav ⇒ lístek s pozitivním důkazem a vlastníkem; chráněný nebo vysoký dopad nikdy zavřen; žádný přechod do zavřeného stavu mimo bránu (obchvat starými vstupy nic nezavře); 0 porušení, 0 paniků |
+| K20-6 | regrese bez přepínače | `networks.jsonl` nové binárky bez `close_gate` shodný s `17bbd7e` ve všech polích kromě časů (ladicí seedy 20269701 a 20269703, 4 sítě, 3 konfigurace) |
+
+**Předpověď z auditu (zapsáno před měřením):** v `recommended()` stojí většina vyvrácení na závislém důkazu (ve stopách kroku 19 asi 90 % i u neškodných případů, z toho většina s vysokým dopadem). Brána je odstraní, takže u RG očekávám **nárůst zobrazených FP o několik procent (K20-3 pravděpodobně nesplněno)** a nárůst případů pro člověka pod 1 %. To je cena pravidel R1 a R2, ne chyba návrhu; neladí se. U FG (už se `strict_close`) očekávám malé změny.
+
+Rozhodnutí: `close_gate` se navrhne do presetu jen tehdy, když rameno (RG nebo FG) splní K20-1 až K20-4 ve všech třech konfiguracích na držených seedech. `recommended()` se v tomto kroku nemění; návrh co ve `V3Features` smazat a sloučit je v závěru.
+
+Omezení předem: council, sol-loop a delegování se podle zadání nespouštějí (odchylka od `CLAUDE.md` daná zadáním); review dělá autor. Simulace je jediný zdroj pravdy o tom, co je útok; definice „vlastníka“ pozitivního důkazu je volba autora (schvalovatel záznamu kontextu nebo položky seznamu povolených).
