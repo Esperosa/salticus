@@ -628,6 +628,31 @@ fn recommendation_names_a_discriminating_check_and_its_effect() {
     );
 }
 
+/// Krok 19 (ladicí seedy): kontrola dostupnosti služby se nedoporučuje u nálezu, pro jehož typ
+/// ji žebřík nepoužívá (únik dat); u výpadku služby ano.
+#[test]
+fn recommendation_respects_checks_applicable_to_finding_type() {
+    let mut d = decision(Status::Escalated, 0.5, Vec::new());
+    d.finding_type = "egress_volume_anomaly".into();
+    let f = build(&input(&d));
+    assert!(validate(&f, &d).is_empty(), "{:?}", validate(&f, &d));
+    let active = f
+        .to_verify
+        .iter()
+        .find(|c| c.check == "ActiveReadOnly")
+        .unwrap();
+    assert!(active.why.contains("nema smysl"), "{active:?}");
+    assert!(!f.recommended_step.contains("ActiveReadOnly"));
+    d.finding_type = "service_unreachable".into();
+    let f = build(&input(&d));
+    let active = f
+        .to_verify
+        .iter()
+        .find(|c| c.check == "ActiveReadOnly")
+        .unwrap();
+    assert!(active.why.starts_with(DISCRIMINATES), "{active:?}");
+}
+
 /// Krok 19 (slabina kroku 16: uživatel vždy „nelze určit“): uživatel z koncové telemetrie.
 #[test]
 fn user_actor_comes_from_endpoint_telemetry() {

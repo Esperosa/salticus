@@ -20,7 +20,9 @@ use crate::{
     ops_telemetry::OpsDiagnosis,
     retro::Incident,
     verification_chain::CheckKind,
-    verify_ladder::{CheckId, Decision, Status, StepNote, benign_group, competing_kind},
+    verify_ladder::{
+        CheckId, Decision, Status, StepNote, benign_group, competing_kind, type_applies,
+    },
 };
 
 pub const SCHEMA: &str = "salticus.case_folder/1";
@@ -729,7 +731,21 @@ pub fn build(input: &FolderInput<'_>) -> CaseFolder {
         })
         .map(|k| {
             let (cost, approval) = k.cost();
-            let info = discrimination(p, k);
+            // kontrola vázaná na typ nálezu nebo na protějšek, kterou žebřík pro tento případ
+            // nepoužívá, se nedoporučuje (dostupnost služby u úniku dat, reputace bez protějšku)
+            let applicable = match k {
+                CheckKind::PeerCompare => type_applies(CheckId::Peers, &d.finding_type),
+                CheckKind::ActiveReadOnly => type_applies(CheckId::Liveness, &d.finding_type),
+                CheckKind::Reputation => {
+                    input.finding.is_none() || actors.iter().any(|a| a.role == "protejsek")
+                }
+                _ => true,
+            };
+            let info = if applicable {
+                discrimination(p, k)
+            } else {
+                0.0
+            };
             let rank = if performed.contains(&k) {
                 2u8
             } else if info > MIN_INFO {
@@ -754,6 +770,7 @@ pub fn build(input: &FolderInput<'_>) -> CaseFolder {
                         0 => format!(
                             "{DISCRIMINATES}: vysledek muze zmenit rozhodnuti (EVOI {info:.2})"
                         ),
+                        1 if !applicable => "neprovedeno; pro tento pripad nema smysl".into(),
                         1 => "neprovedeno; rozhodnuti nezmeni nebo nezmereno".into(),
                         _ => "provedeno bez vysledku: znovu ma smysl az s novymi daty".into(),
                     },

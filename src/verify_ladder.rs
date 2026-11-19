@@ -639,6 +639,42 @@ fn entropy(p: f64) -> f64 {
 }
 
 /// Kontroly, které pro typ nálezu dávají smysl (bez kontroly bez exekutoru, R10-lite).
+/// Dává kontrola pro typ nálezu smysl? Platí pro kontroly vázané na typ (srovnání s peery,
+/// aktivní kontrola dostupnosti); ostatní se řídí dostupností zdroje, ne typem. Krok 19:
+/// sdíleno s případovou složkou, aby nedoporučovala kontrolu, kterou žebřík pro typ nepoužívá.
+pub fn type_applies(check: CheckId, kind: &str) -> bool {
+    match check {
+        CheckId::Peers => matches!(
+            kind,
+            "inductive_volume_anomaly"
+                | "packet_rate_spike"
+                | "unexpected_traffic"
+                | "service_unreachable"
+                | "connection_timeout_burst"
+                | "service_overload_risk"
+                | "beacon_periodic"
+                | "interactive_session"
+                | "long_lived_tunnel"
+                | "egress_volume_anomaly"
+                | "novel_persistent_peer"
+                | "novel_fanout"
+                | "ingest_volume_anomaly"
+                | "slow_egress"
+                | "link_saturation"
+                | "novel_bulk_transfer"
+                | "novel_peer_burst"
+                | "tls_rare_transfer"
+                | "tls_novel_burst"
+                | "dns_zone_enumeration"
+                | "dns_tunnel_names"
+                | "doh_suspected"
+                | "icmp_payload_anomaly"
+        ),
+        CheckId::Liveness => matches!(kind, "service_unreachable" | "connection_timeout_burst"),
+        _ => true,
+    }
+}
+
 fn checks_for(input: &CaseInput, policy: &LadderPolicy) -> Vec<CheckId> {
     let kind = input.finding_type.as_str();
     let mut checks = Vec::new();
@@ -677,36 +713,11 @@ fn checks_for(input: &CaseInput, policy: &LadderPolicy) -> Vec<CheckId> {
     ) {
         checks.push(CheckId::DeviceProfile);
     }
-    if matches!(
-        kind,
-        "inductive_volume_anomaly"
-            | "packet_rate_spike"
-            | "unexpected_traffic"
-            | "service_unreachable"
-            | "connection_timeout_burst"
-            | "service_overload_risk"
-            | "beacon_periodic"
-            | "interactive_session"
-            | "long_lived_tunnel"
-            | "egress_volume_anomaly"
-            | "novel_persistent_peer"
-            | "novel_fanout"
-            | "ingest_volume_anomaly"
-            | "slow_egress"
-            | "link_saturation"
-            | "novel_bulk_transfer"
-            | "novel_peer_burst"
-            | "tls_rare_transfer"
-            | "tls_novel_burst"
-            | "dns_zone_enumeration"
-            | "dns_tunnel_names"
-            | "doh_suspected"
-            | "icmp_payload_anomaly"
-    ) {
+    if type_applies(CheckId::Peers, kind) {
         checks.push(CheckId::Peers);
     }
     checks.push(CheckId::Persistence);
-    if matches!(kind, "service_unreachable" | "connection_timeout_burst") && input.port.is_some() {
+    if type_applies(CheckId::Liveness, kind) && input.port.is_some() {
         checks.push(CheckId::Liveness);
     }
     if matches!(
