@@ -82,6 +82,7 @@ impl crate::verify_ladder::LadderEvidence for ProdEvidence<'_> {
                 &GateInput {
                     finding_type: &case.finding_type,
                     host_ids: &ids,
+                    targets: &case.targets,
                     sources: &case.sources,
                     severity: crate::model::Severity::Medium,
                     at: self.now,
@@ -648,11 +649,18 @@ impl V3Session {
                     .and_then(|k| identity.get(k))
                     .is_some_and(|m| matches!(m, IdentityMatch::Ambiguous { .. }));
             let ids = [host_ip, entity_host];
+            // krok 22: cile nalezu jen pro kontext v2 (rozsah skeneru)
+            let targets = if gate.policy.host_first {
+                findings::finding_targets(finding, services.get(service_key).copied())
+            } else {
+                Vec::new()
+            };
             let decision = gate.explain_decision(
                 &calendar,
                 &GateInput {
                     finding_type: &finding.finding_type,
                     host_ids: &ids,
+                    targets: &targets,
                     sources: &sources,
                     severity: finding.severity,
                     at: now,
@@ -749,6 +757,7 @@ impl V3Session {
                                 || severe.contains(&finding.finding_type),
                             prior: crate::verify_ladder::DEFAULT_PRIOR,
                             protected: protection.is_some(),
+                            targets: targets.clone(),
                         },
                         cycle,
                     );

@@ -261,6 +261,11 @@ pub struct GatePolicy {
     /// zadna vyjimka pro objem v okne zalohy ani dilci shoda zdroje.
     #[serde(default)]
     pub strict_close: bool,
+    /// Krok 22 (kontext v2): záznam se nálezu týká jen při shodě hostu (K21-N14: přísná
+    /// kontrola zdroje i nejednoznačnost až po ní); rozsah autorizovaného skeneru se
+    /// porovnává se všemi cíli nálezu a zdroje nálezu musí být zdroji skeneru (K21-N13).
+    #[serde(default)]
+    pub host_first: bool,
 }
 
 impl GatePolicy {
@@ -272,6 +277,7 @@ impl GatePolicy {
             protect: engine.protect(),
             // krok 20: brana zavreni prijme jen kontext s doloženym zdrojem
             strict_close: engine.strict_close() || engine.close_gate(),
+            host_first: engine.ctx_host_first(),
             ..Self::default()
         }
     }
@@ -290,7 +296,31 @@ impl GatePolicy {
     /// Krok 12: pozitivni dukaz o zdroji. Nalez musi mit identifikovane zdroje a VSECHNY
     /// musi patrit zaznamu (zdroj zaznamu nebo jeho host); jinak kontext nalez nevysvetli.
     fn source_proven(&self, entry: &ContextEntry, input: &GateInput<'_>) -> bool {
-        !self.strict_close || strictly_proven(entry, input)
+        !self.strict_close || self.proven(entry, input)
+    }
+
+    /// Přísný důkaz zdroje podle verze kontextu (v2 mění jen záznam skeneru).
+    fn proven(&self, entry: &ContextEntry, input: &GateInput<'_>) -> bool {
+        if self.host_first && entry.kind == ContextKind::AuthorizedScanner {
+            scanner_proven(entry, input)
+        } else {
+            strictly_proven(entry, input)
+        }
+    }
+
+    /// Týká se záznam nálezu (host, u skeneru v2 cíle v rozsahu)?
+    fn host_match(&self, entry: &ContextEntry, input: &GateInput<'_>, severe: bool) -> bool {
+        if self.host_first
+            && entry.kind == ContextKind::AuthorizedScanner
+            && !entry.hosts.is_empty()
+        {
+            return targets_in_scope(&entry.hosts, input);
+        }
+        if entry.hosts.is_empty() {
+            entry.kind == ContextKind::SensorOutage || (!entry.sources.is_empty() && !severe)
+        } else {
+            entry.hosts.iter().any(|h| input.host_ids.contains(h))
+        }
     }
 
     /// Smí záznam vysvětlit nález vzhledem k pravidlům kroku 6?
@@ -330,6 +360,36 @@ fn strictly_proven(entry: &ContextEntry, input: &GateInput<'_>) -> bool {
             .all(|s| entry.sources.contains(s) || entry.hosts.contains(s))
 }
 
+/// Krok 22 (K21-N13): skener je doložený, když má rozsah a všechny zdroje nálezu jsou
+/// zdroji skeneru (cíl v rozsahu zdrojem nálezu být nesmí).
+fn scanner_proven(entry: &ContextEntry, input: &GateInput<'_>) -> bool {
+    !entry.hosts.is_empty()
+        && !input.sources.is_empty()
+        && input.sources.iter().all(|s| entry.sources.contains(s))
+}
+
+/// Všechny cíle nálezu leží v rozsahu (adresa nebo CIDR). Bez známých cílů je cílem host
+/// nálezu (sken vnitřního hostu); neznámý cíl rozsah nesplní.
+fn targets_in_scope(scope: &[String], input: &GateInput<'_>) -> bool {
+    let targets = if input.targets.is_empty() {
+        input.host_ids
+    } else {
+        input.targets
+    };
+    let nets: Vec<ipnet::IpNet> = scope.iter().filter_map(|s| s.parse().ok()).collect();
+    let inside = |t: &String| {
+        scope.contains(t)
+            || t.parse::<std::net::IpAddr>()
+                .is_ok_and(|ip| nets.iter().any(|n| n.contains(&ip)))
+    };
+    // u hostu nalezu staci shoda kterehokoli identifikatoru (IP nebo asset id)
+    if input.targets.is_empty() {
+        targets.iter().any(inside)
+    } else {
+        targets.iter().all(inside)
+    }
+}
+
 impl Default for GatePolicy {
     fn default() -> Self {
         let set = |items: &[&str]| items.iter().map(|s| s.to_string()).collect();
@@ -356,6 +416,7 @@ impl Default for GatePolicy {
             require_identified_source: false,
             protect: false,
             strict_close: false,
+            host_first: false,
         }
     }
 }
@@ -366,6 +427,9 @@ pub struct GateInput<'a> {
     pub finding_type: &'a str,
     /// IP cíle a/nebo asset id; shoda s kterýmkoli stačí.
     pub host_ids: &'a [String],
+    /// Krok 22: cíle nálezu (IP); prázdné = neznámé (cílem je host nálezu). Používá je jen
+    /// kontext v2 pro rozsah autorizovaného skeneru.
+    pub targets: &'a [String],
     pub sources: &'a [String],
     pub severity: Severity,
     pub at: DateTime<Utc>,
@@ -537,24 +601,33 @@ impl ContextGate {
                 refused_source = true;
                 continue;
             }
-            if entry.kind != ContextKind::SensorOutage && !self.policy.source_proven(entry, input) {
+            let strict_first = !self.policy.host_first;
+            if strict_first
+                && entry.kind != ContextKind::SensorOutage
+                && !self.policy.source_proven(entry, input)
+            {
                 // krok 12: zdroj neni cely v zaznamu; nalez zustava viditelny
                 refused_source = true;
                 ambiguous = true;
                 self.stats.refused_strict += 1;
                 continue;
             }
-            let host_match = if entry.hosts.is_empty() {
-                entry.kind == ContextKind::SensorOutage || (!entry.sources.is_empty() && !severe)
-            } else {
-                entry.hosts.iter().any(|h| input.host_ids.contains(h))
-            };
-            if !host_match {
+            if !self.policy.host_match(entry, input, severe) {
                 continue;
             }
             if !entry.sources.is_empty() && !input.sources.iter().any(|s| entry.sources.contains(s))
             {
                 continue; // zdrojovy kontext (skener) plati jen pri shode zdroje
+            }
+            if !strict_first
+                && entry.kind != ContextKind::SensorOutage
+                && !self.policy.source_proven(entry, input)
+            {
+                // krok 22 (K21-N14): nejednoznacnost jen od zaznamu, ktery se nalezu tyka
+                refused_source = true;
+                ambiguous = true;
+                self.stats.refused_strict += 1;
+                continue;
             }
             if entry.kind.source_sensitive()
                 && input
@@ -652,7 +725,7 @@ impl ContextGate {
             },
             approved_by: entry.approved_by.clone(),
             expires: entry.expires,
-            sources_proven: strictly_proven(entry, input),
+            sources_proven: self.policy.proven(entry, input),
         })
     }
 
@@ -673,11 +746,8 @@ impl ContextGate {
         }
         let corroborate = self.policy.needs_corroboration(input);
         let mut matching = provider.entries().iter().filter_map(|entry| {
-            let host_match = if entry.hosts.is_empty() {
-                entry.kind == ContextKind::SensorOutage || !entry.sources.is_empty()
-            } else {
-                entry.hosts.iter().any(|h| input.host_ids.contains(h))
-            };
+            // bez zavaznosti: prazdny rozsah se zdrojem plati jako v kroku 21
+            let host_match = self.policy.host_match(entry, input, false);
             let source_ok = (entry.sources.is_empty()
                 || input.sources.iter().any(|s| entry.sources.contains(s)))
                 && !(entry.kind.source_sensitive()
@@ -758,6 +828,7 @@ mod tests {
         GateInput {
             finding_type: kind,
             host_ids: hosts,
+            targets: &[],
             sources,
             severity,
             at: at(hour),
@@ -1264,54 +1335,250 @@ mod tests {
         assert!((wilson_upper(0, 200) - 0.0188).abs() < 1e-3);
     }
 
-    /// Krok 21 (K21-N14, známá mezera): při `strict_close` se doložení zdroje kontroluje
-    /// dřív než shoda hostu, takže záznam o JINÉM hostu, který typ pokrývá, označí nález
-    /// jako nejednoznačný (P5). S `protect` pak nález dostane ochranu, zobrazí se hned
-    /// a nejde do ověření. Bez `strict_close` záznam jiného hostu nález neovlivní.
+    fn v2_policy() -> GatePolicy {
+        GatePolicy {
+            strict_close: true,
+            host_first: true,
+            ..protect_policy()
+        }
+    }
+
+    /// Krok 21 (K21-N14), opraveno v kroku 22 za přepínačem `host_first`: při `strict_close`
+    /// se bez přepínače doložení zdroje kontroluje dřív než shoda hostu, takže záznam o JINÉM
+    /// hostu označí nález jako nejednoznačný (P5, chování kroku 21 zůstává bez přepínače).
+    /// S přepínačem (a) záznam jiného hostu rozhodnutí nezmění, (b) záznam téhož hostu bez
+    /// doloženého zdroje dál označí nález jako nejednoznačný.
     #[test]
-    fn known_gap_strict_close_flags_ambiguous_from_other_host_record() {
+    fn k22_n14_other_host_record_does_not_make_finding_ambiguous() {
         let outage = entry(ContextKind::ServiceOutage, "10.0.0.50", 0, 10);
         let calendar = StaticCalendar::new(vec![outage]);
+        let empty = StaticCalendar::new(Vec::new());
         let host = vec!["10.0.0.9".to_string()];
         let src = vec!["10.0.0.77".to_string()];
         let case = input("connection_timeout_burst", &host, &src, 1, Severity::Medium);
         let mut lenient = ContextGate::new(protect_policy());
         let decision = lenient.explain_decision(&calendar, &case);
         assert!(decision.explanation.is_none() && !decision.ambiguous);
+        // bez prepinace: chovani kroku 21 (regrese, K22-6)
         let mut strict = ContextGate::new(GatePolicy {
             strict_close: true,
             ..protect_policy()
         });
         let decision = strict.explain_decision(&calendar, &case);
-        assert!(decision.explanation.is_none());
-        assert!(
-            decision.ambiguous,
-            "znama mezera: zaznam jineho hostu dela nalez nejednoznacnym"
+        assert!(decision.explanation.is_none() && decision.ambiguous);
+        // (a) s prepinacem: jako bez zaznamu
+        let mut v2 = ContextGate::new(v2_policy());
+        let with_record = v2.explain_decision(&calendar, &case);
+        let without = v2.explain_decision(&empty, &case);
+        assert_eq!(with_record, without);
+        assert!(!with_record.ambiguous, "zaznam jineho hostu nema vliv");
+        // (b) zaznam tehoz hostu, zdroj mimo zaznam: nejednoznacne i s prepinacem
+        let own = StaticCalendar::new(vec![entry(ContextKind::ServiceOutage, "10.0.0.9", 0, 10)]);
+        let decision = v2.explain_decision(&own, &case);
+        assert!(decision.explanation.is_none() && decision.ambiguous);
+        // zdroj patri zaznamu: vysvetleno
+        let proven = vec!["10.0.0.9".to_string()];
+        let ok = input(
+            "connection_timeout_burst",
+            &host,
+            &proven,
+            1,
+            Severity::Medium,
         );
+        assert!(v2.explain(&own, &ok).is_some());
     }
 
-    /// Krok 21 (K21-N13, známá mezera): záznam skeneru s rozsahem cílů nevysvětlí nález,
-    /// jehož host je jiný než cíl (sken ven přes bránu: host nálezu je brána, cíl je
-    /// mimo síť). Rozsah cílů v `hosts` se porovnává s hostem nálezu, ne s cíli.
-    #[test]
-    fn known_gap_scanner_scope_does_not_match_finding_host_of_egress_scan() {
-        let scoped = ContextEntry {
-            hosts: vec!["203.0.113.80".to_string()],
+    fn scanner(scope: &[&str], covers: &[&str]) -> ContextEntry {
+        ContextEntry {
+            hosts: scope.iter().map(|s| s.to_string()).collect(),
             sources: vec!["10.0.0.104".to_string()],
+            covers: covers.iter().map(|s| s.to_string()).collect(),
             ..entry(ContextKind::AuthorizedScanner, "-", 0, 4)
-        };
-        let calendar = StaticCalendar::new(vec![scoped]);
+        }
+    }
+
+    fn scan_input<'a>(
+        kind: &'a str,
+        hosts: &'a [String],
+        targets: &'a [String],
+        sources: &'a [String],
+    ) -> GateInput<'a> {
+        GateInput {
+            targets,
+            ..input(kind, hosts, sources, 1, Severity::Medium)
+        }
+    }
+
+    /// Krok 21 (K21-N13), opraveno v kroku 22 za přepínačem `host_first`: rozsah skeneru se
+    /// porovnává se VŠEMI cíli nálezu (adresa nebo CIDR), zdroje nálezu musí být zdroji
+    /// skeneru. Bez přepínače zůstává chování kroku 21 (sken ven přes bránu se nevysvětlí).
+    #[test]
+    fn k22_n13_scanner_scope_matches_finding_targets() {
+        let calendar = StaticCalendar::new(vec![scanner(&["203.0.113.80"], &[])]);
+        assert!(calendar.rejected.is_empty());
         let gateway = vec!["10.0.0.1".to_string()];
-        let scanner = vec!["10.0.0.104".to_string()];
-        let case = input("scan_attempts", &gateway, &scanner, 1, Severity::Medium);
-        let mut gate = ContextGate::new(GatePolicy {
+        let target = vec!["203.0.113.80".to_string()];
+        let scanner_src = vec!["10.0.0.104".to_string()];
+        let case = scan_input("scan_attempts", &gateway, &target, &scanner_src);
+        // bez prepinace: chovani kroku 21
+        let mut legacy = ContextGate::new(GatePolicy {
             strict_close: true,
             ..GatePolicy::default()
         });
-        assert!(
-            gate.explain(&calendar, &case).is_none(),
-            "znama mezera: sken zdokumentovaneho skeneru ven se nevysvetli"
+        assert!(legacy.explain(&calendar, &case).is_none());
+        assert!(legacy.supporting_context(&calendar, &case).is_none());
+        // sken ven pres branu, rozsah = vnejsi cil, zdroj = skener: vysvetleno a dolozeno
+        let mut v2 = ContextGate::new(v2_policy());
+        let closed = v2.explain(&calendar, &case).expect("dolozeny sken");
+        assert!(closed.sources_proven);
+        assert!(v2.supporting_context(&calendar, &case).is_some());
+        let ticket = crate::closure_gate::admit_explanation(
+            &closed,
+            "scan_attempts",
+            &scanner_src,
+            at(1),
+            crate::closure_gate::Subject {
+                protected: false,
+                high_impact: false,
+            },
         );
-        assert!(gate.supporting_context(&calendar, &case).is_none());
+        assert!(ticket.is_ok());
+        // jeden cil mimo rozsah: nevysvetleno
+        let two = vec!["203.0.113.80".to_string(), "198.51.100.7".to_string()];
+        let outside = scan_input("scan_attempts", &gateway, &two, &scanner_src);
+        assert!(v2.explain(&calendar, &outside).is_none());
+        assert!(v2.supporting_context(&calendar, &outside).is_none());
+        // CIDR rozsah: vsechny cile uvnitr ano, jeden mimo ne
+        let cidr = StaticCalendar::new(vec![scanner(&["203.0.113.0/24"], &[])]);
+        let inside = vec!["203.0.113.80".to_string(), "203.0.113.9".to_string()];
+        let both = scan_input("scan_attempts", &gateway, &inside, &scanner_src);
+        assert!(v2.explain(&cidr, &both).is_some());
+        assert!(v2.explain(&cidr, &outside).is_none());
+        // vnitrni sken bez znamych cilu: cilem je host nalezu
+        let internal = StaticCalendar::new(vec![scanner(&["10.0.0.0/24"], &[])]);
+        let victim = vec!["10.0.0.9".to_string()];
+        let no_targets = scan_input("scan_attempts", &victim, &[], &scanner_src);
+        assert!(v2.explain(&internal, &no_targets).is_some());
+        // prazdny rozsah = nedolozeno (beze zmeny)
+        let unscoped = StaticCalendar::new(vec![scanner(&[], &[])]);
+        assert!(v2.explain(&unscoped, &case).is_none());
+        assert!(v2.supporting_context(&unscoped, &case).is_none());
+    }
+
+    /// Krok 22 (B3, riziko): útok ze zařízení skeneru v okně skenu na cíl v rozsahu se
+    /// nezavře, když nález nese typ, který záznam nepokrývá, nebo má cizí zdroj.
+    #[test]
+    fn k22_n13_attack_from_scanner_device_inside_scope_is_not_closed() {
+        let gateway = vec!["10.0.0.1".to_string()];
+        let target = vec!["203.0.113.80".to_string()];
+        let scanner_src = vec!["10.0.0.104".to_string()];
+        let mut v2 = ContextGate::new(v2_policy());
+        // typ mimo pokryti skeneru (beacon, exfiltrace)
+        let calendar = StaticCalendar::new(vec![scanner(&["203.0.113.80"], &[])]);
+        for kind in ["c2_beacon", "data_exfiltration", "packet_rate_spike"] {
+            let case = scan_input(kind, &gateway, &target, &scanner_src);
+            let decision = v2.explain_decision(&calendar, &case);
+            assert!(decision.explanation.is_none(), "{kind}");
+            assert!(v2.supporting_context(&calendar, &case).is_none(), "{kind}");
+        }
+        // zaznam explicitne jen pro sken: neocekavany provoz ze skeneru se nevysvetli
+        let only_scan = StaticCalendar::new(vec![scanner(&["203.0.113.80"], &["scan_attempts"])]);
+        let odd = scan_input("unexpected_traffic", &gateway, &target, &scanner_src);
+        assert!(v2.explain(&only_scan, &odd).is_none());
+        // smisene zdroje (skener + cizi zdroj) na cil v rozsahu: nezavreno a nejednoznacne
+        let mixed = vec!["10.0.0.104".to_string(), "10.0.0.66".to_string()];
+        let case = scan_input("scan_attempts", &gateway, &target, &mixed);
+        let decision = v2.explain_decision(&calendar, &case);
+        assert!(decision.explanation.is_none() && decision.ambiguous);
+        // vysoka zavaznost bez explicitniho pokryti: nezavreno
+        let high = GateInput {
+            severity: Severity::High,
+            ..scan_input("scan_attempts", &gateway, &target, &scanner_src)
+        };
+        assert!(v2.explain(&calendar, &high).is_none());
+    }
+
+    /// Krok 22 (property): pro náhodné kalendáře bez skeneru dává kontext v2 tatáž zavření
+    /// jako krok 21 a nejednoznačnost jen tam, kde ji dával i krok 21; záznamy jiných hostů
+    /// rozhodnutí v2 nemění vůbec.
+    #[test]
+    fn k22_host_first_property_same_closures_fewer_ambiguous() {
+        let mut state = 0x2202_2026_u64;
+        let mut next = |n: u64| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state % n
+        };
+        let kinds = [
+            ContextKind::Maintenance,
+            ContextKind::Backup,
+            ContextKind::BatchJob,
+            ContextKind::PatchWindow,
+            ContextKind::ServiceOutage,
+            ContextKind::DeviceOnboarding,
+            ContextKind::DeviceDecommission,
+        ];
+        let types = [
+            "connection_timeout_burst",
+            "service_unreachable",
+            "inductive_volume_anomaly",
+            "packet_rate_spike",
+            "unexpected_traffic",
+            "service_overload_risk",
+        ];
+        let ip = |i: u64| format!("10.0.0.{}", i + 1);
+        let mut changed_ambiguity = 0;
+        for _ in 0..5000 {
+            let mut entries = Vec::new();
+            for _ in 0..next(4) {
+                let mut e = entry(kinds[next(7) as usize], &ip(next(5)), 0, 10);
+                if next(2) == 0 {
+                    e.hosts.push(ip(next(5)));
+                }
+                entries.push(e);
+            }
+            let calendar = StaticCalendar::new(entries.clone());
+            let host = vec![ip(next(5))];
+            let sources: Vec<String> = (0..next(3)).map(|_| ip(next(6))).collect();
+            let severity = [Severity::Low, Severity::Medium, Severity::High][next(3) as usize];
+            let kind = types[next(6) as usize];
+            let case = input(kind, &host, &sources, 1, severity);
+            for protect in [false, true] {
+                let base = GatePolicy {
+                    strict_close: true,
+                    protect,
+                    ..GatePolicy::default()
+                };
+                let legacy = ContextGate::new(base.clone()).explain_decision(&calendar, &case);
+                let mut gate = ContextGate::new(GatePolicy {
+                    host_first: true,
+                    ..base
+                });
+                let v2 = gate.explain_decision(&calendar, &case);
+                assert_eq!(
+                    legacy.explanation.is_some(),
+                    v2.explanation.is_some(),
+                    "{entries:?} {case:?}"
+                );
+                assert!(!v2.ambiguous || legacy.ambiguous, "{entries:?} {case:?}");
+                changed_ambiguity += (legacy.ambiguous && !v2.ambiguous) as u32;
+                // zaznamy jinych hostu v2 nemeni
+                let own: Vec<ContextEntry> = entries
+                    .iter()
+                    .filter(|e| e.hosts.iter().any(|h| host.contains(h)))
+                    .cloned()
+                    .collect();
+                let only_own = gate.explain_decision(&StaticCalendar::new(own), &case);
+                assert_eq!(only_own.ambiguous, v2.ambiguous, "{entries:?} {case:?}");
+                assert_eq!(
+                    only_own.explanation.is_some(),
+                    v2.explanation.is_some(),
+                    "{entries:?} {case:?}"
+                );
+            }
+        }
+        // generator musi rozdil skutecne pokryt, jinak test nic nedokazuje
+        assert!(changed_ambiguity > 100, "jen {changed_ambiguity}");
     }
 }

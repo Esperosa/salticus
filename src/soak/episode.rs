@@ -578,6 +578,36 @@ fn k21_scanner_scope() -> bool {
     *ON.get_or_init(|| std::env::var_os("K21_SCANNER_SCOPE").is_some())
 }
 
+/// Krok 22 (B4): stínové lístky brány (K22_SHADOW=soubor, jedna JSON řádka na posouzení).
+/// Stín volá tytéž funkce brány nad týmiž vstupy; nic nezavírá, nemění stav ani zobrazení.
+/// Pravda se v enginu nedoplňuje (až při vyhodnocení). Bez proměnné prostředí nic nedělá.
+fn k22_shadow_on() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("K22_SHADOW").is_some())
+}
+
+fn k22_shadow(line: serde_json::Value) {
+    use std::sync::{Mutex, OnceLock};
+    static SINK: OnceLock<Option<Mutex<std::io::BufWriter<std::fs::File>>>> = OnceLock::new();
+    let Some(sink) = SINK.get_or_init(|| {
+        let path = std::env::var("K22_SHADOW").ok()?;
+        let f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .ok()?;
+        Some(Mutex::new(std::io::BufWriter::new(f)))
+    }) else {
+        return;
+    };
+    if let Ok(mut f) = sink.lock() {
+        use std::io::Write;
+        let _ = writeln!(f, "{line}");
+        let _ = f.flush();
+    }
+}
+
 fn k16_dump(line: serde_json::Value) {
     use std::sync::{Mutex, OnceLock};
     static SINK: OnceLock<Option<Mutex<std::io::BufWriter<std::fs::File>>>> = OnceLock::new();
@@ -1826,6 +1856,24 @@ fn run_episode_inner(
                             .as_ref()
                             .and_then(|k| identity_map.get(k))
                             .is_some_and(|m| matches!(m, IdentityMatch::Ambiguous { .. }));
+                    // krok 22: cile nalezu jen pro kontext v2 (rozsah skeneru)
+                    let targets: Vec<String> = if runtime.gate.policy.host_first {
+                        match behavior_item {
+                            Some((_, _, targets)) => {
+                                let mut ips: Vec<String> =
+                                    targets.iter().map(|(ip, _)| ip.clone()).collect();
+                                ips.sort();
+                                ips.dedup();
+                                ips
+                            }
+                            None => findings::finding_targets(
+                                finding,
+                                report_services.get(service_key).copied(),
+                            ),
+                        }
+                    } else {
+                        Vec::new()
+                    };
                     let decision = context.as_ref().map(|ctx| {
                         let ids = [host_ip.clone(), entity_host.clone()];
                         runtime.gate.explain_decision(
@@ -1833,6 +1881,7 @@ fn run_episode_inner(
                             &GateInput {
                                 finding_type: &finding.finding_type,
                                 host_ids: &ids,
+                                targets: &targets,
                                 sources: &sources,
                                 severity: finding.severity,
                                 at,
@@ -1854,6 +1903,28 @@ fn run_episode_inner(
                         .flatten();
                     let explanation = decision.and_then(|d| d.explanation);
                     let gate_on = cfg.engine.close_gate();
+                    let subject = crate::closure_gate::Subject {
+                        protected: protection.is_some(),
+                        high_impact: finding.severity == crate::model::Severity::High
+                            || severe_types.contains(&finding.finding_type),
+                    };
+                    // krok 22 (B4): stinovy listek kontextu nad tymiz vstupy jako brana
+                    let shadow_context = (k22_shadow_on() && memory_on)
+                        .then(|| {
+                            explanation.as_ref().map(|e| {
+                                (
+                                    e.kind,
+                                    crate::closure_gate::shadow_context(
+                                        e,
+                                        &finding.finding_type,
+                                        &sources,
+                                        at,
+                                        subject,
+                                    ),
+                                )
+                            })
+                        })
+                        .flatten();
                     let disposition = match runtime.memory.as_mut() {
                         Some(memory) => {
                             let observation = Observation {
@@ -1875,12 +1946,7 @@ fn run_episode_inner(
                                         &finding.finding_type,
                                         &sources,
                                         at,
-                                        crate::closure_gate::Subject {
-                                            protected: protection.is_some(),
-                                            high_impact: finding.severity
-                                                == crate::model::Severity::High
-                                                || severe_types.contains(&finding.finding_type),
-                                        },
+                                        subject,
                                     )
                                     .ok()
                                 });
@@ -1898,6 +1964,16 @@ fn run_episode_inner(
                         },
                     };
                     let auto_closed = matches!(disposition, Disposition::AutoResolved(_));
+                    if let Some((kind, shadow)) = shadow_context {
+                        k22_shadow(serde_json::json!({
+                            "ev": "context", "seed": cfg.run_seed, "net": cfg.network_id,
+                            "world": format!("{:?}", cfg.mask), "cycle": cycle,
+                            "key": format!("{}|{}|{}", key_copy.entity, key_copy.finding_type, key_copy.service),
+                            "type": finding.finding_type, "id": finding.finding_id,
+                            "kind": kind.label(), "sources": sources,
+                            "closed": auto_closed, "shadow": shadow,
+                        }));
+                    }
                     if auto_closed && protection.is_some() {
                         agg.output.k7_add("protected_auto_closed", 1);
                     }
@@ -1964,6 +2040,7 @@ fn run_episode_inner(
                                     crate::verify_ladder::DEFAULT_PRIOR
                                 },
                                 protected: protection.is_some(),
+                                targets: targets.clone(),
                             };
                             if runtime.ladder.open(input, cycle as u64) {
                                 lc.opened.insert(finding_index);
@@ -2038,6 +2115,23 @@ fn run_episode_inner(
                             .map(|r| (&r.store, &r.policy, t0 + crate::soak::traffic::CYCLE_SECS)),
                     };
                     let mut decisions = runtime.ladder.step(cycle as u64, &mut env);
+                    if k22_shadow_on() && memory_on {
+                        // krok 22 (B4): stin brany nad rozhodnutim zebriku pred zapisem do pameti
+                        use crate::verify_ladder::Status;
+                        for d in decisions.iter().filter(|d| {
+                            d.status == Status::Refuted
+                                || d.posterior <= crate::closure_gate::P_REFUTE
+                        }) {
+                            k22_shadow(serde_json::json!({
+                                "ev": "ladder", "seed": cfg.run_seed, "net": cfg.network_id,
+                                "world": format!("{:?}", cfg.mask), "cycle": cycle,
+                                "key": format!("{}|{}|{}", d.key.entity, d.key.finding_type, d.key.service),
+                                "type": d.finding_type, "id": d.finding_id,
+                                "status": format!("{:?}", d.status), "posterior": d.posterior,
+                                "shadow": crate::closure_gate::shadow_ladder(d),
+                            }));
+                        }
+                    }
                     agg.output.ladder_liveness_runs += env.liveness_runs;
                     agg.output.ladder_liveness_failures += env.liveness_failures;
                     let gate_on = cfg.engine.close_gate();

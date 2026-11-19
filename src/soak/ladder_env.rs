@@ -155,6 +155,7 @@ impl LadderEvidence for SoakEvidence<'_> {
                 &GateInput {
                     finding_type: &case.finding_type,
                     host_ids: &ids,
+                    targets: &case.targets,
                     sources: &case.sources,
                     severity: Severity::Medium,
                     at: self.at,

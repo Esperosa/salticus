@@ -246,6 +246,97 @@ pub fn admit_ladder(decision: &Decision) -> Result<CloseTicket, Refusal> {
     })
 }
 
+/// Krok 22 (B4): výsledek stínové brány. Stín volá tytéž funkce brány nad týmiž vstupy,
+/// ale nic nezavírá a nemění stav ani zobrazení; slouží jen k měření hranice automatizace.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Shadow {
+    /// Brána by vydala lístek.
+    pub admitted: bool,
+    /// Důvod odmítnutí (`Refusal::label`), když lístek nevznikl.
+    pub refusal: Option<&'static str>,
+    /// Druh pozitivního důkazu (`context:<druh>`, `allowlist`); prázdné = žádný.
+    pub positive: Vec<String>,
+    /// Nezávislé skupiny neškodného důkazu (podpůrné i pozitivní).
+    pub groups: Vec<u8>,
+    pub owner: Option<String>,
+}
+
+fn positive_kind(note: &StepNote) -> Option<String> {
+    let (group, _, _) = positive(note)?;
+    if group == 4 {
+        return Some("allowlist".into());
+    }
+    let label = note
+        .detail
+        .split("kontext: ")
+        .nth(1)
+        .and_then(|rest| rest.split([' ', '(', ',', ';']).next())
+        .filter(|l| !l.is_empty())
+        .unwrap_or("?");
+    Some(format!("context:{label}"))
+}
+
+/// Stínové posouzení rozhodnutí žebříku (stejná logika jako [`admit_ladder`]).
+pub fn shadow_ladder(decision: &Decision) -> Shadow {
+    let benign: Vec<&StepNote> = decision
+        .notes
+        .iter()
+        .filter(|n| n.lr.is_some_and(|lr| lr < 1.0))
+        .collect();
+    let mut positive_kinds: Vec<String> = benign.iter().filter_map(|n| positive_kind(n)).collect();
+    positive_kinds.sort();
+    positive_kinds.dedup();
+    let mut groups: Vec<u8> = benign
+        .iter()
+        .filter_map(|n| supporting(n).or_else(|| positive(n).map(|(g, _, _)| g)))
+        .collect();
+    groups.sort_unstable();
+    groups.dedup();
+    match admit_ladder(decision) {
+        Ok(ticket) => Shadow {
+            admitted: true,
+            refusal: None,
+            positive: positive_kinds,
+            groups: ticket.groups,
+            owner: Some(ticket.owner),
+        },
+        Err(refusal) => Shadow {
+            admitted: false,
+            refusal: Some(refusal.label()),
+            positive: positive_kinds,
+            groups,
+            owner: None,
+        },
+    }
+}
+
+/// Stínové posouzení kontextového vysvětlení (stejná logika jako [`admit_explanation`]).
+pub fn shadow_context(
+    explanation: &crate::context_gate::Explanation,
+    finding_type: &str,
+    sources: &[String],
+    at: DateTime<Utc>,
+    subject: Subject,
+) -> Shadow {
+    let positive = vec![format!("context:{}", explanation.kind.label())];
+    match admit_explanation(explanation, finding_type, sources, at, subject) {
+        Ok(ticket) => Shadow {
+            admitted: true,
+            refusal: None,
+            positive,
+            groups: ticket.groups,
+            owner: Some(ticket.owner),
+        },
+        Err(refusal) => Shadow {
+            admitted: false,
+            refusal: Some(refusal.label()),
+            positive,
+            groups: vec![1],
+            owner: None,
+        },
+    }
+}
+
 /// Zapíše rozhodnutí žebříku do paměti jedinou cestou a vrátí skutečný výsledek: vyvrácení
 /// odmítnuté bránou nebo pamětí (potvrzený nebo podezřelý klíč) se stává eskalací s důvodem.
 /// Zobrazení a čítače se mají řídit vráceným rozhodnutím.

@@ -690,6 +690,7 @@ mod tests {
             high_impact: false,
             prior: 0.15,
             protected: false,
+            targets: Vec::new(),
         };
         assert_eq!(
             case_verdict(&p, &policy, &case(&[], 443), None, now),

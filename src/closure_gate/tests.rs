@@ -516,6 +516,7 @@ fn k22_b1_scanner_context_without_scope_alone_is_refused() {
     let case = GateInput {
         finding_type: "unexpected_traffic",
         host_ids: &host,
+        targets: &[],
         sources: &mixed,
         severity: Severity::Low,
         at: at(10),

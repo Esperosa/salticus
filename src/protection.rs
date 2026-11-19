@@ -328,6 +328,7 @@ mod tests {
             high_impact: false,
             prior: 0.15,
             protected,
+            targets: Vec::new(),
         }
     }
 

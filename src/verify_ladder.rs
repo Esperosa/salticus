@@ -208,6 +208,10 @@ pub struct CaseInput {
     /// se poznají podle typu). S `LadderPolicy::protect` se nikdy nevyvrátí.
     #[serde(default)]
     pub protected: bool,
+    /// Krok 22: cíle nálezu (IP) pro rozsah autorizovaného skeneru v kontextu v2; prázdné =
+    /// neznámé (cílem je host nálezu).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub targets: Vec<String>,
 }
 
 impl CaseInput {
@@ -2323,6 +2327,7 @@ mod tests {
             high_impact: false,
             prior: 0.15,
             protected: false,
+            targets: Vec::new(),
         }
     }
 

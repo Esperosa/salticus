@@ -269,6 +269,24 @@ fn recall_findings(report: &RunReport) -> Vec<Finding> {
 /// Vstup paměti nálezů z jednoho nálezu: objem a dominantní zdroje (krok 2A).
 /// `sources_of` = mapa dominantních zdrojů detektoru (dst, proto, port, typ události).
 /// Typy kroku 2A a IDS nesou zdroj přímo v události (`src_ip`).
+/// Krok 22: cíle nálezu (cílové IP událostí téhož typu) pro rozsah autorizovaného skeneru v
+/// kontextu v2. Bez služby nebo událostí prázdné (cíl neznámý).
+pub fn finding_targets(finding: &Finding, service: Option<&ServiceReport>) -> Vec<String> {
+    let mut targets: Vec<String> = service
+        .map(|svc| {
+            svc.events
+                .iter()
+                .filter(|e| e.event.event_type == finding.finding_type)
+                .map(|e| e.event.dst_ip.clone())
+                .filter(|ip| !ip.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    targets.sort();
+    targets.dedup();
+    targets
+}
+
 pub fn finding_signal<'a>(
     finding: &Finding,
     service: Option<&ServiceReport>,
