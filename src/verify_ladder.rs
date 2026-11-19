@@ -3127,4 +3127,34 @@ mod tests {
         assert_eq!(d.status, Status::Refuted, "{}", d.reason);
         assert!(d.steps.iter().all(|(_, t)| *t != "benign"), "{}", d.reason);
     }
+
+    /// Kontrola K21 (N1): druhé `open` téhož klíče (eskalace závažnosti na High, nový signál
+    /// ochrany) se jen sloučí se zdroji; vysoký dopad a ochrana zůstanou z prvního otevření a
+    /// rozhodnutí je nese dál. Brána, která čte `Decision::high_impact`, tak dostane zastaralý
+    /// údaj. Sonda dokumentuje stav žebříku (oprava je v paměti nálezů, ne tady).
+    #[test]
+    fn audit_k21_merge_keeps_stale_high_impact_and_protection() {
+        let mut ladder = Ladder::new(
+            LadderPolicy {
+                strict_refute: true,
+                ..LadderPolicy::default()
+            },
+            7,
+        );
+        let first = input("unexpected_traffic", "10.0.0.5", &["203.0.113.9"]);
+        assert!(ladder.open(first.clone(), 0));
+        let mut escalated = first;
+        escalated.high_impact = true;
+        escalated.protected = true;
+        assert!(!ladder.open(escalated, 1), "druhe otevreni se jen slouci");
+        let mut env = Env {
+            recurrence: Some(Recurrence::Seen { days: 4 }),
+            context: Some("backup (schvalil spravce)".into()),
+            ..Env::default()
+        };
+        let d = run_until_decided(&mut ladder, &mut env);
+        assert!(!d.high_impact && !d.protected, "{d:?}");
+        assert_eq!(d.status, Status::Refuted, "{}", d.reason);
+        assert!(crate::closure_gate::admit_ladder(&d).is_ok());
+    }
 }

@@ -290,4 +290,6 @@ pub fn settle(
 }
 
 #[cfg(test)]
+mod probes_k21;
+#[cfg(test)]
 mod tests;
