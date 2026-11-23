@@ -95,7 +95,7 @@ Vývoj počtu nálezů podle verze pravidel (pro úplnost, ne jako ladění): pr
 | S-B: viditelnost souhrnu závisí na inventáři; souhrn visí na zdroji, ne na oběti | **přijato jako omezení**, ne měněno |
 | N-A až N-C | nity, nechávám (N-B: souhrn se mezi běhy nehlásí jako nový při růstu počtu) |
 
-Testy modulu: 30/30. Opravená pravidla (porty, dočasné porty, strop dotazů) jsem na reálných datech zatím znovu nezměřil; čísla v sekci 4 (583 nálezů) platí pro verzi před kolem 3.
+Testy modulu: 30/30. **Přeměřeno po kole 3** (release z commitu `1a78045`, stejná data i příkaz): reálná data **583 nálezů, 599 událostí**, tedy beze změny proti sekci 4 (znamená, že na domácích datech žádný provoz nespadl pod nové zúžení portů ani stropu dotazů). Data s vloženými útoky: 615 událostí, tj. o 16 víc než reálná data, přesně 5 + 5 + 3 + 3 vložených událostí; všechny 4 útoky jsou nadále hlášené (zdroj 192.168.1.250, sken z deklarované IP mimo okno, UDP bez dotazu a veřejná adresa 203.0.113.9 jsou v reportu). Zúžení tedy zlepšilo odolnost proti obejití bez ztráty přínosu na těchto datech.
 
 Stav: S1 zůstává sporné (viz výše, rozhoduje provozovatel). Ostatní nálezy jsou opraveny, ale bez nezávislého potvrzení. Před zapnutím mimo shadow režim doporučuji kolo 3.
 
