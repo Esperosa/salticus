@@ -59,6 +59,22 @@ python tools/k25_inject.py eval --report <ws>/runs/<run>/report.json --truth tru
 
 Pracovní data jsou jen lokálně (`F:\work-tmp\shadow\bench2`).
 
-## 6. Další krok
+## 6. Znalost vlastní činnosti v jádře v3 (provedeno)
 
-Znalost vlastní činnosti pro v3 (dotazy SSDP/mDNS jako odchozí toky, vysvětlené toky mimo behaviorální vrstvu), pak přeměřit tímto benchmarkem: cíl je zachovat zachycení 10/10 u skenů, SSH a exfiltrace a snížit šum z 5 527. Teprve potom má smysl brána uzavírání na reálných datech.
+Kód: `passive::load_and_normalize_with_behavior` uplatní `known_activity::split` hned po importu Zeeku (před rozdělením na odchozí, vnitřní a příchozí toky a před detekcí). Vysvětlené toky nejdou do detekce ani do behaviorální vrstvy, zbude jeden souhrn. Bez `SALTICUS_KNOWN_ACTIVITY` se chování nemění. `cargo test --lib passive` 81/81.
+
+| nastavení | nálezy na reálném pozadí (bez útoků) | skeny | SSH | exfil 1,5 GB | záplava |
+|---|---|---|---|---|---|
+| v3 bez modulu | 5 527 | 10/10, 10/10 | 10/10 | 10/10 | 10/10 |
+| v3 + modul, vlastní sken **deklarován** | **357** | 10/10, 10/10 | **0/10** | 10/10 | 10/10 |
+| v3 + modul, vlastní sken **nedeklarován** | **396** | 10/10, 10/10 | **10/10** | 10/10 | 10/10 |
+
+Šum klesl o 93 % (5 527 → 357), vloženým útokům to nic nevzalo, kromě SSH při deklarovaném skenu. Kontrolní běh to vysvětlil: v3 počítá u nového klíče bez historie baseline z ostatních klíčů na stejném portu („skupina_sluzeb“, `anomaly_v3.rs`) a bez dostatečné skupiny jen sbírá. Na portu 22 byli jediní vrstevníci toky mého vlastního nmap skenu; deklarace skenu je vyjmula a hrubá síla zůstala jen jako nízká „neočekávaná spojení“. **Zachycení SSH u v3 tedy v tomto měření závisí na přítomnosti vrstevníků, ne na vlastní vlastnosti útoku.** V klidné síti, kde na portu 22 nikdo jiný není, by v3 stejnou hrubou sílu zřejmě také nehlásil jako vysokou; to je mezera v detekci (chybí pravidlo „mnoho krátkých opakovaných spojení z jednoho zdroje na jeden cíl a port“), ne chyba modulu. Neověřoval jsem to na síti bez vrstevníků.
+
+Pro provoz z toho plyne: **vlastní sken se do `own_scanners` deklaruje jen tehdy, když je to potřeba pro snížení šumu, a výsledek je nutné číst s vědomím, že vyjmutý sken už nedělá vrstevníky.** Pro tento domácí běh je výchozí konfigurace bez deklarace skenu (396 nálezů, žádná ztráta v benchmarku).
+
+## 7. Další krok
+
+1. Pravidlo pro opakovaná krátká spojení (hrubá síla) nezávislé na vrstevnících, měřené stejným benchmarkem s vrstevníky i bez nich.
+2. Stavové vrstvy (beaconing, historie objemu) měřit přes soak se cykly, ne jedním přehráním.
+3. Teprve potom brána uzavírání na reálných datech.

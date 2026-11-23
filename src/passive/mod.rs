@@ -126,8 +126,16 @@ pub(crate) fn load_and_normalize_with_behavior(
     }
     let mut connections = Vec::new();
     if let Some(path) = &sources.zeek_dir {
-        let parsed =
+        let mut parsed =
             zeek::parse_zeek_dir_mode(path, scope, start, end, egress::ScopeMode::SrcOrDst)?;
+        // Krok 26: znalost vlastní činnosti i pro jádro v3 (jen s platnou SALTICUS_KNOWN_ACTIVITY).
+        // Vysvětlené toky nejdou do detekce ani do behaviorální vrstvy; zbude jeden souhrn.
+        if let Some(config) = known_activity::config() {
+            let (kept, summaries) =
+                known_activity::split(std::mem::take(&mut parsed.connections), config);
+            parsed.connections = kept;
+            events.extend(summaries);
+        }
         events.extend(
             parsed
                 .events

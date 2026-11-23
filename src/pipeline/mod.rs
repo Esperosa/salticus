@@ -862,7 +862,7 @@ pub fn run_pipeline(args: BehArgs) -> anyhow::Result<RunReport> {
             None => &passive::LegacyAnomalyDetector,
         };
     // Krok 25: znama cinnost site (jen s platnou SALTICUS_KNOWN_ACTIVITY, jinak beze zmeny).
-    // Zatim jen pro legacy detektor: stavovy detektor v3 dostava dotazy jako odchozi tok.
+    // Legacy detektor: obalka kolem detektoru; v3 ji uplatnuje pri importu toku.
     passive::known_activity::deactivate(); // příznak nesmí přežít z dřívějšího běhu v témže procesu
     let known_activity_detector = match (
         passive::known_activity::config(),
@@ -875,10 +875,8 @@ pub fn run_pipeline(args: BehArgs) -> anyhow::Result<RunReport> {
                 config,
             })
         }
-        (Some(_), Some(_)) => {
-            tracing::warn!("znama cinnost site se s detektorem v3 zatim nepouziva");
-            None
-        }
+        // v3: znalost vlastní činnosti se uplatní už při importu toků (passive::load_and_normalize_with_behavior)
+        (Some(_), Some(_)) => None,
         _ => None,
     };
     let detector_ref: &(dyn passive::ConnectionDetector + Sync) = match &known_activity_detector {
