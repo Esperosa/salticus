@@ -30,6 +30,7 @@ pub const PROTECTED_TYPES: &[&str] = &[
     "icmp_payload_anomaly",
     "bruteforce_attempts",
     "outbound_scan",
+    "unanswered_retry",
     "pivot_chain",
     "suricata_alert",
     "egress_ids_alert",
@@ -82,7 +83,8 @@ pub fn type_protection(kind: &str) -> Option<Protection> {
         | "doh_suspected"
         | "icmp_payload_anomaly"
         | "bruteforce_attempts"
-        | "outbound_scan" => Some(Protection::Novelty),
+        | "outbound_scan"
+        | "unanswered_retry" => Some(Protection::Novelty),
         "pivot_chain" => Some(Protection::Graph),
         "suricata_alert" | "egress_ids_alert" | "ids_alert" => Some(Protection::Signature),
         "distributed_sources" => Some(Protection::Aggregate),

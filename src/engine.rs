@@ -218,6 +218,10 @@ pub struct V3Features {
     /// nezávisle na zralosti profilu. Výchozí vypnuto; `recommended()` se nemění.
     #[serde(default)]
     pub outscan: bool,
+    /// Krok 32: opakované neúspěšné pokusy vnitřního hosta na stejný vnější cíl a port.
+    /// Výchozí vypnuto; `recommended()` se nemění.
+    #[serde(default)]
+    pub retry: bool,
     /// Krok 16: případová složka pro seniora (shrnutí, aktéři, hypotézy, důkazy pro a
     /// proti, co zbývá ověřit, slepá místa, důvod předání, uzávěr L1). Nic nerozhoduje.
     #[serde(default)]
@@ -260,7 +264,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 62] = [
+    pub const NAMES: [&'static str; 63] = [
         "memory",
         "rate",
         "volume",
@@ -315,6 +319,7 @@ impl V3Features {
         "upload_horizon",
         "attempts",
         "outscan",
+        "retry",
         "case_folder",
         "confirm_evidence",
         "close_gate",
@@ -381,6 +386,7 @@ impl V3Features {
             upload_horizon: true,
             attempts: false,
             outscan: false,
+            retry: false,
             case_folder: true,
             confirm_evidence: true,
             close_gate: true,
@@ -455,6 +461,7 @@ impl V3Features {
             upload_horizon: false,
             attempts: false,
             outscan: false,
+            retry: false,
             case_folder: false,
             confirm_evidence: false,
             close_gate: false,
@@ -532,6 +539,7 @@ impl V3Features {
             upload_horizon: false,
             attempts: false,
             outscan: false,
+            retry: false,
             case_folder: false,
             confirm_evidence: false,
             close_gate: false,
@@ -623,6 +631,7 @@ impl V3Features {
             "upload_horizon" => &mut self.upload_horizon,
             "attempts" => &mut self.attempts,
             "outscan" => &mut self.outscan,
+            "retry" => &mut self.retry,
             "case_folder" => &mut self.case_folder,
             "confirm_evidence" => &mut self.confirm_evidence,
             "close_gate" => &mut self.close_gate,
@@ -851,6 +860,10 @@ impl EngineConfig {
     /// Krok 31: odchozí skenování vnitřního hosta.
     pub fn outscan(&self) -> bool {
         self.on(|f| f.egress && f.outscan)
+    }
+    /// Krok 32: opakované neúspěšné pokusy na stejný vnější cíl.
+    pub fn retry(&self) -> bool {
+        self.on(|f| f.egress && f.retry)
     }
     pub fn l7_ladder(&self) -> bool {
         self.on(|f| f.l7_ladder && f.ladder && (f.l7_tls || f.l7_dns))

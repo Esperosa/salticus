@@ -30,6 +30,7 @@ pub mod novelty;
 pub mod oneshot;
 pub mod outscan;
 pub mod profile;
+pub mod retry;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -76,6 +77,8 @@ pub struct BehaviorSwitches {
     pub attempts: bool,
     /// Krok 31: odchozí skenování vnitřního hosta.
     pub outscan: bool,
+    /// Krok 32: opakované neúspěšné pokusy na stejný vnější cíl.
+    pub retry: bool,
 }
 
 impl BehaviorSwitches {
@@ -103,6 +106,7 @@ impl BehaviorSwitches {
             upload_horizon: engine.upload_horizon(),
             attempts: engine.attempts(),
             outscan: engine.outscan(),
+            retry: engine.retry(),
         }
     }
 
@@ -119,6 +123,7 @@ impl BehaviorSwitches {
             || self.icmp_payload
             || self.attempts
             || self.outscan
+            || self.retry
     }
 }
 
@@ -147,6 +152,7 @@ pub const BEHAVIOR_TYPES: &[&str] = &[
     "icmp_payload_anomaly",
     "bruteforce_attempts",
     "outbound_scan",
+    "unanswered_retry",
 ];
 
 pub fn is_behavior_type(kind: &str) -> bool {
@@ -232,6 +238,7 @@ pub struct BehaviorThresholds {
     pub l7: l7::L7Thresholds,
     pub attempts: attempts::AttemptsThresholds,
     pub outscan: outscan::OutscanThresholds,
+    pub retry: retry::RetryThresholds,
 }
 
 impl BehaviorThresholds {
@@ -378,6 +385,10 @@ pub fn run_window(
     if switches.outscan {
         out.findings
             .extend(outscan::detect(&thresholds.outscan, input.outbound));
+    }
+    if switches.retry {
+        out.findings
+            .extend(retry::detect(&thresholds.retry, input.outbound));
     }
     if switches.attempts {
         let profile = &state.profile;
