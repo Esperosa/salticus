@@ -1,0 +1,15 @@
+{
+  "own_scanners": [
+    {
+      "ip": "192.0.2.10",
+      "from": "2026-01-01T08:00:00Z",
+      "to": "2026-01-01T12:00:00Z",
+      "targets": ["192.0.2.0/24"]
+    }
+  ],
+  "discovery": true,
+  "lan_cidrs": ["192.0.2.0/24"],
+  "max_flows_per_src_hour": 1000,
+  "headers_only_capture": true,
+  "broadcast_ports": []
+}

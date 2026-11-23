@@ -72,6 +72,7 @@ def main():
 
     shown_text = {}      # finding_id -> text (jen zobrazené)
     shown_per_window = []
+    closed_text = {}     # nálezy, které produkt uzavřel (auto_resolved / refuted)
     failures = 0
     for n, index in enumerate(order):
         start = t0 + index * a.window
@@ -94,6 +95,10 @@ def main():
         findings = {f["finding_id"]: f for f in report.get("findings", [])}
         shown = 0
         for record in report.get("findingLifecycle", []):
+            closed = str(record.get("disposition", "")).startswith("auto_resolved") or                 record.get("state") in ("auto_resolved", "refuted")
+            if closed:
+                cf = findings.get(record["finding_id"], {})
+                closed_text.setdefault(record["finding_id"], (start, json.dumps(cf, ensure_ascii=False)))
             if not record.get("displayed"):
                 continue
             f = findings.get(record["finding_id"], {})
@@ -119,10 +124,16 @@ def main():
         for ip in set(IP_RE.findall(text)):
             ip_times[ip].append(first)
 
+    wrongly = 0
+    for t in truth:
+        if any(t["src"] in txt for _, txt in closed_text.values()) and t["family"] != "scanner_spoof":
+            wrongly += 1
+    result_closed = {"closed_findings": len(closed_text), "episodes_with_closed_finding": wrongly}
+    print(f"uzavřených nálezů {len(closed_text)}, epizod útoku zmíněných v uzavřeném nálezu {wrongly}")
     by = defaultdict(list)
     for t in truth:
         by[t["family"]].append(t)
-    result = {"windows": len(order), "failures": failures,
+    result = {**result_closed, "windows": len(order), "failures": failures,
               "displayed_total": sum(shown_per_window),
               "displayed_distinct": len(shown_text), "families": {}}
     print(f"okna {len(order)}, selhání {failures}, zobrazeno celkem {sum(shown_per_window)}, "

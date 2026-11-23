@@ -1,0 +1,15 @@
+# Vzorová konfigurace pracovního prostoru pro shadow režim (jen pozorování, nic se nezavírá
+# ani neblokuje). Presety v kódu se nemění; přepínače se zapínají tady.
+# Spuštění: SALTICUS_KNOWN_ACTIVITY=known_activity.json salticus-program beh spust ...
+workspace_root = "./workspace"
+
+[engine]
+mode = "v3"
+
+[engine.v3]
+# krok 27: opakovaná krátká spojení na přihlašovací službu (hádání hesel)
+attempts = true
+# přiřazení zdrojů i nespárovaným událostem: nový útočník na už zobrazené službě se zobrazí
+attr_calib = true
+# objem hosta i přes klouzavý horizont oken: útok, který protne hranici okna
+upload_horizon = true
