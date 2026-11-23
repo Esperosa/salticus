@@ -26,41 +26,53 @@ Soubor `F:\work-tmp\shadow\labeling\pripady_oznaceno.csv`. Výsledek: 0 útoků,
 
 ## 3. Návrh: modul `passive::known_activity` (výchozí vypnuto)
 
-Zapíná se jen souborem z `SALTICUS_KNOWN_ACTIVITY` (JSON). Bez něj se chování neliší od dosavadního, `recommended()` a R2/P6 se nemění. Nic se nezavírá. Vysvětlené toky se vyjmou z detekce a každá skupina nechá **jednu souhrnnou událost** `explained_activity` (Low, „vysvětleno, ne uzavřeno").
+Zapíná se jen souborem z `SALTICUS_KNOWN_ACTIVITY` (JSON, načte se jednou za proces; neplatný soubor nebo neplatná politika = funkce vypnutá). Bez něj se chování neliší od dosavadního, `recommended()` a R2/P6 se nemění. Nic se nezavírá. Vysvětlené toky se vyjmou z detekce a každá skupina nechá **jednu souhrnnou událost** `explained_activity` (Low, „vysvětleno, ne uzavřeno", s nejčastějšími cíli). Obálka se používá jen s legacy detektorem (detektor v3 dostává dotazy jako odchozí tok; tam se funkce zatím nepoužívá a pipeline to zaloguje).
 
-Pravidla:
+Pravidla (po dvou kolech nezávislého review, viz sekce 6):
 
-1. **Vlastní sken:** jen deklarovaná IP a deklarované časové okno.
-2. **Odpověď na vlastní dotaz:** UDP z privátní adresy na privátní příjemce, jehož (IP, zdrojový port) poslal v posledních 600 s dotaz na multicast 239.255.255.250:1900 nebo 224.0.0.251:5353. Strop: odpovědí za hodinu nejvýš 10× počet dotazů téhož příjemce za tu hodinu (stanoveno předem z logiky protokolu: odpověď nemůže být početnější než dotazy, které ji vyvolaly).
-3. **mDNS a broadcast/multicast v LAN:** UDP mezi privátními adresami, strop 1 000 toků za hodinu na zdroj (strop jsem nastavil bez měření; viz 5).
-4. **Záznam jen hlaviček:** `missed_bytes` se ignoruje (je to artefakt záznamu).
+1. **Vlastní sken:** jen deklarovaná IP, deklarované okno **a deklarované cíle** (prázdné cíle = žádná výjimka).
+2. **Odpověď na vlastní dotaz:** UDP z privátní adresy na privátního příjemce, který ostře před tím (do 600 s, přesný čas) poslal dotaz na multicast 239.255.255.250:1900 nebo 224.0.0.251:5353 ze stejného portu. Rozpočet v klouzavém okně 600 s: odpovědí od jednoho odpovídajícího nejvýš 10× počet dotazů z okna a od všech nejvýš 30×; budoucí a vypršené dotazy nefinancují nic.
+3. **Discovery multicast (3 známé skupiny) a broadcast** na skutečné broadcast adresy deklarovaných podsítí (`/31` a `/32` ne); strop 1 000 toků za UTC hodinu na zdroj.
+4. **Záznam jen hlaviček:** `missed_bytes` se ignoruje v celém záznamu (platí pro celý záznam, ne jen vysvětlené toky).
+5. Každý vysvětlený tok (mimo vlastní sken) musí být malý: nejvýš 64 paketů a 16 KB (součty obou směrů) a tempo pod stejnými prahy jako legacy detektor (2 500 pps, 35 Mb/s). Rychlý nebo velký tok zůstane v detekci.
 
-Zamítnuto po vlastní kontrole: pravidlo „UDP ze zdrojového portu 1900 je SSDP" (bez dotazu to může být útok; po zavedení pravidla 2 nic neztratilo).
+Zamítnuto po vlastní kontrole a review: „UDP ze zdrojového portu 1900 je SSDP", „libovolný multicast nebo adresa končící `.255`", „unicast mDNS na portu 5353".
 
-Technická poznámka: Zeek parser v režimu `DstOnly` zahazoval toky mimo rozsah, tedy i multicast dotazy. Při zapnuté znalosti činnosti se proto ponechají toky ze zdroje v rozsahu na dvě multicast skupiny (SSDP, mDNS). Bez zapnutí beze změny.
+Zeek parser v režimu `DstOnly` zahazoval toky mimo rozsah, tedy i multicast dotazy. Při aktivní obálce se proto ponechají jen přesné UDP dotazy na ty dvě skupiny ze zdroje v rozsahu. `egress::keep()` a import Suricaty se nezměnily.
 
 ## 4. Výsledky
 
 | měření | výsledek |
 |---|---|
-| celá knihovna `cargo test --lib` | 723 prošlo / 7 selhalo: 6 známých (5× `broker::*` bez Redis, `identity_lab`) + `case_memory::update_helper_serialises_concurrent_writers` (nestabilní při zátěži: samostatně 3/3 prošel, i na kódu bez této změny) |
-| jednotkové testy modulu | 13/13 (včetně kladných kontrol: nedeklarovaný sken, sken mimo okno, UDP:1900 bez dotazu, veřejný zdroj, záplava odpovědí, odpověď po 600 s) |
-| domácí data, výchozí chování | 20 832 nálezů |
-| domácí data, znalost činnosti zapnutá | **258 nálezů** (závažnost vysoká 101 / střední 9 / nízká 148, před: 10 388 / 5 178 / 5 266) |
-| souhrny „vysvětleno" | 58 (mDNS 28, broadcast 18, odpovědi na vlastní dotaz 12) |
-| pozitivní kontrola na reálných datech | do kopie `conn.log` vloženy 4 útoky po 250 tocích na jednu službu: nedeklarovaný sken, sken z deklarované IP mimo okno, UDP ze zdroje 1900 bez dotazu, totéž z veřejné adresy. Všechny 4 zůstaly beze změny; počet zmínek v reportu bez / se znalostí činnosti: port 2222 13 : 13, port 3333 13 : 13, port 4444 31 : 31, adresa 203.0.113.9 9 : 9, adresa 192.168.1.250 12 : 12 (u portu 5555 je rozdíl 73 : 62 jen kvůli skutečným tokům PC → TV, ne vloženým) |
+| jednotkové testy modulu | 27/27 (včetně záporných kontrol: nedeklarovaný sken, cíl mimo deklaraci, sken mimo okno, odpověď bez dotazu / před dotazem / ve stejný čas / po 600 s + 1 ms, nad rozpočtem, budoucí a vypršený dotaz, `/31` a `/32`, vysoké tempo, součty obou směrů, neplatná politika) |
+| celá knihovna `cargo test --lib` | 723 prošlo / 7 selhalo před posledními úpravami: 6 známých (5× `broker::*` bez Redis, `identity_lab`) + `case_memory::update_helper_serialises_concurrent_writers` (nestabilní při zátěži, samostatně 3/3 prošel, i na kódu bez této změny) |
+| domácí data, výchozí chování | 20 832 nálezů (vysoká 10 388 / střední 5 178 / nízká 5 266) |
+| domácí data, finální pravidla | **583 nálezů** (vysoká 314 / střední 80 / nízká 189), 43 souhrnů „vysvětleno" (discovery multicast 21, broadcast 12, odpovědi na vlastní dotaz 9, vlastní sken 1) |
+| pozitivní kontrola na reálných datech | do kopie `conn.log` vloženy 4 útoky po 250 tocích na jednu službu: nedeklarovaný sken, sken z deklarované IP mimo okno, UDP ze zdroje 1900 bez dotazu, totéž z veřejné adresy. Všechny 4 zůstaly hlášené (události u portu 2222: 5, portu 3333: 5, UDP bez dotazu 3, veřejná adresa 3) |
+
+Vývoj počtu nálezů podle verze pravidel (pro úplnost, ne jako ladění): první verze 258 (volnější pravidla), po review 256, po zpřísnění tempa a velikosti **583**. Rozdíl 256 → 583 způsobilo pravidlo 5: 938 odpovědí (2 %) jsou drobné toky do 64 paketů, které legacy detektor označuje za „skok tempa" jen proto, že trvají milisekundy. Přísnější varianta je konzervativnější a podle review správná; legacy odhad tempa na ultrakrátkých tocích je samostatná slabina k pozdějšímu řešení.
 
 ## 5. Meze (bez zastírání)
 
-- **Žádný útok v domácích datech není.** Měřilo se, kolik šumu zmizí a že vložené útoky zůstanou. Přesnost odhalení útoků se z toho nedá odhadnout.
-- **Označení dělal Claude, ne nezávislá osoba.** Šest případů je „nevím" (adresa 10.68.166.252 mimo LAN a mobil s náhodnou MAC).
-- Legacy detektor sken s jedním tokem na port nevidí (ani bez změn): kladná kontrola proto používá 250 toků na jednu službu. To je vlastnost dosavadního detektoru, ne tohoto kroku.
-- Strop 1 000 toků/hod u mDNS a broadcastu jsem nastavil před měřením, ale po prohlédnutí dat. Útočník, který se drží pod stropem v mDNS/broadcastu, bude vidět jen jako souhrn Low, ne jako nález. To je cena za 98% pokles šumu a je to vidět v souhrnné události, ne mlčky.
-- Zbývá 258 nálezů, z toho 101 s vysokou závažností: nejde o útoky, jde o další činnost, kterou pravidla nezná (např. PC → TV :5555, 452 toků, vypadá jako ADB aplikace na PC; zdroje 10.68.166.252, .57, .94).
+- **Žádný útok v domácích datech není.** Měřilo se, kolik šumu zmizí a že vložené útoky zůstanou. Přesnost odhalení útoků z toho nejde odhadnout.
+- **Označení dělal Claude, ne nezávislá osoba** (78 případů, šest „nevím": adresa 10.68.166.252 mimo LAN a mobil s náhodnou MAC). Označení vznikla před finálními pravidly.
+- Legacy detektor sken s jedním tokem na port nevidí ani bez změn; kladná kontrola proto používá 250 toků na jednu službu.
+- **Residuální riziko (sporné, S1):** z hlaviček paketů nejde dokázat, že tok je skutečná odpověď. Místní útočník, který zná dočasný port příjemce i načasování a drží se pod rozpočtem a limitem velikosti, by byl vidět jen jako souhrn Low s počtem a cíli, ne jako původní nález. Odpůrce (review) chce takové toky nechat v detekci a odpovědi jen anotovat; to by odstranilo většinu přínosu (snížení šumu o ~97 %). Rozhodnutí je na provozovateli; modul je ve výchozím stavu vypnutý a pro shadow režim je dostatečný.
+- Zbývá 583 nálezů, z toho 314 s vysokou závažností: jde o další činnost, kterou pravidla neznají (TCP a UDP mezi PC a TV/Cast na dočasných portech, například PC → TV :5555, 452 toků, vypadá jako ADB aplikace na PC).
 - Bez pravdivých označení z domácí sítě nejsou chybové meze. Bran uzavírání (`K22_SHADOW`) `beh spust` nepoužívá, takže o uzavírání nemáme z domácí sítě žádná čísla.
 - Použit je release z kódu kroku 24 plus tento modul; regrese 48/48 se této cesty netýká (modul je mimo soak a bez proměnné se nespustí).
-- Council a sol-loop (CLAUDE.md) se pro tento krok nespouštěly. Změna nesahá na zavírání nálezů, ale přidává logiku, která nálezy skrývá, takže doporučuji sol-loop před zapnutím mimo shadow režim.
 
-## 6. Stav doporučení
+## 6. Review (sol-loop, GPT-6.2 Sol, effort high)
 
-`recommended()` beze změny, modul zůstává vypnutý ve výchozím stavu. Zapnout ho smí jen provozovatel souborem z `SALTICUS_KNOWN_ACTIVITY`. Další krok: nezávislé označení zbylých případů (30 případů dle `plan-krok22.md` §4) a sol-loop.
+| kolo | výsledek |
+|---|---|
+| 1 | CHANGES: 3 blokery (S1, S3, S5; S2 jako blocker v původním značení) a 6 „should" |
+| 2 | CHANGES: S1 sporné; S2, S3, S5, S6, S8, S14 otevřené; S4, S7, S9 až S13 vyřešené |
+| úpravy po kole 2 | S2 (tempo a součty obou směrů), S3 (`/31`, `/32`), S5 (klouzavé okno, jen dřívější dotazy), S6 (aktivace jen s běžící obálkou), S8 (ostře dřív), S14 (validace politiky) opraveny a pokryty testy |
+| kolo 3 | **neproběhlo**: vedoucí přerušil používání agentů OpenAI. Opravy po kole 2 nejsou Solem znovu ověřeny. |
+
+Stav: S1 zůstává sporné (viz výše, rozhoduje provozovatel). Ostatní nálezy jsou opraveny, ale bez nezávislého potvrzení. Před zapnutím mimo shadow režim doporučuji kolo 3.
+
+## 7. Stav doporučení
+
+`recommended()` beze změny, modul zůstává vypnutý ve výchozím stavu. Další krok: kolo 3 review po obnovení agentů, nezávislé označení zbylých případů (30 dle `plan-krok22.md` §4) a rozhodnutí o S1.

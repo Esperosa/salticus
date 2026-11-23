@@ -43,7 +43,7 @@ pub enum FlowDirection {
     External,
 }
 
-fn contains(scope: &[IpNet], ip: &str) -> bool {
+pub(crate) fn contains(scope: &[IpNet], ip: &str) -> bool {
     ip.parse::<IpAddr>()
         .ok()
         .is_some_and(|addr| scope.iter().any(|net| net.contains(&addr)))
@@ -65,19 +65,9 @@ pub fn keep(mode: ScopeMode, scope: &[IpNet], src: Option<&str>, dst: &str) -> b
         return false;
     }
     match mode {
-        ScopeMode::DstOnly => {
-            contains(scope, dst)
-                || (src.is_some_and(|s| contains(scope, s))
-                    && is_discovery_group(dst)
-                    && super::known_activity::enabled())
-        }
+        ScopeMode::DstOnly => contains(scope, dst),
         ScopeMode::SrcOrDst => direction(scope, src, dst) != FlowDirection::External,
     }
-}
-
-/// Multicast skupiny SSDP a mDNS (krok 25: dotazy, na které pak chodí odpovědi).
-fn is_discovery_group(dst: &str) -> bool {
-    matches!(dst, "239.255.255.250" | "224.0.0.251")
 }
 
 /// Meze objemu odchozích toků v jednom okně (paměť a CPU behaviorální vrstvy).

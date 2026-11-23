@@ -187,12 +187,21 @@ pub fn parse_zeek_dir_mode(
                 }
             };
             let dst_ip = row.get("id.resp_h").cloned().unwrap_or_default();
-            if !keep(
-                mode,
-                scope,
-                row.get("id.orig_h").map(String::as_str),
-                &dst_ip,
-            ) || !event_in_window(timestamp, start, end)
+            let src_ref = row.get("id.orig_h").map(String::as_str);
+            // Krok 25: s platnou konfiguraci znamé činnosti se navíc ponechají přesné UDP dotazy
+            // SSDP/mDNS ze zdroje v rozsahu (jejich odpovědi se pak dají spárovat). Bez ní beze změny.
+            let discovery_query = mode == ScopeMode::DstOnly
+                && super::known_activity::wants_discovery_queries()
+                && src_ref.is_some_and(|src| super::egress::contains(scope, src))
+                && super::known_activity::is_query_flow(
+                    &row.get("proto")
+                        .map(|p| p.to_ascii_lowercase())
+                        .unwrap_or_default(),
+                    &dst_ip,
+                    row.get("id.resp_p").and_then(|v| v.parse::<u16>().ok()),
+                );
+            if !(keep(mode, scope, src_ref, &dst_ip) || discovery_query)
+                || !event_in_window(timestamp, start, end)
             {
                 continue;
             }
