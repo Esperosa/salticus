@@ -37,10 +37,28 @@ Totéž s hosty **bez zahřátí** (starší verze benchmarku, nastavení `mod` 
 4. **Zjištění o produktu: nový útočník na již zobrazených službách se nezobrazí.** `horizontal_scan` je jen 1/10, protože epizody sdílejí sadu 40 cílů. Ověřeno přímo dvěma po sobě jdoucími okny: první útočník vyrobí 41 zobrazených nálezů, druhý útočník na týchž službách vyrobí 41 nálezů se svou IP, ale všechny mají stav `open` / `suppressed` / nezobrazeno, protože nespárované události mají identifikátor podle cíle a pozdější zdroj se do už zobrazeného nálezu jen přidá. To je záměrné potlačení opakování, ale znamená, že **druhý útočník na stejnou službu zůstane skrytý**. Doporučení (neprovedeno): opakované zobrazení u chráněných a útokových typů, když se objeví nový různý zdroj. Je to návrh pro další krok, měl by se řešit A/B s regresí.
 5. **Schovávání:** modul schová jen část toků a zobrazí souhrn „vysvětleno“ (u `ssdp_masquerade` a `broadcast_masquerade` vypadá detekce zobrazená právě jako tento souhrn, ne jako původní nález). Bez modulu je u `broadcast_masquerade` jen 1/10 (ostatní toky na broadcast :137 produkt nezobrazil), s modulem 7/10 díky souhrnu. `scanner_spoof` (podvržená IP deklarovaného skeneru) zůstává 0/10 ve všech nastaveních, i bez modulu.
 
+## 3a. Dva skryté důvody a existující přepínače, které je řeší
+
+Obě slabiny z bodu 3 mají v produktu už existující, ve výchozím stavu vypnutý přepínač (ne nový kód). Změřil jsem je na stejném benchmarku (modul zapnutý, `attempts` zapnuto):
+
+| přidaný přepínač | horizontal_scan | broadcast_masquerade | exfil_large | zobrazeno celkem |
+|---|---|---|---|---|
+| žádný (tabulka výše, `mod_att`) | 1/10 | 7/10 | 8/10 | 684 |
+| `attr_calib` | **10/10** | **10/10** | 8/10 | 1 063 |
+| `attr_calib` + `upload_horizon` | 10/10 | 10/10 | **10/10** | 1 065 |
+
+- **`attr_calib`** přiřazuje zdroje i nespárovaným událostem, takže nový útočník na už zobrazené službě spustí eskalaci „nový zdroj“ místo potlačení (příčina vysvětlená v bodě 4). Cena: o 55 % víc zobrazených nálezů na tomto pozadí (684 → 1 063).
+- **`upload_horizon`** hodnotí objem hosta i přes klouzavý horizont oken. Dvě chybějící epizody `exfil_large` byly přesně ty, které protínaly hranici 30minutového okna tak, že každá půlka zůstala pod absolutní mezí 1 GB (675 + 825 MB a 750 + 750 MB; ostatní epizody měly aspoň jednu půlku nad ní nebo celé v jednom okně). Cena: o 2 nálezy víc.
+- Bez modulu stejná kombinace (`attempts`, `attr_calib`): zachycení shodné (kromě `exfil_large` 8/10), ale **9 661 zobrazených nálezů** proti 1 065 s modulem.
+
+**Nejlepší změřené nastavení na tomto pozadí:** modul `known_activity` + `attempts` + `attr_calib` + `upload_horizon`: všech osm skutečných rodin útoku **10/10** (a schování pod známou činnost 10/10 u SSDP i broadcastu) při 1 065 zobrazených nálezech za 3 dny. Nejde o změnu `recommended()` (výchozí presety se nemění): všechny přepínače jsou ve výchozím stavu vypnuté a měřilo se na vývojových datech, ne na držených seedech; zapnutí pro shadow režim je rozhodnutí provozovatele.
+
+Zbývá **`scanner_spoof` 0/10 ve všech nastaveních, i bez modulu.** Příčinou je zmatení benchmarku, ne modul: epizody leží v okně skutečného nmap skenu z téhož PC (20. 11. 10:00 až 11:40), takže zdroj už vyráběl zobrazené nálezy o skenování a nový sken ze stejné IP se pod ně vstřebá. Podvržení IP deklarovaného skeneru modulem (riziko B1 z kroku 25) tedy tento benchmark neměří; zůstává dokumentovaným rizikem.
+
 ## 4. Meze (bez zastírání)
 
 - **Útoky jsou moje syntetické epizody** a intenzity jsem zvolil já. Měří se hranice detekce na tomto pozadí, ne pravdivost vůči skutečným útočníkům. Deset epizod na rodinu dává široké intervaly.
-- `exfil_large` 8/10: dvě chybějící epizody jsem nediagnostikoval (nepodložená hypotéza: stejné potlačení jako u skenu).
+- `exfil_large` 8/10 ve výchozím nastavení: dvě chybějící epizody protínají hranici okna (bod 3a); s `upload_horizon` 10/10.
 - Detekce se přiřazuje podle zmínky IP v zobrazeném nálezu. Souhrn „vysvětleno“ útočníkovu IP také zmiňuje a počítá se, i když je to jen informace o vysvětleném provozu (viz bod 5).
 - Cíle útoků jsou neznámá zařízení; útoky na hosty z aktivního inventáře se neměřily.
 - Šum je počet zobrazených nálezů na pozadí bez ověření (pravda z domácí sítě není), ne počet falešných poplachů; nezachycené útoky jsou součástí 9 067 i 684 jen v té míře, v jaké je produkt zobrazil.
@@ -59,6 +77,5 @@ Pracovní data jsou jen lokálně (`F:\work-tmp\shadow\cycles`).
 
 ## 6. Další krok
 
-1. Opakované zobrazení nálezu u nového různého zdroje (bod 4), měřené stejným benchmarkem a regresí 48/48.
-2. Diagnostika dvou chybějících epizod `exfil_large`.
-3. Brána uzavírání na přehrání po oknech (nyní má stav a zobrazené nálezy; `findingLifecycle` už nese `disposition` a `auto_resolved`).
+1. Rozhodnutí provozovatele o zapnutí `attempts`, `attr_calib` a `upload_horizon` pro shadow režim (měření na vývojových datech, bez držených seedů); `recommended()` beze změny.
+2. Brána uzavírání na přehrání po oknech (nyní má stav a zobrazené nálezy; `findingLifecycle` už nese `disposition` a `auto_resolved`).
