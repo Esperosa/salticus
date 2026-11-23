@@ -861,6 +861,18 @@ pub fn run_pipeline(args: BehArgs) -> anyhow::Result<RunReport> {
             Some(detector) => detector,
             None => &passive::LegacyAnomalyDetector,
         };
+    // Krok 25: znama cinnost site (jen s SALTICUS_KNOWN_ACTIVITY, jinak beze zmeny).
+    let known_activity_detector =
+        passive::known_activity::KnownActivityConfig::from_env().map(|config| {
+            passive::known_activity::KnownActivityDetector {
+                inner: detector_ref,
+                config,
+            }
+        });
+    let detector_ref: &(dyn passive::ConnectionDetector + Sync) = match &known_activity_detector {
+        Some(wrapped) => wrapped,
+        None => detector_ref,
+    };
     let hosts_ref = &hosts;
     let context_config_ref = &context_config;
     let lane_config_ref = &lane_config;
