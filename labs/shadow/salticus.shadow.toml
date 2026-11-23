@@ -13,3 +13,6 @@ attempts = true
 attr_calib = true
 # objem hosta i přes klouzavý horizont oken: útok, který protne hranici okna
 upload_horizon = true
+# krok 31: odchozí skenování (aspoň 25 cílů bez odpovědi za 5 minut); potvrzeno jen na datech,
+# ze kterých vzniklo, na skutečné domácí síti 1 zásah za 3 dny; proto zatím vypnuto
+# outscan = true
