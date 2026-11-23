@@ -49,6 +49,12 @@ const REPLY_WINDOW_S: i64 = 600;
 const MAX_REPLIES_PER_QUERY_RESPONDER: usize = 10;
 const MAX_REPLIES_PER_QUERY_TOTAL: usize = 30;
 
+/// Nejnižší port, ze kterého dotaz smí financovat odpovědi (dočasné porty).
+const MIN_EPHEMERAL_PORT: u16 = 32768;
+/// Nejvýš tolik dotazů z okna financuje odpovědi jednomu příjemci (omezuje podvržené dotazy;
+/// na domácích datech bylo v okně 600 s kolem 15 dotazů).
+const MAX_FUNDED_QUERIES: usize = 30;
+
 /// Rozpoznané discovery multicast skupiny (SSDP, mDNS, LLMNR).
 fn is_discovery_group(ip: &str, port: Option<u16>) -> bool {
     matches!(
@@ -136,6 +142,10 @@ static ACTIVE: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn activate() {
     ACTIVE.store(true, AtomicOrdering::Relaxed);
+}
+
+pub(crate) fn deactivate() {
+    ACTIVE.store(false, AtomicOrdering::Relaxed);
 }
 
 /// Načte konfiguraci jednou za proces. `None`, pokud proměnná chybí nebo soubor nejde
@@ -285,7 +295,10 @@ fn collect_queries(connections: &[ConnectionObservation]) -> Queries {
         let (Some(src), Some(port)) = (conn.src_ip.as_ref(), conn.src_port) else {
             continue;
         };
-        if is_query_flow(&conn.proto, &conn.dst_ip, conn.dst_port) {
+        // Dotaz ze servisního portu (5353, 1900, 5355) nic nefinancuje: odpověď na něj jde
+        // multicastem a podvržený dotaz by si zaplatil odpovědi na libovolnou službu.
+        // Financovat smí jen dočasný port (Linux od 32768, Windows od 49152).
+        if is_query_flow(&conn.proto, &conn.dst_ip, conn.dst_port) && port >= MIN_EPHEMERAL_PORT {
             queries
                 .entry((src.clone(), port))
                 .or_default()
@@ -403,9 +416,12 @@ pub(crate) fn split(
                 let port = conn.dst_port.unwrap_or_default();
                 let ts = conn.timestamp;
                 // dotazy ostře před odpovědí a ne starší než okno
-                let funded = queries.get(&(conn.dst_ip.clone(), port)).map_or(0, |q| {
-                    q.partition_point(|t| *t < ts) - q.partition_point(|t| *t < ts - window)
-                });
+                let funded = queries
+                    .get(&(conn.dst_ip.clone(), port))
+                    .map_or(0, |q| {
+                        q.partition_point(|t| *t < ts) - q.partition_point(|t| *t < ts - window)
+                    })
+                    .min(MAX_FUNDED_QUERIES);
                 // odpovědi v okně končícím touto odpovědí (včetně ní)
                 let in_window = |times: Option<&Vec<DateTime<Utc>>>| {
                     times.map_or(0, |v| {
@@ -439,6 +455,8 @@ pub(crate) fn split(
                 let target = format!("{}:{}", conn.dst_ip, conn.dst_port.unwrap_or_default());
                 *group.targets.entry(target).or_default() += 1;
             }
+            // dotazy dodal parser jen kvůli párování odpovědí; vnitřní detektor je nikdy nedostal
+            _ if config.discovery && is_query_flow(&conn.proto, &conn.dst_ip, conn.dst_port) => {}
             _ => kept.push(conn),
         }
     }
@@ -773,7 +791,14 @@ mod tests {
             "udp",
             at(10, 0, 0),
         );
-        let fake255 = conn("192.168.1.88", 40000, "10.1.2.255", 80, "udp", at(10, 0, 0));
+        let fake255 = conn(
+            "192.168.1.88",
+            40000,
+            "10.1.2.255",
+            57621,
+            "udp",
+            at(10, 0, 0),
+        );
         let other_group = conn(
             "192.168.1.88",
             40000,
@@ -840,6 +865,52 @@ mod tests {
         let (kept, events) = split(vec![mc, ssdp_wrong, bc, bc_all], &config());
         assert_eq!(kept.len(), 4);
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn query_from_service_port_funds_nothing() {
+        // rutinní mDNS dotaz oběti ze zdrojového portu 5353 nesmí "zaplatit" unicast na 5353
+        let conns = vec![
+            conn(
+                "192.168.1.146",
+                5353,
+                "224.0.0.251",
+                5353,
+                "udp",
+                at(10, 0, 0),
+            ),
+            conn(
+                "192.168.1.66",
+                40000,
+                "192.168.1.146",
+                5353,
+                "udp",
+                at(10, 0, 5),
+            ),
+        ];
+        let (kept, _) = split(conns, &config());
+        assert!(
+            kept.iter()
+                .any(|c| c.dst_port == Some(5353) && c.src_ip.as_deref() == Some("192.168.1.66"))
+        );
+    }
+
+    #[test]
+    fn spoofed_queries_fund_a_bounded_number_of_replies() {
+        let mut conns: Vec<_> = (0..200)
+            .map(|i| query(50000, at(10, 0, 0) + Duration::milliseconds(i)))
+            .collect();
+        for i in 0..400 {
+            conns.push(reply(
+                "192.168.1.66",
+                50000,
+                at(10, 1, 0) + Duration::milliseconds(i),
+            ));
+        }
+        let (kept, _) = split(conns, &config());
+        let replies = kept.iter().filter(|c| c.dst_port == Some(50000)).count();
+        // 30 financovaných dotazů × 10 odpovědí od jednoho odpovídajícího = nejvýš 300 vysvětleno
+        assert_eq!(replies, 100);
     }
 
     #[test]
@@ -1008,7 +1079,7 @@ mod tests {
             "192.168.1.88",
             40000,
             "192.168.1.7",
-            80,
+            57621,
             "udp",
             at(10, 0, 0),
         );
@@ -1016,7 +1087,7 @@ mod tests {
             "192.168.1.88",
             40000,
             "192.168.1.9",
-            80,
+            57621,
             "udp",
             at(10, 0, 0),
         );

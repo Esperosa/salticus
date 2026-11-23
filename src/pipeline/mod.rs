@@ -863,6 +863,7 @@ pub fn run_pipeline(args: BehArgs) -> anyhow::Result<RunReport> {
         };
     // Krok 25: znama cinnost site (jen s platnou SALTICUS_KNOWN_ACTIVITY, jinak beze zmeny).
     // Zatim jen pro legacy detektor: stavovy detektor v3 dostava dotazy jako odchozi tok.
+    passive::known_activity::deactivate(); // příznak nesmí přežít z dřívějšího běhu v témže procesu
     let known_activity_detector = match (
         passive::known_activity::config(),
         v3_session.as_ref().and_then(|session| session.detector()),

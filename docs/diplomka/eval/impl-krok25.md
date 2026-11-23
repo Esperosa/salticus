@@ -83,7 +83,19 @@ Vývoj počtu nálezů podle verze pravidel (pro úplnost, ne jako ladění): pr
 | S4: chybí test celkového stropu 30× a `orig_pkts = None` | přijato jako dluh testů |
 | N1 až N4 | nity, nechávám |
 
-Haiku není nezávislý ekvivalent Sola; jeho nálezy mají váhu jen po ověření v kódu. Kolo 3 od Sola zůstává otevřené.
+**Kolo 3 hlubší kontrolou (Claude Opus, jen čtení, nahrazuje Sola; vedoucí zakázal OpenAI agenty).** Verdikt ZMĚNY, nálezy ověřeny v kódu:
+
+| nález | posouzení |
+|---|---|
+| B-A: útočník si podvrhne multicast dotaz sám sobě a zaplatí si odpovědi na libovolný port | **potvrzeno, zúženo**: dotaz financuje jen ze zdrojového dočasného portu (≥ 32768) a nejvýš 30 dotazů z okna na příjemce (strop skrytých odpovědí 300 za 600 s a příjemce); zbytek riziko S1 |
+| B-B: rutinní mDNS dotaz oběti ze zdrojového portu 5353 „zaplatí“ unicast na 5353 | **potvrzeno, opraveno**: dotaz ze servisního portu nic nefinancuje; nový test |
+| S-A: příznak `ACTIVE` přežije do dalšího běhu v témže procesu | **potvrzeno, opraveno**: pipeline ho na začátku každého běhu vynuluje (`deactivate`) |
+| S-C: dotazy přidané parserem mohly protéct do vnitřního detektoru | **potvrzeno, opraveno**: po párování se vždy vyřadí |
+| S-D: dva testy po změně portů netestovaly broadcast adresu (port 80) | **opraveno**: testy používají známý port 57621 |
+| S-B: viditelnost souhrnu závisí na inventáři; souhrn visí na zdroji, ne na oběti | **přijato jako omezení**, ne měněno |
+| N-A až N-C | nity, nechávám (N-B: souhrn se mezi běhy nehlásí jako nový při růstu počtu) |
+
+Testy modulu: 30/30. Opravená pravidla (porty, dočasné porty, strop dotazů) jsem na reálných datech zatím znovu nezměřil; čísla v sekci 4 (583 nálezů) platí pro verzi před kolem 3.
 
 Stav: S1 zůstává sporné (viz výše, rozhoduje provozovatel). Ostatní nálezy jsou opraveny, ale bez nezávislého potvrzení. Před zapnutím mimo shadow režim doporučuji kolo 3.
 
