@@ -43,7 +43,7 @@ Verdikt ZMĚNY (bez blockeru). Nálezy a rozhodnutí:
 - **Falešné poplachy** jsem na tomto pozadí neměřil (pravidlo na něm nic nenašlo mimo můj vlastní sken); jiná síť s monitorováním nebo zálohami jich může mít víc. Zátěž nese analytik, nález je chráněný.
 - Epizody útoku jsou moje syntetické; měří se hranice, ne pravdivost vůči skutečným útočníkům.
 - Z celé knihovny (`cargo test --lib`) selhalo před opravou snímku 8 testů: 5× `broker::*` (bez Redis), `identity_lab`, nestabilní `case_memory` a `engine::tests::parse_mode_and_disable_list`, který hlídá přesný popis presetu `all()`. Poslední opraven (nové pravidlo je v `all()` vypnuto). Po opravě jsem znovu spustil jen `engine`, `behavior::attempts`, `known_activity` a `passive`, ne celou sadu.
-- 48/48 regrese soaku se pravidla netýká strukturálně (přepínač je ve všech presetech vypnutý), ale po této změně jsem ji nespouštěl.
+- 48/48 regrese soaku se pravidla netýká strukturálně (přepínač je ve všech presetech vypnutý), ale po této změně jsem ji **nespouštěl** (trvá víc než hodinu). Přímá kontrola místo ní: tentýž vstup (reálný záznam, výchozí v3 bez nových přepínačů) dal před změnou a po ní shodně **7 833 událostí a 5 527 nálezů**.
 
 ## 5. Další krok
 
