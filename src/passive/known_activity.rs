@@ -32,7 +32,6 @@ use crate::model::{NormalizedEvent, Severity};
 
 use super::ConnectionObservation;
 use super::detector::ConnectionDetector;
-use super::thresholds::{HIGH_BPS_THRESHOLD, HIGH_PPS_THRESHOLD};
 
 type ServiceKey = (String, String, u16);
 
@@ -238,16 +237,10 @@ fn small_flow(conn: &ConnectionObservation) -> bool {
         .into_iter()
         .flatten()
         .all(|b| b <= MAX_FLOW_BYTES);
-    // tempo podle stejných kritérií jako dosavadní detektor (celkové pakety a bity za sekundu)
-    let rate_ok = match conn.duration_s {
-        Some(d) if d > 0.0 => {
-            let pkts = conn.total_pkts.or(conn.orig_pkts).unwrap_or(0) as f64;
-            let bytes = conn.total_bytes.or(conn.orig_bytes).unwrap_or(0) as f64;
-            pkts / d < HIGH_PPS_THRESHOLD && bytes * 8.0 / d < HIGH_BPS_THRESHOLD
-        }
-        _ => true,
-    };
-    pkts_ok && bytes_ok && rate_ok
+    // Tempo se nekontroluje: tok do 64 paketů a 16 KiB nemůže být záplava a doba trvání v řádu
+    // milisekund dává u jednotlivého paketu zdánlivých tisíce pps (artefakt měření, ne rychlost
+    // zdroje). Objem celku omezují rozpočty odpovědí a stropy za hodinu.
+    pkts_ok && bytes_ok
 }
 
 fn is_lan_broadcast(ip: &str, config: &KnownActivityConfig) -> bool {
@@ -1095,17 +1088,27 @@ mod tests {
     }
 
     #[test]
-    fn flow_with_high_packet_rate_stays_even_when_totals_are_small() {
+    fn millisecond_flow_within_size_caps_is_explained_but_volume_is_budgeted() {
         let q = query(62183, at(10, 0, 0));
         let mut fast = reply("192.168.1.232", 62183, at(10, 0, 5));
         fast.orig_pkts = Some(60);
         fast.total_pkts = Some(60);
-        fast.duration_s = Some(0.001); // 60 000 pps
+        fast.duration_s = Some(0.001); // zdánlivých 60 000 pps
         let (kept, _) = split(vec![q, fast], &config());
-        assert!(
-            kept.iter()
-                .any(|c| c.src_ip.as_deref() == Some("192.168.1.232"))
-        );
+        assert!(kept.is_empty());
+        // záplava takových toků se nevysvětlí celá: rozpočet odpovědí je omezený
+        let mut flood = vec![query(62183, at(10, 0, 0))];
+        for i in 0..100 {
+            let mut f = reply(
+                "192.168.1.232",
+                62183,
+                at(10, 0, 5) + Duration::milliseconds(i),
+            );
+            f.duration_s = Some(0.0002);
+            flood.push(f);
+        }
+        let (kept, _) = split(flood, &config());
+        assert_eq!(kept.len(), 90);
     }
 
     #[test]
