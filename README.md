@@ -108,8 +108,8 @@ Postup podle kroků je v [`docs/diplomka/eval/`](docs/diplomka/eval/) (`impl-kro
 <!-- STATUS:BEGIN -->
 _Tento blok generuje `tools/readme_status.py` z dokumentů v `docs/diplomka/eval/` a z gitu. Ručně se neupravuje._
 
-- Poslední commit: `accf7a0` ze dne 2026-11-23 (docs: krok 25 - shadow rezim na domaci siti a znala cinnost)
-- Počet unit testů knihovny (`cargo test --lib -- --list`): 761
+- Poslední commit: `b924f97` ze dne 2026-11-23 (fix: znala cinnost po review - cile skenu, rozpocet po dotazech, limit velikosti a tempa, validace politiky)
+- Počet unit testů knihovny (`cargo test --lib -- --list`): 775
 
 - Výkon sítí XXXL (G4, držené seedy): p99 cyklu 1,08 s a 0,43 s, práh < 3 s, splněno.
 
