@@ -17,6 +17,7 @@
 //! přežije restart) a každá struktura má strop velikosti a stáří.
 #![allow(private_interfaces)]
 
+pub mod attempts;
 pub mod beacon;
 pub mod breadth;
 pub mod covert;
@@ -70,6 +71,8 @@ pub struct BehaviorSwitches {
     pub slow_fanin: bool,
     /// Krok 15 (P2): nahraný objem hostu i přes klouzavý horizont oken.
     pub upload_horizon: bool,
+    /// Krok 27: opakovaná krátká spojení na přihlašovací službu.
+    pub attempts: bool,
 }
 
 impl BehaviorSwitches {
@@ -95,6 +98,7 @@ impl BehaviorSwitches {
             icmp_payload: engine.icmp_payload(),
             slow_fanin: engine.slow_fanin(),
             upload_horizon: engine.upload_horizon(),
+            attempts: engine.attempts(),
         }
     }
 
@@ -109,6 +113,7 @@ impl BehaviorSwitches {
             || self.l7_tls
             || self.l7_dns
             || self.icmp_payload
+            || self.attempts
     }
 }
 
@@ -135,6 +140,7 @@ pub const BEHAVIOR_TYPES: &[&str] = &[
     "dns_tunnel_names",
     "doh_suspected",
     "icmp_payload_anomaly",
+    "bruteforce_attempts",
 ];
 
 pub fn is_behavior_type(kind: &str) -> bool {
@@ -218,6 +224,7 @@ pub struct BehaviorThresholds {
     pub breadth: breadth::BreadthThresholds,
     pub oneshot: oneshot::OneshotThresholds,
     pub l7: l7::L7Thresholds,
+    pub attempts: attempts::AttemptsThresholds,
 }
 
 impl BehaviorThresholds {
@@ -360,6 +367,18 @@ pub fn run_window(
     }
     if switches.icmp_payload {
         out.findings.extend(icmp::detect(input.outbound, 8, 200));
+    }
+    if switches.attempts {
+        let profile = &state.profile;
+        let habit = |host: &str, peer: &str, proto: &str, port: u16| {
+            profile.is_habit(host, peer, proto, port)
+        };
+        out.findings.extend(attempts::detect(
+            &thresholds.attempts,
+            input.internal,
+            input.inbound,
+            &habit,
+        ));
     }
     if switches.bulk_novel || switches.bulk_clear || switches.peer_burst {
         out.findings.extend(oneshot::detect(

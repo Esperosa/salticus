@@ -75,6 +75,6 @@ Pro provoz z toho plyne: **vlastní sken se do `own_scanners` deklaruje jen tehd
 
 ## 7. Další krok
 
-1. Pravidlo pro opakovaná krátká spojení (hrubá síla) nezávislé na vrstevnících, měřené stejným benchmarkem s vrstevníky i bez nich.
+1. ~~Pravidlo pro opakovaná krátká spojení (hrubá síla) nezávislé na vrstevnících~~: hotovo v kroku 27 (`impl-krok27.md`), SSH 10/10 i bez vrstevníků.
 2. Stavové vrstvy (beaconing, historie objemu) měřit přes soak se cykly, ne jedním přehráním.
 3. Teprve potom brána uzavírání na reálných datech.
