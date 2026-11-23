@@ -113,6 +113,9 @@ impl KnownActivityConfig {
             cidr.parse::<IpNet>()
                 .map_err(|_| format!("lan_cidrs: neplatna podsit '{cidr}'"))?;
         }
+        if self.broadcast_ports.contains(&0) {
+            return Err("broadcast_ports: port 0 neni platny".to_string());
+        }
         for scanner in &self.own_scanners {
             scanner
                 .ip
@@ -452,7 +455,11 @@ pub(crate) fn split(
                 *group.targets.entry(target).or_default() += 1;
             }
             // dotazy dodal parser jen kvůli párování odpovědí; vnitřní detektor je nikdy nedostal
-            _ if config.discovery && is_query_flow(&conn.proto, &conn.dst_ip, conn.dst_port) => {}
+            // Jen běžný dotaz: nad stropem nebo velký tok zůstane v detekci.
+            _ if config.discovery
+                && !over_cap
+                && small_flow(&conn)
+                && is_query_flow(&conn.proto, &conn.dst_ip, conn.dst_port) => {}
             _ => kept.push(conn),
         }
     }
@@ -888,6 +895,42 @@ mod tests {
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].dst_port, Some(4444));
         assert_eq!(events.len(), 1);
+    }
+
+    #[test]
+    fn oversized_or_over_cap_queries_stay_visible() {
+        // strop v testovací konfiguraci je 5 toků za hodinu
+        let mut conns: Vec<_> = (0..10)
+            .map(|i| {
+                conn(
+                    "192.168.1.88",
+                    40000 + i,
+                    "224.0.0.251",
+                    5353,
+                    "udp",
+                    at(10, 0, i as u32),
+                )
+            })
+            .collect();
+        let mut big = conn(
+            "192.168.1.99",
+            40000,
+            "239.255.255.250",
+            1900,
+            "udp",
+            at(10, 0, 0),
+        );
+        big.orig_pkts = Some(100);
+        conns.push(big);
+        let (kept, _) = split(conns, &config());
+        assert_eq!(kept.len(), 11);
+    }
+
+    #[test]
+    fn broadcast_port_zero_is_rejected() {
+        let mut cfg = config();
+        cfg.broadcast_ports = vec![0];
+        assert!(cfg.validate().is_err());
     }
 
     #[test]

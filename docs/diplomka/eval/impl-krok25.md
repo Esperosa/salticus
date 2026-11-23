@@ -122,6 +122,17 @@ Zbývající nálezy podle rozboru (nezávislé označení chybí, jde o můj ro
 - **ICMP unreachable** od brány a od internetové adresy na PC: odezvy na provoz PC.
 - **Zbytek SSDP odpovědí** (~23 toků od jednoho zařízení): pravděpodobně nad rozpočtem odpovědí nebo bez dotazu v okně; neanalyzoval jsem.
 
+**Kontrola posledních změn (Claude Sonnet, jen čtení), ověřeno v kódu:**
+
+| nález | posouzení |
+|---|---|
+| dotazy na SSDP/mDNS skupiny se zahazovaly i nad stropem nebo když byly velké (bez souhrnu) | **potvrzeno, opraveno**: zahodí se jen malý dotaz pod stropem; nad stropem nebo velký zůstane v detekci; 2 nové testy |
+| `validate` nekontroluje `broadcast_ports` (port 0) | **opraveno** (port 0 zamítnut, test); porty obecných služeb neomezuji, rozhoduje provozovatel |
+| odpovědi nemají hodinový strop na příjemce a podvržené dotazy z mnoha portů násobí skrytý objem | **přijato jako residuální riziko**: hodinový strop na příjemce jsem na domácích datech zkoušel a byl příliš těsný (viz vývoj v sekci 4); omezeno financovanými dotazy, dočasnými porty a stropem 30 dotazů |
+| `OwnScan` nemá limit | beze změny, už zapsáno jako residuální riziko (B1) |
+
+Přeměření po této opravě: reálná data **267 nálezů** (284 událostí; +8 oproti 259, jsou to dotazy nad stropem nebo velké, nově viditelné), data s vloženými útoky 300 událostí (o 16 víc než reálná data), všechny 4 útoky hlášené. Testy modulu 33/33.
+
 Kromě toho jsem po tomto kroku nezměnil `recommended()`, R2 ani P6.
 
 ## 7. Stav doporučení
