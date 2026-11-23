@@ -40,6 +40,7 @@ def line(ts, uid, src, sport, dst, dport, proto, dur, ob, rb, state, hist, op, o
 class Gen:
     def __init__(self, seed, used):
         self.rng = random.Random(seed)
+        self.wrng = random.Random(seed + 1)  # zahřívací provoz nesmí posunout adresy epizod
         self.n = 0
         self.free = [f"192.168.1.{i}" for i in range(2, 255) if f"192.168.1.{i}" not in used]
         self.rng.shuffle(self.free)
@@ -63,15 +64,25 @@ class Gen:
         self.lines.append(line(ts, self.uid(), src, self.rng.randint(32768, 60999), dst, dport,
                                "tcp", None, None, None, state, "S", 1, 60, 0, 0))
 
-    def episode(self, family, k, kind, src, dst, hide=False):
-        self.truth.append({"family": family, "episode": k, "kind": kind, "src": src, "dst": dst})
+    def episode(self, family, k, kind, src, dst, t=None):
+        self.truth.append({"family": family, "episode": k, "kind": kind, "src": src, "dst": dst,
+                           "t": t})
+
+    def warm(self, src, t_end, hours=4):
+        """Ustálený provoz hosta před útokem: pravidelné spojení na tři pevné cíle (host není
+        nový, jeho výchozí chování je znám; útok míří na NOVÝ cíl)."""
+        for i in range(int(hours * 12)):
+            for d in ("192.0.2.10", "192.0.2.11", "192.0.2.12"):
+                self.lines.append(line(t_end - (i + 1) * 300 + self.wrng.random() * 5, self.uid(),
+                                       src, self.wrng.randint(32768, 60999), d, 443, "tcp", 0.5,
+                                       800, 5000, "SF", "ShADadFf", 9, 1200, 8, 5400))
 
     # --- skutečné útoky ---
     def vertical_scan(self, k):
         src, dst, t = self.ip(), self.ip(), self.start(k)
         for i, port in enumerate(self.rng.sample(range(1, 10000), 1000)):
             self.syn(t + i * 0.1, src, dst, port)
-        self.episode("vertical_scan", k, "attack", src, dst)
+        self.episode("vertical_scan", k, "attack", src, dst, t=t)
 
     def horizontal_scan(self, k):
         src, t = self.ip(), self.start(k)
@@ -79,23 +90,24 @@ class Gen:
         for i, d in enumerate(dsts):
             for rep in range(8):
                 self.syn(t + i * 2 + rep * 0.3, src, d, 445)
-        self.episode("horizontal_scan", k, "attack", src, dsts[0])
+        self.episode("horizontal_scan", k, "attack", src, dsts[0], t=t)
 
     def ssh_bruteforce(self, k):
         src, dst, t = self.ip(), self.ip(), self.start(k)
         for i in range(300):
             self.lines.append(line(t + i * 2, self.uid(), src, self.rng.randint(32768, 60999),
                                    dst, 22, "tcp", 0.8, 1200, 900, "SF", "ShADadFf", 14, 1800, 12, 1500))
-        self.episode("ssh_bruteforce", k, "attack", src, dst)
+        self.episode("ssh_bruteforce", k, "attack", src, dst, t=t)
 
     def exfil_volume(self, k):
         src, t = self.ip(), self.start(k)
+        self.warm(src, t)
         dst = f"198.51.100.{self.rng.randint(2, 250)}"
         for i in range(20):
             self.lines.append(line(t + i * 30, self.uid(), src, self.rng.randint(32768, 60999),
                                    dst, 443, "tcp", 25.0, 15_000_000, 4000, "SF", "ShADadFf",
                                    11000, 15_500_000, 2000, 90000))
-        self.episode("exfil_volume", k, "attack", src, dst)
+        self.episode("exfil_volume", k, "attack", src, dst, t=t)
 
     def exfil_large(self, k):
         # nad absolutní mezí detektoru bez historie (1 GB za okno)
@@ -105,22 +117,23 @@ class Gen:
             self.lines.append(line(t + i * 30, self.uid(), src, self.rng.randint(32768, 60999),
                                    dst, 443, "tcp", 120.0, 75_000_000, 4000, "SF", "ShADadFf",
                                    55000, 77_000_000, 2000, 90000))
-        self.episode("exfil_large", k, "attack", src, dst)
+        self.episode("exfil_large", k, "attack", src, dst, t=t)
 
     def beaconing(self, k):
         src, t = self.ip(), self.start(k)
+        self.warm(src, t)
         dst = f"198.51.100.{self.rng.randint(2, 250)}"
         for i in range(180):
             self.lines.append(line(t + i * 60 + self.rng.random() * 2, self.uid(), src,
                                    self.rng.randint(32768, 60999), dst, 443, "tcp", 0.4, 600, 450,
                                    "SF", "ShADadFf", 8, 1000, 7, 900))
-        self.episode("beaconing", k, "attack", src, dst)
+        self.episode("beaconing", k, "attack", src, dst, t=t)
 
     def syn_flood(self, k):
         src, dst, t = f"203.0.113.{self.rng.randint(2, 250)}", self.ip(), self.start(k)
         for i in range(20000):
             self.syn(t + i * 0.003, src, dst, 80)
-        self.episode("syn_flood", k, "attack", src, dst)
+        self.episode("syn_flood", k, "attack", src, dst, t=t)
 
     # --- pokusy o schování pod známou činnost ---
     def ssdp_masquerade(self, k):
@@ -133,14 +146,14 @@ class Gen:
         for i in range(600):
             self.lines.append(line(t + 40 + i * 0.5, self.uid(), src, 40000 + i % 100, victim, 50000,
                                    "udp", None, None, None, "S0", "D", 1, 300, 0, 0))
-        self.episode("ssdp_masquerade", k, "evasion", src, victim)
+        self.episode("ssdp_masquerade", k, "evasion", src, victim, t=t)
 
     def broadcast_masquerade(self, k):
         src, t = self.ip(), self.start(k)
         for i in range(5000):
             self.lines.append(line(t + i * 0.5, self.uid(), src, 40000, "192.168.1.255", 137, "udp",
                                    None, None, None, "S0", "D", 1, 128, 0, 0))
-        self.episode("broadcast_masquerade", k, "evasion", src, "192.168.1.255")
+        self.episode("broadcast_masquerade", k, "evasion", src, "192.168.1.255", t=t)
 
     def scanner_spoof(self, k):
         # podvržená IP deklarovaného skeneru (192.168.1.133) v jeho okně; jen jeden 'k' = 1 epizoda
@@ -148,7 +161,7 @@ class Gen:
         dst = self.ip()
         for i, port in enumerate(self.rng.sample(range(1, 10000), 500)):
             self.syn(t + i * 0.2, "192.168.1.133", dst, port)
-        self.episode("scanner_spoof", k, "evasion", "192.168.1.133", dst)
+        self.episode("scanner_spoof", k, "evasion", "192.168.1.133", dst, t=t)
 
 
 FAMILIES = ["vertical_scan", "horizontal_scan", "ssh_bruteforce", "exfil_volume", "exfil_large", "beaconing",
