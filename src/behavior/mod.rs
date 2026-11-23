@@ -28,6 +28,7 @@ pub mod interactive;
 pub mod l7;
 pub mod novelty;
 pub mod oneshot;
+pub mod outscan;
 pub mod profile;
 
 use chrono::{DateTime, Utc};
@@ -73,6 +74,8 @@ pub struct BehaviorSwitches {
     pub upload_horizon: bool,
     /// Krok 27: opakovaná krátká spojení na přihlašovací službu.
     pub attempts: bool,
+    /// Krok 31: odchozí skenování vnitřního hosta.
+    pub outscan: bool,
 }
 
 impl BehaviorSwitches {
@@ -99,6 +102,7 @@ impl BehaviorSwitches {
             slow_fanin: engine.slow_fanin(),
             upload_horizon: engine.upload_horizon(),
             attempts: engine.attempts(),
+            outscan: engine.outscan(),
         }
     }
 
@@ -114,6 +118,7 @@ impl BehaviorSwitches {
             || self.l7_dns
             || self.icmp_payload
             || self.attempts
+            || self.outscan
     }
 }
 
@@ -141,6 +146,7 @@ pub const BEHAVIOR_TYPES: &[&str] = &[
     "doh_suspected",
     "icmp_payload_anomaly",
     "bruteforce_attempts",
+    "outbound_scan",
 ];
 
 pub fn is_behavior_type(kind: &str) -> bool {
@@ -225,6 +231,7 @@ pub struct BehaviorThresholds {
     pub oneshot: oneshot::OneshotThresholds,
     pub l7: l7::L7Thresholds,
     pub attempts: attempts::AttemptsThresholds,
+    pub outscan: outscan::OutscanThresholds,
 }
 
 impl BehaviorThresholds {
@@ -367,6 +374,10 @@ pub fn run_window(
     }
     if switches.icmp_payload {
         out.findings.extend(icmp::detect(input.outbound, 8, 200));
+    }
+    if switches.outscan {
+        out.findings
+            .extend(outscan::detect(&thresholds.outscan, input.outbound));
     }
     if switches.attempts {
         let profile = &state.profile;
