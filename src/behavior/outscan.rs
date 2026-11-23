@@ -154,7 +154,9 @@ pub fn detect(t: &OutscanThresholds, outbound: &[ConnectionObservation]) -> Vec<
                 )],
                 "Ověřit, zda host skenování zamýšlí (správce, monitorování); jinak izolovat host a zkontrolovat jeho procesy.",
             ),
-            sources: sample.clone(),
+            // Prázdné: vzorek cílů se mění každé okno a paměť nálezů by každou změnu bral jako
+            // "nový zdroj" a nález znovu zobrazila (měření kroku 32: 669 zobrazení za 224 oken).
+            sources: Vec::new(),
             targets: sample.iter().map(|d| (d.clone(), port)).collect(),
             count: u32::try_from(targets).unwrap_or(u32::MAX),
             actor: src.to_string(),
@@ -211,7 +213,9 @@ mod tests {
         assert_eq!(found[0].finding.finding_type, "outbound_scan");
         assert_eq!(found[0].actor, "192.168.1.9");
         assert_eq!(found[0].finding.severity, Severity::Medium);
-        assert_eq!(found[0].sources.len(), 3);
+        // zdroje musí být stabilní (prázdné), jinak se nález zobrazuje znovu v každém okně
+        assert!(found[0].sources.is_empty());
+        assert_eq!(found[0].targets.len(), 3);
     }
 
     #[test]

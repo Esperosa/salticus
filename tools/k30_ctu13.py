@@ -25,7 +25,7 @@ FIELDS = ("ts uid id.orig_h id.orig_p id.resp_h id.resp_p proto service duration
 EMPTY_NMAP = ('<?xml version="1.0"?>\n<nmaprun scanner="nmap" args="replay" start="0" version="7.94">\n'
               '<runstats><finished time="0"/><hosts up="0" down="0" total="0"/></runstats>\n</nmaprun>\n')
 IP_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
-ARM_FLAGS = {"A": "", "B": "attempts,attr_calib,upload_horizon", "C": "outscan"}
+ARM_FLAGS = {"A": "", "B": "attempts,attr_calib,upload_horizon", "C": "outscan", "D": "retry"}
 REJ_STATES = ("SR_", "S_R", "S_RA", "SA_R")
 
 
@@ -116,15 +116,42 @@ def latest_report(workspace):
 
 
 def load_zeek(path):
-    """Zeek conn.log(.labeled): -> (fields, [(ts, řádek-dict)], infikovaní)."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "replay_public", os.path.join(os.path.dirname(os.path.abspath(__file__)), "replay_public.py"))
-    rp = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(rp)
-    fields, rows = rp.read_conn(path)
-    infected = {r.get("id.orig_h") for r in rows if "alicious" in r.get("label", "")}
-    return rp, fields, rows, infected
+    """Zeek conn.log(.labeled), lehce (jen surové řádky): -> (hlavička, [(ts, src, dst, řádek)], infikovaní, scope)."""
+    from collections import Counter
+    fields, base_n = None, None
+    items, infected, nets = [], set(), Counter()
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if line.startswith("#fields"):
+                flat = []
+                for f in line.split("\t")[1:]:
+                    flat.extend(f.split())
+                fields = flat
+                base_n = fields.index("tunnel_parents") + 1 if "tunnel_parents" in fields else len(fields)
+                continue
+            if line.startswith("#") or not line.strip() or fields is None:
+                continue
+            parts = line.split("\t")
+            if len(parts) < len(fields):
+                parts = parts[:-1] + parts[-1].split()
+            try:
+                ts = float(parts[0])
+            except ValueError:
+                continue
+            src, dst = parts[2], parts[4]
+            if any("alicious" in x for x in parts[base_n:]):
+                infected.add(src)
+            try:
+                ip = ipaddress.ip_address(src)
+                if ip.version == 4 and ip.is_private:
+                    nets[str(ipaddress.ip_network(f"{ip}/24", strict=False))] += 1
+            except ValueError:
+                pass
+            items.append((ts, src, dst, "\t".join(parts[:base_n])))
+    header = fields[:base_n] if fields else []
+    scope = nets.most_common(1)[0][0] if nets else "192.168.1.0/24"
+    return header, items, infected, scope
 
 
 def main():
@@ -141,13 +168,17 @@ def main():
     a = ap.parse_args()
 
     if a.zeek:
-        rp, zfields, zrows, infected = load_zeek(a.zeek)
-        scope = a.scope or rp.auto_scope(zrows)
-        items = [(r["_ts"], r.get("id.orig_h", ""), r.get("id.resp_h", ""), r) for r in zrows]
+        zheader, items, infected, auto = load_zeek(a.zeek)
+        scope = a.scope or auto
         label = os.path.basename(a.zeek)
 
         def write(path, chunk):
-            rp.write_window(path, zfields, [x[3] for x in chunk])
+            os.makedirs(path, exist_ok=True)
+            with open(os.path.join(path, "conn.log"), "w", encoding="utf-8", newline="\n") as out:
+                out.write("#separator \\x09\n#set_separator\t,\n#empty_field\t(empty)\n#unset_field\t-\n#path\tconn\n")
+                out.write("#fields\t" + "\t".join(zheader) + "\n")
+                for x in chunk:
+                    out.write(x[3] + "\n")
     else:
         rows, infected = convert(a.csv, v2=a.converter == "v2")
         scope = a.scope or "147.32.84.0/24"
