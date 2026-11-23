@@ -50,8 +50,20 @@ const MAX_REPLIES_PER_QUERY_RESPONDER: usize = 10;
 const MAX_REPLIES_PER_QUERY_TOTAL: usize = 30;
 
 /// Rozpoznané discovery multicast skupiny (SSDP, mDNS, LLMNR).
-fn is_discovery_group(ip: &str) -> bool {
-    matches!(ip, "239.255.255.250" | "224.0.0.251" | "224.0.0.252")
+fn is_discovery_group(ip: &str, port: Option<u16>) -> bool {
+    matches!(
+        (ip, port),
+        ("239.255.255.250", Some(1900)) | ("224.0.0.251", Some(5353)) | ("224.0.0.252", Some(5355))
+    )
+}
+
+/// Známé broadcast porty (DHCP, NetBIOS, SSDP, mDNS, LLMNR, Spotify, Steam). Broadcast na jiný
+/// port zůstává v detekci, jinak by šlo skrýt libovolný kanál.
+fn is_known_broadcast_port(port: Option<u16>) -> bool {
+    matches!(
+        port,
+        Some(67 | 68 | 137 | 138 | 1900 | 5353 | 5355 | 27036 | 57621)
+    )
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -308,10 +320,10 @@ fn candidate(
     if !config.discovery || conn.proto != "udp" || !private(src) || !small_flow(conn) {
         return None;
     }
-    if is_discovery_group(&conn.dst_ip) {
+    if is_discovery_group(&conn.dst_ip, conn.dst_port) {
         return Some((Explanation::Multicast, 0));
     }
-    if is_lan_broadcast(&conn.dst_ip, config) {
+    if is_lan_broadcast(&conn.dst_ip, config) && is_known_broadcast_port(conn.dst_port) {
         return Some((Explanation::Broadcast, 0));
     }
     if private(&conn.dst_ip)
@@ -789,6 +801,45 @@ mod tests {
         let (kept, events) = split(vec![real, fake255, other_group, group, tcp], &config());
         assert_eq!(kept.len(), 3);
         assert_eq!(events.len(), 2);
+    }
+
+    #[test]
+    fn multicast_and_broadcast_on_unknown_ports_stay_in_detection() {
+        let mc = conn(
+            "192.168.1.88",
+            40000,
+            "224.0.0.251",
+            4444,
+            "udp",
+            at(10, 0, 0),
+        );
+        let ssdp_wrong = conn(
+            "192.168.1.88",
+            40000,
+            "239.255.255.250",
+            5353,
+            "udp",
+            at(10, 0, 0),
+        );
+        let bc = conn(
+            "192.168.1.88",
+            40000,
+            "192.168.1.255",
+            4444,
+            "udp",
+            at(10, 0, 0),
+        );
+        let bc_all = conn(
+            "192.168.1.88",
+            40000,
+            "255.255.255.255",
+            4444,
+            "udp",
+            at(10, 0, 0),
+        );
+        let (kept, events) = split(vec![mc, ssdp_wrong, bc, bc_all], &config());
+        assert_eq!(kept.len(), 4);
+        assert!(events.is_empty());
     }
 
     #[test]

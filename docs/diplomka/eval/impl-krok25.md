@@ -71,6 +71,20 @@ Vývoj počtu nálezů podle verze pravidel (pro úplnost, ne jako ladění): pr
 | úpravy po kole 2 | S2 (tempo a součty obou směrů), S3 (`/31`, `/32`), S5 (klouzavé okno, jen dřívější dotazy), S6 (aktivace jen s běžící obálkou), S8 (ostře dřív), S14 (validace politiky) opraveny a pokryty testy |
 | kolo 3 | **neproběhlo**: vedoucí přerušil používání agentů OpenAI. Opravy po kole 2 nejsou Solem znovu ověřeny. |
 
+**Kontrola kola 3 levným modelem (Claude Haiku, jen čtení, bez Sola).** Nálezy jsem ověřil v kódu sám:
+
+| nález | posouzení |
+|---|---|
+| B2: multicast a broadcast bez kontroly portu (UDP na `224.0.0.251:4444` by se vysvětlil) | **potvrzeno, opraveno**: multicast jen přesné dvojice skupina:port (1900, 5353, 5355), broadcast jen známé porty (67, 68, 137, 138, 1900, 5353, 5355, 27036, 57621); nový test; 28/28 |
+| B1: vlastní sken nemá limit velikosti a tempa, podvržená IP skeneru na LAN | záměr návrhu (deklarované IP, okno a cíle); residuální riziko, rozhoduje provozovatel; do dokumentu zapsáno |
+| S1: rozpočet odpovědí se škáluje aktivitou oběti | známé residuální riziko (viz S1 výše), omezeno 10×/30× |
+| S2: strop za pevnou UTC hodinu dovolí 2× strop kolem hranice | potvrzeno, přijato (strop je jen pojistka proti záplavě, ne detekce); test to dokumentuje |
+| S3: tok bez doby trvání nemá kontrolu tempa | zamítnuto: velikost je omezena 64 pakety a 16 KiB nezávisle na tempu |
+| S4: chybí test celkového stropu 30× a `orig_pkts = None` | přijato jako dluh testů |
+| N1 až N4 | nity, nechávám |
+
+Haiku není nezávislý ekvivalent Sola; jeho nálezy mají váhu jen po ověření v kódu. Kolo 3 od Sola zůstává otevřené.
+
 Stav: S1 zůstává sporné (viz výše, rozhoduje provozovatel). Ostatní nálezy jsou opraveny, ale bez nezávislého potvrzení. Před zapnutím mimo shadow režim doporučuji kolo 3.
 
 ## 7. Stav doporučení
