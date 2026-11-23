@@ -99,6 +99,31 @@ Testy modulu: 30/30. **Přeměřeno po kole 3** (release z commitu `1a78045`, st
 
 Stav: S1 zůstává sporné (viz výše, rozhoduje provozovatel). Ostatní nálezy jsou opraveny, ale bez nezávislého potvrzení. Před zapnutím mimo shadow režim doporučuji kolo 3.
 
+## 6a. Rozbor zbylých nálezů a oprava kontroly tempa (po kole 3)
+
+Rozbor 583 zbylých nálezů (`unmappedEvents`, seskupeno podle zdroje, cíle a portu) ukázal hlavní příčinu: **odpovědi TV a Cast zařízení na SSDP dotaz PC měly platný dotaz, ale nebyly vysvětleny kvůli kontrole tempa.** Jedno paketové UDP trvající 0,27 ms vychází jako 3 700 pps, tedy nad prahem 2 500 pps. To je artefakt měření, ne rychlost zdroje. Ověřeno na konkrétních případech (port 53554: dotaz z PC v 12:27:27, odpovědi 12:27:28 až 12:27:30, všechny S0 s dobou trvání v mikrosekundách).
+
+Úprava: kontrola tempa u vysvětlených toků **zrušena**. Zdůvodnění: tok do 64 paketů a 16 KiB nemůže být záplava; objem celku omezují rozpočty odpovědí (10× na odpovídajícího, 30× celkem) a stropy za hodinu. Test, který dřív vyžadoval, aby rychlý tok zůstal v detekci, je nahrazen testem, že milisekundový tok v mezích velikosti se vysvětlí a že záplava 100 takových toků se vysvětlí jen do rozpočtu (90 zbude v detekci).
+
+Nové: konfigurační pole `broadcast_ports` (provozovatel deklaruje další známé broadcast porty). V domácí konfiguraci je deklarován jen 1947 (licenční discovery softwaru na tomto PC, 6 160 toků); ostatní neznámé broadcast porty (6537, 2000, 2015, 9998, 9999) zůstávají v detekci.
+
+| měření | reálná data | data s vloženými útoky |
+|---|---|---|
+| před kolem 3 (sekce 4) | 583 nálezů | 599 + 16 událostí, 4/4 útoky |
+| po kole 3 (zúžení portů) | 583 nálezů | 4/4 útoky |
+| po zrušení kontroly tempa | **263 nálezů** (vysoká 117 / střední 13 / nízká 133) | 296 událostí, o 16 víc než reálná data, 4/4 útoky |
+| po deklaraci broadcast portu 1947 | **259 nálezů** | 292 událostí, o 16 víc, 4/4 útoky |
+
+Zbývající nálezy podle rozboru (nezávislé označení chybí, jde o můj rozbor):
+
+- **PC → TV TCP 5555, 8008, 8009, 34617** (např. 452 neúspěšných spojení na :5555): PC se opakovaně snaží spojit s Android TV / Cast; nejspíš aplikace na PC, příčinu jsem neidentifikoval. Zůstává v detekci.
+- **Broadcast na neznámých portech** od zařízení 192.168.1.149, .45, .195, .73: mohou být benigní discovery (herní zařízení, chytré zásuvky), ale protokol neznám; zůstává v detekci záměrně (jinak by šlo skrýt libovolný kanál).
+- **NetFlow export UniFi → PC :2055** (64 toků): vlastní nastavení; není deklarace pro vlastní exportér, zůstává.
+- **ICMP unreachable** od brány a od internetové adresy na PC: odezvy na provoz PC.
+- **Zbytek SSDP odpovědí** (~23 toků od jednoho zařízení): pravděpodobně nad rozpočtem odpovědí nebo bez dotazu v okně; neanalyzoval jsem.
+
+Kromě toho jsem po tomto kroku nezměnil `recommended()`, R2 ani P6.
+
 ## 7. Stav doporučení
 
 `recommended()` beze změny, modul zůstává vypnutý ve výchozím stavu. Další krok: kolo 3 review po obnovení agentů, nezávislé označení zbylých případů (30 dle `plan-krok22.md` §4) a rozhodnutí o S1.

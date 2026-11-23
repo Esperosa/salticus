@@ -64,11 +64,11 @@ fn is_discovery_group(ip: &str, port: Option<u16>) -> bool {
 
 /// Známé broadcast porty (DHCP, NetBIOS, SSDP, mDNS, LLMNR, Spotify, Steam). Broadcast na jiný
 /// port zůstává v detekci, jinak by šlo skrýt libovolný kanál.
-fn is_known_broadcast_port(port: Option<u16>) -> bool {
+fn is_known_broadcast_port(port: Option<u16>, config: &KnownActivityConfig) -> bool {
     matches!(
         port,
         Some(67 | 68 | 137 | 138 | 1900 | 5353 | 5355 | 27036 | 57621)
-    )
+    ) || port.is_some_and(|p| config.broadcast_ports.contains(&p))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -97,6 +97,9 @@ pub(crate) struct KnownActivityConfig {
     /// Záznam má jen hlavičky paketů; `missed_bytes` je tedy artefakt záznamu (platí pro celý záznam).
     #[serde(default)]
     pub(crate) headers_only_capture: bool,
+    /// Další broadcast porty, které provozovatel deklaruje jako známé (např. licenční discovery).
+    #[serde(default)]
+    pub(crate) broadcast_ports: Vec<u16>,
 }
 
 fn default_cap() -> usize {
@@ -329,7 +332,7 @@ fn candidate(
     if is_discovery_group(&conn.dst_ip, conn.dst_port) {
         return Some((Explanation::Multicast, 0));
     }
-    if is_lan_broadcast(&conn.dst_ip, config) && is_known_broadcast_port(conn.dst_port) {
+    if is_lan_broadcast(&conn.dst_ip, config) && is_known_broadcast_port(conn.dst_port, config) {
         return Some((Explanation::Broadcast, 0));
     }
     if private(&conn.dst_ip)
@@ -572,6 +575,7 @@ mod tests {
             lan_cidrs: vec!["192.168.1.0/24".to_string()],
             max_flows_per_src_hour: 5,
             headers_only_capture: true,
+            broadcast_ports: Vec::new(),
         }
     }
 
@@ -858,6 +862,32 @@ mod tests {
         let (kept, events) = split(vec![mc, ssdp_wrong, bc, bc_all], &config());
         assert_eq!(kept.len(), 4);
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn operator_declared_broadcast_port_is_explained_others_are_not() {
+        let mut cfg = config();
+        cfg.broadcast_ports = vec![1947];
+        let declared = conn(
+            "192.168.1.88",
+            40000,
+            "192.168.1.255",
+            1947,
+            "udp",
+            at(10, 0, 0),
+        );
+        let other = conn(
+            "192.168.1.88",
+            40000,
+            "192.168.1.255",
+            4444,
+            "udp",
+            at(10, 0, 0),
+        );
+        let (kept, events) = split(vec![declared, other], &cfg);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].dst_port, Some(4444));
+        assert_eq!(events.len(), 1);
     }
 
     #[test]
