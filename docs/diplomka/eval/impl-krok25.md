@@ -105,7 +105,7 @@ Rozbor 583 zbylých nálezů (`unmappedEvents`, seskupeno podle zdroje, cíle a 
 
 Úprava: kontrola tempa u vysvětlených toků **zrušena**. Zdůvodnění: tok do 64 paketů a 16 KiB nemůže být záplava; objem celku omezují rozpočty odpovědí (10× na odpovídajícího, 30× celkem) a stropy za hodinu. Test, který dřív vyžadoval, aby rychlý tok zůstal v detekci, je nahrazen testem, že milisekundový tok v mezích velikosti se vysvětlí a že záplava 100 takových toků se vysvětlí jen do rozpočtu (90 zbude v detekci).
 
-Nové: konfigurační pole `broadcast_ports` (provozovatel deklaruje další známé broadcast porty). V domácí konfiguraci je deklarován jen 1947 (licenční discovery softwaru na tomto PC, 6 160 toků); ostatní neznámé broadcast porty (6537, 2000, 2015, 9998, 9999) zůstávají v detekci.
+Nové: konfigurační pole `broadcast_ports` (provozovatel deklaruje další známé broadcast porty). V domácí konfiguraci je deklarován jen 1947 (6 160 toků; na PC běží `hasplms`/`hasplmv`, licenční manager Sentinel HASP, který tento port používá); ostatní neznámé broadcast porty (6537, 2000, 2015, 9998, 9999) zůstávají v detekci.
 
 | měření | reálná data | data s vloženými útoky |
 |---|---|---|
@@ -116,7 +116,7 @@ Nové: konfigurační pole `broadcast_ports` (provozovatel deklaruje další zn�
 
 Zbývající nálezy podle rozboru (nezávislé označení chybí, jde o můj rozbor):
 
-- **PC → TV TCP 5555, 8008, 8009, 34617** (např. 452 neúspěšných spojení na :5555): PC se opakovaně snaží spojit s Android TV / Cast; nejspíš aplikace na PC, příčinu jsem neidentifikoval. Zůstává v detekci.
+- **PC → TV TCP 5555, 8008, 8009, 34617** (např. 452 neúspěšných spojení na :5555): shodné s procesy běžícími na tomto PC (kontrola 23. 11.): `adb` (ADB server zkouší TV :5555), Chrome a NVIDIA Overlay (otevřená spojení na Cast :8008/:8009 u .195 a .232), `sunshine` (streaming pro Moonlight na TV, odtud TV → PC :47989). Je to hypotéza podle běžících procesů, časovou shodu jednotlivých spojení jsem neověřoval. Zůstává v detekci.
 - **Broadcast na neznámých portech** od zařízení 192.168.1.149, .45, .195, .73: mohou být benigní discovery (herní zařízení, chytré zásuvky), ale protokol neznám; zůstává v detekci záměrně (jinak by šlo skrýt libovolný kanál).
 - **NetFlow export UniFi → PC :2055** (64 toků): vlastní nastavení; není deklarace pro vlastní exportér, zůstává.
 - **ICMP unreachable** od brány a od internetové adresy na PC: odezvy na provoz PC.
