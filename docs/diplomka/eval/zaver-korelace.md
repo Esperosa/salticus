@@ -31,6 +31,10 @@ Syntetické řetězce kauzální pravidla zvýhodňují (F1 0,99 proti 0,93), al
 
 Pět dnů DAPT2021 je jedna kampaň v jedné testbed síti, takže nejde o pět nezávislých kampaní; kampaně LLDOS a PicoDomain jsou jedna kampaň každá. Označení nálezu jako patřícího kampani podle zmínky její adresy je hrubé, zejména v malých sítích; kontaminace je proto nejistá a hlásí se po úrovních. Pravda je po tocích, nikoli po nálezech. Užitečnost pro analytika se bez analytika neprokáže; 14denní soak neproběhl.
 
+## Krok 46: potvrzení druhým zdrojem (reálné host-logy DAPT2021)
+
+Zkoumáno na reálných autentizačních logách (ne syntetika — syntetický druhý zdroj by byl kruhový, viz diskuze před krokem 46). Jediný hostitel s použitelným autentizačním logem ve správném okně (10.1.1.11) potvrdil hypotézu přesně: 50 přihlášení stejným klíčem ze stejné adresy, 0 neúspěchů = administrátorský kanál. Veto tohoto jednoho páru ale změnilo největší incident jen o 1 nález ze 240, protože zbylých 6 z 7 hostitelů velkého incidentu má jen `syslog` bez autentizačních záznamů. **Mechanismus potvrzení druhým zdrojem je platný, ale na dostupných datech neměřitelný v potřebném rozsahu** — žádná veřejná sada nekombinuje hustou instrumentaci s velkou perkolující sítí. Detaily `impl-krok46.md`.
+
 ## Co by změnilo závěr
 
 Označená vícefázová data z jiné než testbed sítě s nálezy na úrovni, kde nejde o IP-sdílení; kombinace sdílení adresy s dalšími rysy (podobnost chování, shoda času, shoda služby), nikoli s dalším omezením téže vazby; skutečný provoz analytika (K16 a zpětná vazba).
