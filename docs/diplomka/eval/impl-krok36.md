@@ -39,3 +39,24 @@ Podklad: `predreg-krok36.md` (a dodatek se zmrazením). Data: DARPA 2000 LLDOS 1
 ## Doporučení pro další krok
 
 Neslévat tvrdě. Incident nechat z silných vazeb (stejný aktér a protějšek, kauzální řetěz, stejná oběť s oknem) a nálezy slabě spojené sdílenou adresou nabízet jako související incidenty (`related`), každé s důvodem. Úplnost se pak měří uzávěrem přes související incidenty (blízko `corr_union`) a čistota na samotných incidentech (blízko `corr_v3`+`corr_ext`). To je standardní postup jiných nástrojů (entitní spojování s kontrolovanou šíří), nahrazuje volbu „slévat nebo ne“ a je to další krok.
+
+## 7. Krok 37: související incidenty (`corr_related`)
+
+Silné vazby (stejný aktér a protějšek, kauzální řetěz, stejná oběť, sdílený vnější protějšek s mezí hubu) tvoří incident; incidenty, které spojuje jen sdílená adresa (komponenta `incidents_union`), se navzájem odkážou polem `related` s důvodem (sdílené adresy, nejvýš 3, nejvýš 10 odkazů). Incidenty se neslučují.
+
+Dev i test LLDOS (příznak: zkoumáno po kroku 36, na datech použitých dřív, tedy **popisné, ne nezávislé**):
+
+| dataset | míra | samotný incident | uzávěr přes `related` |
+|---|---|---|---|
+| 1.0 | úplnost | 0,39 | 0,71 |
+| 1.0 | kontaminace | 0,19 | 0,28 |
+| 2.0.2 | úplnost | 0,40 | 0,80 |
+| 2.0.2 | kontaminace | 0,00 | 0,75 |
+
+Čistotu drží samotný incident, úplnost analytik dostane přes odkazy a vidí důvod každého; kontaminace uzávěru je cena za to, že všechny odkazy projde. Přínos není prokázán nezávisle (stejná data); pro rozhodnutí o výchozím profilu je potřeba další kampaň nebo soak.
+
+## 8. Krok 38 (K13, K15): perzistence po událostech a výkon
+
+- Historie korelace se ukládá po událostech (tabulky `retro_events` a `retro_meta`), ne jako jeden JSON blob; zápis za běh je úměrný novým a změněným událostem v jedné transakci. Starý JSON stav se jednou převezme. Test: opakovaný zápis beze změn nic nezapisuje, přetečení stropu odstraní nejstarší i z tabulky, opakování okna po pádu před zápisem dá shodný stav a výstup.
+- Výkon (`corr_perf_on_full_history`, release, 50 000 událostí, 200 incidentů): první běh 0,20 s, opakovaný 0,19 s CPU; stav jako JSON 8 MB (dříve přepisováno každé okno, nyní jen změny). Kritéria K15 (≤ 2 s CPU) splněno; paměť jsem neměřil přesně (stav 8 MB JSON plus indexy), referenční hardware (Pi 4 nebo N100) neměřen, měřeno na vývojovém PC.
+- Chybí: stabilní klíč incidentu přes sloučení dvou incidentů (klíč je dosud hash nejstaršího nálezu a mění se, když se ke starému incidentu připojí starší nález).
