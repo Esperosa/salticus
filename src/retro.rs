@@ -49,6 +49,23 @@ pub struct Event {
     /// Typ nálezu (krok 13: seskupení v2 ho používá, `cause` je jen pro měření).
     #[serde(default)]
     pub kind: String,
+    /// Krok 34: nález bez hosta (nespárovaná pasivní událost); `host` je tu cíl (oběť).
+    #[serde(default)]
+    pub hostless: bool,
+}
+
+fn find_root(p: &mut [usize], x: usize) -> usize {
+    let mut r = x;
+    while p[r] != r {
+        r = p[r];
+    }
+    let mut c = x;
+    while p[c] != r {
+        let next = p[c];
+        p[c] = r;
+        c = next;
+    }
+    r
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -168,19 +185,6 @@ impl History {
     ) -> Vec<Incident> {
         let n = self.events.len();
         let mut parent: Vec<usize> = (0..n).collect();
-        fn find(p: &mut Vec<usize>, x: usize) -> usize {
-            let mut r = x;
-            while p[r] != r {
-                r = p[r];
-            }
-            let mut c = x;
-            while p[c] != r {
-                let next = p[c];
-                p[c] = r;
-                c = next;
-            }
-            r
-        }
         let mut order: Vec<usize> = (0..n).collect();
         order.sort_by_key(|i| self.events[*i].ts);
         let mut last_by_key: BTreeMap<String, usize> = BTreeMap::new();
@@ -190,7 +194,7 @@ impl History {
                 if let Some(&j) = last_by_key.get(&key)
                     && e.ts - self.events[j].ts <= max_gap_s
                 {
-                    let (a, b) = (find(&mut parent, i), find(&mut parent, j));
+                    let (a, b) = (find_root(&mut parent, i), find_root(&mut parent, j));
                     if a != b {
                         parent[a] = b;
                     }
@@ -198,9 +202,86 @@ impl History {
                 last_by_key.insert(key, i);
             }
         }
+        self.assemble(parent)
+    }
+
+    /// Krok 34: kauzální seskupení. Spojuje (1) stejného aktéra a stejný protějšek, (2) protějšek
+    /// dřívějšího nálezu, který se pak sám stane aktérem (A skenuje V, V posílá data na X),
+    /// (3) oběť (nález bez hosta) s nálezy, kde je ta adresa aktérem nebo protějškem, (4) téhož
+    /// aktéra u dvou útočných nálezů. Dva nálezy se nespojují jen proto, že míří na stejný
+    /// protějšek (sdílený server, vnější cíl): to není kauzální vazba, ale slévá souběžné útoky.
+    /// Klíč, který by spojil víc než `max_degree` nálezů, je uzel typu hub a dál nespojuje.
+    pub fn incidents_v3(&self, max_gap_s: i64, max_degree: usize) -> Vec<Incident> {
+        let n = self.events.len();
+        let mut parent: Vec<usize> = (0..n).collect();
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by_key(|i| self.events[*i].ts);
+        // klíč -> (poslední nález, počet použití)
+        let mut peer_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+        let mut actor_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+        let mut pair_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+        let mut victim_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+        let mut union = |parent: &mut Vec<usize>, a: usize, b: usize| {
+            let (ra, rb) = (find_root(parent, a), find_root(parent, b));
+            if ra != rb {
+                parent[ra] = rb;
+            }
+        };
+        for &i in &order {
+            let e = &self.events[i];
+            let mut link = |map: &mut BTreeMap<String, (usize, usize)>,
+                            key: &str,
+                            parent: &mut Vec<usize>,
+                            register: bool| {
+                if let Some(&(j, used)) = map.get(key)
+                    && used < max_degree
+                    && e.ts - self.events[j].ts <= max_gap_s
+                {
+                    union(parent, i, j);
+                }
+                if register {
+                    let used = map.get(key).map_or(0, |v| v.1) + 1;
+                    map.insert(key.to_string(), (i, used));
+                }
+            };
+            let peers: Vec<&String> = e.indicators.iter().filter(|x| **x != e.host).collect();
+            if e.hostless {
+                // oběť: spojí se s nálezy, kde je adresa protějškem nebo aktérem
+                link(&mut peer_seen, &e.host, &mut parent, false);
+                link(&mut actor_seen, &e.host, &mut parent, false);
+                link(&mut victim_seen, &e.host, &mut parent, true);
+                continue;
+            }
+            // protějšek dřívějšího nálezu, který teď jedná
+            link(&mut peer_seen, &e.host, &mut parent, false);
+            // dřívější nález, kde byl tento host obětí
+            link(&mut victim_seen, &e.host, &mut parent, false);
+            for p in &peers {
+                link(
+                    &mut pair_seen,
+                    &format!("{}|{p}", e.host),
+                    &mut parent,
+                    true,
+                );
+                // nález bez hosta, který míří na tento protějšek
+                link(&mut victim_seen, p, &mut parent, false);
+            }
+            if e.cause == Cause::Attack {
+                link(&mut actor_seen, &e.host, &mut parent, true);
+            }
+            for p in &peers {
+                let used = peer_seen.get(p.as_str()).map_or(0, |v| v.1) + 1;
+                peer_seen.insert((*p).clone(), (i, used));
+            }
+        }
+        self.assemble(parent)
+    }
+
+    fn assemble(&self, mut parent: Vec<usize>) -> Vec<Incident> {
+        let n = self.events.len();
         let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
         for i in 0..n {
-            let r = find(&mut parent, i);
+            let r = find_root(&mut parent, i);
             groups.entry(r).or_default().push(i);
         }
         let mut out: Vec<Incident> = groups
@@ -264,6 +345,7 @@ mod tests {
             tactic: tactic.map(str::to_string),
             cause,
             kind: String::new(),
+            hostless: false,
         }
     }
 

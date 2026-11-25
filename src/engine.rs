@@ -226,6 +226,10 @@ pub struct V3Features {
     /// stabilní id incidentu, čítače zahozených). Jen anotace, nic nezavírá. Výchozí vypnuto.
     #[serde(default)]
     pub corr_v2: bool,
+    /// Krok 34: kauzální seskupení incidentů (protějšek se stane aktérem), nálezy bez hosta jako
+    /// oběť, ochrana proti hubům. Vyžaduje `corr_v2`. Výchozí vypnuto.
+    #[serde(default)]
+    pub corr_v3: bool,
     /// Krok 16: případová složka pro seniora (shrnutí, aktéři, hypotézy, důkazy pro a
     /// proti, co zbývá ověřit, slepá místa, důvod předání, uzávěr L1). Nic nerozhoduje.
     #[serde(default)]
@@ -268,7 +272,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 64] = [
+    pub const NAMES: [&'static str; 65] = [
         "memory",
         "rate",
         "volume",
@@ -325,6 +329,7 @@ impl V3Features {
         "outscan",
         "retry",
         "corr_v2",
+        "corr_v3",
         "case_folder",
         "confirm_evidence",
         "close_gate",
@@ -393,6 +398,7 @@ impl V3Features {
             outscan: false,
             retry: false,
             corr_v2: false,
+            corr_v3: false,
             case_folder: true,
             confirm_evidence: true,
             close_gate: true,
@@ -469,6 +475,7 @@ impl V3Features {
             outscan: false,
             retry: false,
             corr_v2: false,
+            corr_v3: false,
             case_folder: false,
             confirm_evidence: false,
             close_gate: false,
@@ -548,6 +555,7 @@ impl V3Features {
             outscan: false,
             retry: false,
             corr_v2: false,
+            corr_v3: false,
             case_folder: false,
             confirm_evidence: false,
             close_gate: false,
@@ -641,6 +649,7 @@ impl V3Features {
             "outscan" => &mut self.outscan,
             "retry" => &mut self.retry,
             "corr_v2" => &mut self.corr_v2,
+            "corr_v3" => &mut self.corr_v3,
             "case_folder" => &mut self.case_folder,
             "confirm_evidence" => &mut self.confirm_evidence,
             "close_gate" => &mut self.close_gate,
@@ -877,6 +886,9 @@ impl EngineConfig {
     /// Krok 33: opravená korelace (jen s `case_files`).
     pub fn corr_v2(&self) -> bool {
         self.case_files() && self.v3.corr_v2
+    }
+    pub fn corr_v3(&self) -> bool {
+        self.corr_v2() && self.v3.corr_v3
     }
     pub fn l7_ladder(&self) -> bool {
         self.on(|f| f.l7_ladder && f.ladder && (f.l7_tls || f.l7_dns))

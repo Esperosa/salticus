@@ -1228,6 +1228,7 @@ impl V3Session {
                 now.timestamp(),
                 &crate::correlation_layer::Options {
                     v2: self.engine.corr_v2(),
+                    v3: self.engine.corr_v3(),
                     first_seen: Some(&first_seen),
                 },
             );

@@ -24,6 +24,8 @@ pub const MAX_CASE_FILES: usize = 200;
 pub const MAX_INCIDENTS: usize = 200;
 /// Odstup nálezů téhož hosta nebo indikátoru, který je ještě jeden incident.
 pub const INCIDENT_GAP_S: i64 = 6 * 3600;
+/// Krok 34: klíč, který by spojil víc nálezů, je hub (server, brána) a dál nespojuje.
+pub const MAX_KEY_DEGREE: usize = 25;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Correlation {
@@ -71,6 +73,8 @@ pub struct Options<'a> {
     /// Krok 33: čas nálezu místo času běhu, jedna událost na nález, seskupení v2,
     /// počet různých nálezů, čítače zahozených.
     pub v2: bool,
+    /// Krok 34: kauzální seskupení (`incidents_v3`) a nálezy bez hosta jako oběť; vyžaduje `v2`.
+    pub v3: bool,
     /// `finding_id` -> čas prvního výskytu (z paměti nálezů).
     pub first_seen: Option<&'a std::collections::BTreeMap<String, i64>>,
 }
@@ -173,9 +177,26 @@ pub fn run(
     let costs = Costs::default();
     let mut stats = CorrStats::default();
     for f in findings {
-        let Some(host) = f.host_key.clone() else {
-            stats.without_host += 1;
-            continue;
+        let mut hostless = false;
+        let host = match f.host_key.clone() {
+            Some(h) => h,
+            None if opts.v2 && opts.v3 => {
+                // nespárovaná pasivní událost: první adresa v důkazu je oběť
+                match f.evidence.iter().find_map(|e| ips_in(e).into_iter().next()) {
+                    Some(v) => {
+                        hostless = true;
+                        v
+                    }
+                    None => {
+                        stats.without_host += 1;
+                        continue;
+                    }
+                }
+            }
+            None => {
+                stats.without_host += 1;
+                continue;
+            }
         };
         if opts.v2 && history.has_finding(&f.finding_id) {
             continue;
@@ -208,6 +229,7 @@ pub fn run(
                 Cause::Attack
             },
             kind: f.finding_type.clone(),
+            hostless,
         });
     }
     let mut out = Correlation::default();
@@ -286,7 +308,11 @@ pub fn run(
         }
     }
     if opts.v2 {
-        let mut all = history.incidents_v2(INCIDENT_GAP_S);
+        let mut all = if opts.v3 {
+            history.incidents_v3(INCIDENT_GAP_S, MAX_KEY_DEGREE)
+        } else {
+            history.incidents_v2(INCIDENT_GAP_S)
+        };
         for i in &mut all {
             i.findings.sort();
             i.findings.dedup();
@@ -369,6 +395,7 @@ mod tests {
         let o = Options {
             v2: true,
             first_seen: Some(&seen),
+            ..Default::default()
         };
         let cov = CoverageStatus::default();
         // stejny nalez ve dvou bezich nesmi vytvorit incident ani druhou udalost
@@ -397,6 +424,7 @@ mod tests {
         let o = Options {
             v2: true,
             first_seen: None,
+            ..Default::default()
         };
         let out = run(
             &mut h,
@@ -410,5 +438,71 @@ mod tests {
         );
         assert_eq!(out.stats.without_host, 1);
         assert_eq!(out.stats.single_finding_groups, 1);
+    }
+
+    #[test]
+    fn corr_v3_links_causal_chain_but_not_shared_peers() {
+        use std::collections::BTreeMap;
+        let mut f_scan = finding(
+            "scan1",
+            "unmapped_passive_event",
+            "x",
+            "event_id=anomaly-v3:scan:10.0.0.9/tcp/19",
+        );
+        f_scan.host_key = None;
+        let brute = finding(
+            "brute1",
+            "bruteforce_attempts",
+            "10.0.0.5",
+            "10.0.0.5 -> 10.0.0.9:22",
+        );
+        let exfil = finding(
+            "exfil1",
+            "egress_volume_anomaly",
+            "10.0.0.9",
+            "10.0.0.9 -> 198.51.100.7: 1500 MB",
+        );
+        // druhy, nesouvisejici utok na stejny vnejsi cil
+        let exfil2 = finding(
+            "exfil2",
+            "egress_volume_anomaly",
+            "10.0.0.20",
+            "10.0.0.20 -> 198.51.100.7: 1500 MB",
+        );
+        let seen: BTreeMap<String, i64> = [
+            ("scan1", 0),
+            ("brute1", 900),
+            ("exfil1", 2400),
+            ("exfil2", 2500),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let o = Options {
+            v2: true,
+            v3: true,
+            first_seen: Some(&seen),
+        };
+        let mut h = History::new(100);
+        let mut l = Ledger::new();
+        let all = vec![f_scan, brute, exfil, exfil2];
+        let out = run(
+            &mut h,
+            &mut l,
+            &all,
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            9000,
+            &o,
+        );
+        assert_eq!(out.incidents.len(), 1, "{:?}", out.incidents);
+        let mut got = out.incidents[0].findings.clone();
+        got.sort();
+        assert_eq!(
+            got,
+            vec!["brute1", "exfil1", "scan1"],
+            "exfil2 sdili jen vnejsi cil"
+        );
     }
 }
