@@ -108,8 +108,8 @@ Postup podle kroků je v [`docs/diplomka/eval/`](docs/diplomka/eval/) (`impl-kro
 <!-- STATUS:BEGIN -->
 _Tento blok generuje `tools/readme_status.py` z dokumentů v `docs/diplomka/eval/` a z gitu. Ručně se neupravuje._
 
-- Poslední commit: `688eda7` ze dne 2026-11-23 (fix: outbound_scan nema nestabilni zdroje (opakovane zobrazeni); vysledky kroku 32)
-- Počet unit testů knihovny (`cargo test --lib -- --list`): 813
+- Poslední commit: `6583104` ze dne 2026-11-25 (docs: oprava poznamky k intervalu v1)
+- Počet unit testů knihovny (`cargo test --lib -- --list`): 816
 
 - Výkon sítí XXXL (G4, držené seedy): p99 cyklu 1,08 s a 0,43 s, práh < 3 s, splněno.
 
