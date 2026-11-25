@@ -37,3 +37,9 @@ Pravidlo (ne ladění dat, odvozené přímo z pozorování): pár adres, kde ce
 ## Co by to změnilo
 
 Datová sada s hustě instrumentovanými hostiteli (auth i proces) NAD velkou síti s reálnou perkolací, nebo doplnění chybějících `auth-logs` na dalších hostitelích DAPT2021 (nejsou veřejně k dispozici). Bez toho další práce na váženém potvrzení/vetu nemá na čem se ověřit a nebyla by to měřená věda, ale spekulace.
+
+## Dodatek: potvrzeno skutečným během enginu, ne jen Python prototypem
+
+Mechanismus je od tohoto kroku zabudovaný v produkčním kódu (`src/corroboration.rs`, přepínač `corr_identity`, proměnná `SALTICUS_AUTH_LOG`), ne jen diagnostický skript. Test s reálným řádkem logu z `10.1.1.11` je v `src/corroboration.rs` a end-to-end test vetování konkrétního páru (bez ovlivnění jiných párů) je v `src/retro.rs::corr_v3_veto_blocks_only_the_confirmed_pair_channel`.
+
+Skutečný běh binárky (ne Python) s `SALTICUS_AUTH_LOG` nastaveným na stažený `auth111_2` a `corr_identity` zapnutým proti Week6_Day3 a Week6_Day4 potvrzuje dřívější zjištění přesně: zobrazené nálezy beze změny (H1), `w6d3` má 0 nálezů zmiňujících oba adresy páru (0 možného efektu), `w6d4` má přesně 1 a počet i velikost incidentů se nezměnily. **Mechanismus je nyní reálnou, testovanou funkcí enginu** (default-off); jeho měřený přínos zůstává nulový na této konkrétní datové sadě ze stejného důvodu jako dřív — řídké pokrytí druhým zdrojem, ne chyba v zapojení.
