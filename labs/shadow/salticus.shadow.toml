@@ -16,3 +16,12 @@ upload_horizon = true
 # krok 31: odchozí skenování (aspoň 25 cílů bez odpovědi za 5 minut); potvrzeno jen na datech,
 # ze kterých vzniklo, na skutečné domácí síti 1 zásah za 3 dny; proto zatím vypnuto
 # outscan = true
+# krok 33 až 38: korelace do incidentů (jen anotace, nic nezavírá ani neskrývá). Pro 14denní
+# soak (K16 v plan-korelace-final.md); výchozí profil v kódu se nemění. Vyžaduje case_files.
+case_files = true
+# čas nálezu, jedna událost na nález, seskupení v2, čítače zahozených, stabilní klíč, souhrn dne
+corr_v2 = true
+# kauzální seskupení a sdílený vnější protějšek s mezí hubu; související incidenty s důvodem
+corr_v3 = true
+corr_ext = true
+corr_related = true
