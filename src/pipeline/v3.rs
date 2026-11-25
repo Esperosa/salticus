@@ -1209,6 +1209,7 @@ impl V3Session {
                 .store
                 .load("retro")?
                 .unwrap_or_else(|| crate::retro::History::new(50_000));
+            history.reindex();
             let mut ledger: crate::reassess::Ledger = self
                 .store
                 .load("ledger")?

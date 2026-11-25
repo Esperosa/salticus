@@ -100,6 +100,11 @@ pub fn stable_key(text: &str) -> String {
 pub struct History {
     events: Vec<Event>,
     pub cap: usize,
+    /// Počet událostí, které už vypadly ze začátku (pořadové číslo události = `base` + pozice).
+    base: u64,
+    /// `finding_id` -> pořadové číslo události; neukládá se, po načtení `reindex`.
+    #[serde(skip)]
+    index: std::collections::HashMap<String, u64>,
 }
 
 impl History {
@@ -107,18 +112,61 @@ impl History {
         Self {
             events: Vec::new(),
             cap: cap.max(1),
+            base: 0,
+            index: std::collections::HashMap::new(),
         }
+    }
+
+    /// Po načtení ze stavu: znovu postaví index (neukládá se).
+    pub fn reindex(&mut self) {
+        self.index = self
+            .events
+            .iter()
+            .enumerate()
+            .map(|(i, e)| (e.finding_id.clone(), self.base + i as u64))
+            .collect();
     }
 
     /// Je nález už v historii (krok 33: jedna událost na nález, ne na každé zobrazení)?
     pub fn has_finding(&self, finding_id: &str) -> bool {
-        self.events.iter().any(|e| e.finding_id == finding_id)
+        self.index.contains_key(finding_id)
+    }
+
+    /// Krok 35: nové důkazy k už zapsanému nálezu (další protějšky); událost se nepřidává.
+    pub fn merge_indicators(&mut self, finding_id: &str, extra: &[String]) {
+        let Some(&seq) = self.index.get(finding_id) else {
+            return;
+        };
+        let Some(pos) = seq.checked_sub(self.base) else {
+            return;
+        };
+        if let Some(e) = self.events.get_mut(pos as usize) {
+            for x in extra {
+                if e.indicators.len() < 8 && !e.indicators.contains(x) {
+                    e.indicators.push(x.clone());
+                }
+            }
+        }
     }
 
     pub fn add(&mut self, event: Event) {
+        let seq = self.base + self.events.len() as u64;
+        self.index.insert(event.finding_id.clone(), seq);
         self.events.push(event);
-        if self.events.len() > self.cap.max(1) {
-            self.events.drain(..self.events.len() - self.cap.max(1));
+        let cap = self.cap.max(1);
+        if self.events.len() > cap {
+            let drop = self.events.len() - cap;
+            for e in self.events.drain(..drop) {
+                // index smaže jen pokud ukazuje na vyřazenou událost (nález mohl být zapsán znovu)
+                if self
+                    .index
+                    .get(&e.finding_id)
+                    .is_some_and(|s| *s < self.base + drop as u64)
+                {
+                    self.index.remove(&e.finding_id);
+                }
+            }
+            self.base += drop as u64;
         }
     }
 
@@ -211,11 +259,27 @@ impl History {
     /// aktéra u dvou útočných nálezů. Dva nálezy se nespojují jen proto, že míří na stejný
     /// protějšek (sdílený server, vnější cíl): to není kauzální vazba, ale slévá souběžné útoky.
     /// Klíč, který by spojil víc než `max_degree` nálezů, je uzel typu hub a dál nespojuje.
-    pub fn incidents_v3(&self, max_gap_s: i64, max_degree: usize) -> Vec<Incident> {
+    pub fn incidents_v3(
+        &self,
+        max_gap_s: i64,
+        max_degree: usize,
+        max_actor_degree: usize,
+    ) -> Vec<Incident> {
         let n = self.events.len();
         let mut parent: Vec<usize> = (0..n).collect();
         let mut order: Vec<usize> = (0..n).collect();
-        order.sort_by_key(|i| self.events[*i].ts);
+        // stejný čas (nálezy jednoho okna): pořadí podle fáze kill-chainu, pak podle id, aby
+        // výsledek nezávisel na pořadí vložení
+        let rank = |e: &Event| {
+            e.tactic
+                .as_deref()
+                .and_then(|t| TACTIC_ORDER.iter().position(|x| *x == t))
+                .map_or(0, |p| p + 1)
+        };
+        order.sort_by(|a, b| {
+            let (x, y) = (&self.events[*a], &self.events[*b]);
+            (x.ts, rank(x), &x.finding_id).cmp(&(y.ts, rank(y), &y.finding_id))
+        });
         // klíč -> (poslední nález, počet použití)
         let mut peer_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
         let mut actor_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
@@ -229,49 +293,74 @@ impl History {
         };
         for &i in &order {
             let e = &self.events[i];
+            // `cap`: nejvýš tolik použití klíče v jednom časovém okně (hub se v čase uvolní)
             let mut link = |map: &mut BTreeMap<String, (usize, usize)>,
                             key: &str,
                             parent: &mut Vec<usize>,
-                            register: bool| {
-                if let Some(&(j, used)) = map.get(key)
-                    && used < max_degree
-                    && e.ts - self.events[j].ts <= max_gap_s
-                {
-                    union(parent, i, j);
+                            register: bool,
+                            cap: usize| {
+                let mut used_now = 0;
+                if let Some(&(j, used)) = map.get(key) {
+                    if e.ts - self.events[j].ts <= max_gap_s {
+                        used_now = used;
+                        if used < cap {
+                            union(parent, i, j);
+                        }
+                    }
                 }
                 if register {
-                    let used = map.get(key).map_or(0, |v| v.1) + 1;
-                    map.insert(key.to_string(), (i, used));
+                    map.insert(key.to_string(), (i, used_now + 1));
                 }
             };
             let peers: Vec<&String> = e.indicators.iter().filter(|x| **x != e.host).collect();
+            // jen zápis klíče (bez spojení), počet použití v okně
+            let register = |map: &mut BTreeMap<String, (usize, usize)>, key: &str| {
+                let used = match map.get(key) {
+                    Some(&(j, used)) if e.ts - self.events[j].ts <= max_gap_s => used,
+                    _ => 0,
+                };
+                map.insert(key.to_string(), (i, used + 1));
+            };
             if e.hostless {
-                // oběť: spojí se s nálezy, kde je adresa protějškem nebo aktérem
-                link(&mut peer_seen, &e.host, &mut parent, false);
-                link(&mut actor_seen, &e.host, &mut parent, false);
-                link(&mut victim_seen, &e.host, &mut parent, true);
+                // oběť: spojí se s nálezy, kde je adresa protějškem nebo aktérem; s jinými nálezy
+                // bez hosta na téže oběti se nespojuje (sdílená oběť není kauzální vazba)
+                link(&mut peer_seen, &e.host, &mut parent, false, max_degree);
+                link(
+                    &mut actor_seen,
+                    &e.host,
+                    &mut parent,
+                    false,
+                    max_actor_degree,
+                );
+                register(&mut victim_seen, &e.host);
                 continue;
             }
             // protějšek dřívějšího nálezu, který teď jedná
-            link(&mut peer_seen, &e.host, &mut parent, false);
+            link(&mut peer_seen, &e.host, &mut parent, false, max_degree);
             // dřívější nález, kde byl tento host obětí
-            link(&mut victim_seen, &e.host, &mut parent, false);
+            link(&mut victim_seen, &e.host, &mut parent, false, max_degree);
             for p in &peers {
                 link(
                     &mut pair_seen,
                     &format!("{}|{p}", e.host),
                     &mut parent,
                     true,
+                    usize::MAX,
                 );
                 // nález bez hosta, který míří na tento protějšek
-                link(&mut victim_seen, p, &mut parent, false);
+                link(&mut victim_seen, p, &mut parent, false, max_degree);
             }
             if e.cause == Cause::Attack {
-                link(&mut actor_seen, &e.host, &mut parent, true);
+                link(
+                    &mut actor_seen,
+                    &e.host,
+                    &mut parent,
+                    true,
+                    max_actor_degree,
+                );
             }
             for p in &peers {
-                let used = peer_seen.get(p.as_str()).map_or(0, |v| v.1) + 1;
-                peer_seen.insert((*p).clone(), (i, used));
+                register(&mut peer_seen, p);
             }
         }
         self.assemble(parent)

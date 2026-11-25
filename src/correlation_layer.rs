@@ -26,6 +26,9 @@ pub const MAX_INCIDENTS: usize = 200;
 pub const INCIDENT_GAP_S: i64 = 6 * 3600;
 /// Krok 34: klíč, který by spojil víc nálezů, je hub (server, brána) a dál nespojuje.
 pub const MAX_KEY_DEGREE: usize = 25;
+/// Krok 35: aktér s víc útočnými nálezy v jednom okně už dál nespojuje (beacon z jednoho hosta
+/// na stovky cílů); u skutečného aktéra řetězce je nálezů málo.
+pub const MAX_ACTOR_DEGREE: usize = 100;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Correlation {
@@ -77,6 +80,16 @@ pub struct Options<'a> {
     pub v3: bool,
     /// `finding_id` -> čas prvního výskytu (z paměti nálezů).
     pub first_seen: Option<&'a std::collections::BTreeMap<String, i64>>,
+}
+
+/// Ponechá nejvýš `max` nejnovějších incidentů (podle posledního nálezu), v pořadí vzniku.
+fn keep_newest(all: &mut Vec<Incident>, max: usize) {
+    if all.len() <= max {
+        return;
+    }
+    all.sort_by_key(|i| std::cmp::Reverse((i.last_ts, i.first_ts)));
+    all.truncate(max);
+    all.sort_by_key(|i| (i.first_ts, i.first_finding.clone()));
 }
 
 fn is_zero(n: &usize) -> bool {
@@ -199,6 +212,12 @@ pub fn run(
             }
         };
         if opts.v2 && history.has_finding(&f.finding_id) {
+            // nové důkazy (další protějšky) se do existující události doplní, událost nepřibývá
+            let mut extra = ips_in(&f.title);
+            for e in &f.evidence {
+                extra.extend(ips_in(e));
+            }
+            history.merge_indicators(&f.finding_id, &extra);
             continue;
         }
         let ts = if opts.v2 {
@@ -309,7 +328,7 @@ pub fn run(
     }
     if opts.v2 {
         let mut all = if opts.v3 {
-            history.incidents_v3(INCIDENT_GAP_S, MAX_KEY_DEGREE)
+            history.incidents_v3(INCIDENT_GAP_S, MAX_KEY_DEGREE, MAX_ACTOR_DEGREE)
         } else {
             history.incidents_v2(INCIDENT_GAP_S)
         };
@@ -320,7 +339,7 @@ pub fn run(
         stats.single_finding_groups = all.iter().filter(|i| i.findings.len() <= 1).count();
         all.retain(|i| i.findings.len() > 1);
         stats.truncated = all.len().saturating_sub(MAX_INCIDENTS);
-        all.truncate(MAX_INCIDENTS);
+        keep_newest(&mut all, MAX_INCIDENTS);
         out.incidents = all;
         out.stats = stats;
         return out;
@@ -504,5 +523,172 @@ mod tests {
             vec!["brute1", "exfil1", "scan1"],
             "exfil2 sdili jen vnejsi cil"
         );
+    }
+
+    #[test]
+    fn corr_v3_keeps_newest_incidents_when_over_cap() {
+        let mut v: Vec<Incident> = (0..5)
+            .map(|k| Incident {
+                id: k,
+                findings: vec![format!("f{k}"), format!("g{k}")],
+                hosts: vec![],
+                first_ts: k as i64 * 10,
+                last_ts: k as i64 * 10 + 5,
+                phases: vec![],
+                cause: Cause::Attack,
+                first_finding: format!("f{k}"),
+                key: String::new(),
+            })
+            .collect();
+        keep_newest(&mut v, 2);
+        let ids: Vec<usize> = v.iter().map(|i| i.id).collect();
+        assert_eq!(ids, vec![3, 4], "ponechat nejnovejsi, ne nejstarsi");
+    }
+
+    #[test]
+    fn corr_v3_hub_releases_after_gap_and_does_not_split_active_host() {
+        // jeden aktér s 40 nálezy v čase 0..39 s: nad stropem aktéra (100) se nerozpadne;
+        // po dlouhé pauze se čítač klíče uvolní
+        let mut h = History::new(1000);
+        for k in 0..40 {
+            h.add(Event {
+                ts: k,
+                host: "10.0.0.9".into(),
+                finding_id: format!("e{k}"),
+                indicators: vec!["10.0.0.9".into(), format!("198.51.100.{k}")],
+                tactic: Some("command-and-control".into()),
+                cause: Cause::Attack,
+                kind: "beacon_periodic".into(),
+                hostless: false,
+            });
+        }
+        let inc = h.incidents_v3(3600, 25, 100);
+        assert_eq!(
+            inc.len(),
+            1,
+            "aktér pod stropem aktéra zůstane jeden incident"
+        );
+        assert_eq!(inc[0].findings.len(), 40);
+    }
+
+    #[test]
+    fn corr_v3_shared_victim_scans_do_not_merge_and_same_window_order_is_stable() {
+        use std::collections::BTreeMap;
+        let mk = |id: &str, ev: &str| {
+            let mut f = finding(id, "unmapped_passive_event", "x", ev);
+            f.host_key = None;
+            f
+        };
+        let s1 = mk("scan_s_1", "event_id=anomaly-v3:scan:10.0.0.50/tcp/19");
+        let s2 = mk("scan_s_2", "event_id=anomaly-v3:scan:10.0.0.50/tcp/20");
+        let seen: BTreeMap<String, i64> = [("scan_s_1", 0), ("scan_s_2", 10)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        let o = Options {
+            v2: true,
+            v3: true,
+            first_seen: Some(&seen),
+        };
+        let mut h = History::new(100);
+        let mut l = Ledger::new();
+        let out = run(
+            &mut h,
+            &mut l,
+            &[s1, s2],
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            99,
+            &o,
+        );
+        assert!(
+            out.incidents.is_empty(),
+            "dva skeny téže oběti nejsou jeden incident"
+        );
+    }
+
+    #[test]
+    fn corr_v3_same_window_phases_link_in_any_insertion_order() {
+        use std::collections::BTreeMap;
+        let mut scan = finding(
+            "sc",
+            "unmapped_passive_event",
+            "x",
+            "event_id=anomaly-v3:scan:10.0.0.9/tcp/19",
+        );
+        scan.host_key = None;
+        let brute = finding(
+            "br",
+            "bruteforce_attempts",
+            "10.0.0.5",
+            "10.0.0.5 -> 10.0.0.9:22",
+        );
+        let exfil = finding(
+            "ex",
+            "egress_volume_anomaly",
+            "10.0.0.9",
+            "10.0.0.9 -> 198.51.100.7: 1500 MB",
+        );
+        // všechny nálezy mají tentýž čas (jedno okno)
+        let seen: BTreeMap<String, i64> = ["sc", "br", "ex"]
+            .iter()
+            .map(|k| (k.to_string(), 500))
+            .collect();
+        let o = Options {
+            v2: true,
+            v3: true,
+            first_seen: Some(&seen),
+        };
+        for perm in [[0, 1, 2], [2, 1, 0], [1, 2, 0], [2, 0, 1]] {
+            let base = [scan.clone(), brute.clone(), exfil.clone()];
+            let all: Vec<Finding> = perm.iter().map(|k| base[*k].clone()).collect();
+            let mut h = History::new(100);
+            let mut l = Ledger::new();
+            let out = run(
+                &mut h,
+                &mut l,
+                &all,
+                &[],
+                &CoverageStatus::default(),
+                0.2,
+                600,
+                &o,
+            );
+            assert_eq!(out.incidents.len(), 1, "perm {perm:?}: {:?}", out.incidents);
+            assert_eq!(out.incidents[0].findings.len(), 3, "perm {perm:?}");
+        }
+    }
+
+    #[test]
+    fn history_index_survives_cap_drain_and_updates_indicators() {
+        let mut h = History::new(3);
+        for k in 0..5 {
+            h.add(Event {
+                ts: k,
+                host: "h".into(),
+                finding_id: format!("f{k}"),
+                indicators: vec!["h".into()],
+                tactic: None,
+                cause: Cause::Attack,
+                kind: String::new(),
+                hostless: false,
+            });
+        }
+        assert!(!h.has_finding("f0") && !h.has_finding("f1"));
+        assert!(h.has_finding("f4"));
+        h.merge_indicators("f4", &["1.2.3.4".to_string()]);
+        assert!(
+            h.events()
+                .last()
+                .unwrap()
+                .indicators
+                .contains(&"1.2.3.4".to_string())
+        );
+        let json = serde_json::to_string(&h).unwrap();
+        let mut back: History = serde_json::from_str(&json).unwrap();
+        assert!(!back.has_finding("f4"), "index se neukládá");
+        back.reindex();
+        assert!(back.has_finding("f4") && !back.has_finding("f0"));
     }
 }
