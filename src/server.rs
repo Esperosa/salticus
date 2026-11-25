@@ -133,6 +133,14 @@ pub async fn serve_with_config(addr: SocketAddr, config: AppConfig) -> Result<()
             get(get_analyst_feedback).post(post_analyst_feedback),
         )
         .route("/feedback/{id}/revoke", post(post_analyst_feedback_revoke))
+        .route(
+            "/incidents/override",
+            get(get_incident_overrides).post(post_incident_override),
+        )
+        .route(
+            "/incidents/override/{id}/revoke",
+            post(post_incident_override_revoke),
+        )
         .route("/closure-audit", get(get_closure_audit))
         .route(
             "/forensic/requests",
@@ -1427,6 +1435,90 @@ async fn post_analyst_feedback(
     .await
     {
         Ok(id) => Json(serde_json::json!({ "recorded": id })).into_response(),
+        Err(response) => response,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct IncidentOverrideBody {
+    #[serde(flatten)]
+    over: crate::incident_overrides::Override,
+    #[serde(default)]
+    note: String,
+}
+
+/// Krok 38 (K14): ruční sloučení nebo odpojení nálezu od incidentu; mění jen seskupení.
+async fn post_incident_override(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<IncidentOverrideBody>,
+) -> Response {
+    let auth = match authorize_for(&headers, &state, &["findings.write"]) {
+        Ok(auth) => auth,
+        Err(error) => return pair_to_response(error),
+    };
+    if let Err(error) = ensure_csrf_guard_header(&auth, &headers) {
+        return pair_to_response(error);
+    }
+    let root = state.workspace_root.clone();
+    let actor = auth.subject.clone();
+    match run_blocking(move || {
+        let store = crate::engine_state::EngineStateStore::open(&root.join("engine-state.sqlite"))?;
+        crate::incident_overrides::submit(store.conn(), &body.over, &actor, &body.note, Utc::now())
+    })
+    .await
+    {
+        Ok(id) => Json(serde_json::json!({ "recorded": id })).into_response(),
+        Err(response) => response,
+    }
+}
+
+async fn post_incident_override_revoke(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+    Json(body): Json<NoteBody>,
+) -> Response {
+    let auth = match authorize_for(&headers, &state, &["findings.write"]) {
+        Ok(auth) => auth,
+        Err(error) => return pair_to_response(error),
+    };
+    if let Err(error) = ensure_csrf_guard_header(&auth, &headers) {
+        return pair_to_response(error);
+    }
+    let root = state.workspace_root.clone();
+    let actor = auth.subject.clone();
+    match run_blocking(move || {
+        let store = crate::engine_state::EngineStateStore::open(&root.join("engine-state.sqlite"))?;
+        crate::incident_overrides::revoke(store.conn(), id, &actor, &body.note, Utc::now())
+    })
+    .await
+    {
+        Ok(true) => Json(serde_json::json!({ "revoked": id })).into_response(),
+        Ok(false) => error_response(
+            StatusCode::NOT_FOUND,
+            "Zasah neexistuje nebo uz byl odvolan.",
+        ),
+        Err(response) => response,
+    }
+}
+
+async fn get_incident_overrides(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if let Err(error) = authorize_for(&headers, &state, &["runs.read"]) {
+        return pair_to_response(error);
+    }
+    let root = state.workspace_root.clone();
+    match run_blocking(move || {
+        let store = crate::engine_state::EngineStateStore::open(&root.join("engine-state.sqlite"))?;
+        let active = crate::incident_overrides::active(store.conn())?;
+        Ok(serde_json::json!({
+            "active": active.iter().map(|(id, o)| serde_json::json!({ "id": id, "override": o })).collect::<Vec<_>>(),
+            "note": "Zasahy meni jen seskupeni incidentu; zavirani ani zavaznost nemeni.",
+        }))
+    })
+    .await
+    {
+        Ok(value) => Json(value).into_response(),
         Err(response) => response,
     }
 }

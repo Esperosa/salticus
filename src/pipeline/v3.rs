@@ -1229,6 +1229,12 @@ impl V3Session {
                 .iter()
                 .map(|r| (r.finding_id.clone(), r.first_seen.timestamp()))
                 .collect();
+            let overrides: Vec<crate::incident_overrides::Override> =
+                crate::incident_overrides::active(self.store.conn())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(_, o)| o)
+                    .collect();
             let prev_keys: std::collections::BTreeMap<String, String> =
                 self.store.load("retro_keys")?.unwrap_or_default();
             let correlation = crate::correlation_layer::run(
@@ -1246,6 +1252,7 @@ impl V3Session {
                     union: self.engine.corr_union(),
                     related: self.engine.corr_related(),
                     prev_keys: Some(&prev_keys),
+                    overrides: Some(&overrides),
                     first_seen: Some(&first_seen),
                 },
             );

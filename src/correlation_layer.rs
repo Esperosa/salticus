@@ -151,6 +151,8 @@ pub struct Options<'a> {
     pub related: bool,
     /// Klíče incidentů z minulého běhu (nález -> klíč), pro stabilní klíč přes běhy.
     pub prev_keys: Option<&'a std::collections::BTreeMap<String, String>>,
+    /// Ruční zásahy analytika do seskupení (sloučit, odpojit); mění jen seskupení.
+    pub overrides: Option<&'a [crate::incident_overrides::Override]>,
     /// `finding_id` -> čas prvního výskytu (z paměti nálezů).
     pub first_seen: Option<&'a std::collections::BTreeMap<String, i64>>,
 }
@@ -492,6 +494,9 @@ pub fn run(
         stats.single_finding_groups = all.iter().filter(|i| i.findings.len() <= 1).count();
         all.retain(|i| i.findings.len() > 1);
         stats.truncated = all.len().saturating_sub(MAX_INCIDENTS);
+        if let Some(ov) = opts.overrides {
+            crate::incident_overrides::apply(&mut all, ov);
+        }
         keep_newest(&mut all, MAX_INCIDENTS);
         if let Some(prev) = opts.prev_keys {
             out.next_keys = assign_sticky_keys(&mut all, prev);
@@ -663,6 +668,7 @@ mod tests {
             union: false,
             related: false,
             prev_keys: None,
+            overrides: None,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -756,6 +762,7 @@ mod tests {
             union: false,
             related: false,
             prev_keys: None,
+            overrides: None,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -810,6 +817,7 @@ mod tests {
             union: false,
             related: false,
             prev_keys: None,
+            overrides: None,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -891,6 +899,7 @@ mod tests {
                 union: false,
                 related: false,
                 prev_keys: None,
+                overrides: None,
                 first_seen: Some(&seen),
             };
             let mut h = History::new(100);

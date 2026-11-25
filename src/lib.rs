@@ -41,6 +41,7 @@ pub mod hypothesis;
 pub mod identity;
 pub mod identity_lab;
 pub mod incident_catalog;
+pub mod incident_overrides;
 pub mod ingest;
 pub mod intel;
 pub mod l7;
