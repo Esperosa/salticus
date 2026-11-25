@@ -1229,6 +1229,8 @@ impl V3Session {
                 .iter()
                 .map(|r| (r.finding_id.clone(), r.first_seen.timestamp()))
                 .collect();
+            let prev_keys: std::collections::BTreeMap<String, String> =
+                self.store.load("retro_keys")?.unwrap_or_default();
             let correlation = crate::correlation_layer::run(
                 &mut history,
                 &mut ledger,
@@ -1243,6 +1245,7 @@ impl V3Session {
                     ext: self.engine.corr_ext(),
                     union: self.engine.corr_union(),
                     related: self.engine.corr_related(),
+                    prev_keys: Some(&prev_keys),
                     first_seen: Some(&first_seen),
                 },
             );
@@ -1250,6 +1253,9 @@ impl V3Session {
                 .flush(self.store.conn_mut())
                 .map_err(|e| crate::error::SalticusError::Processing(format!("retro: {e}")))?;
             self.store.save("ledger", &ledger)?;
+            if self.engine.corr_v2() {
+                self.store.save("retro_keys", &correlation.next_keys)?;
+            }
             let mut correlation = correlation;
             if self.engine.case_folder() {
                 use crate::context_gate::ContextProvider as _;

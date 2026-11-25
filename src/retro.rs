@@ -262,6 +262,16 @@ impl History {
         })
     }
 
+    /// Typ nálezu zapsaný k nálezu (pro souhrn incidentu); prázdný, když nález v historii není.
+    pub fn kind_of(&self, finding_id: &str) -> String {
+        let Some(&seq) = self.index.get(finding_id) else {
+            return String::new();
+        };
+        seq.checked_sub(self.base)
+            .and_then(|pos| self.events.get(pos as usize))
+            .map_or_else(String::new, |e| e.kind.clone())
+    }
+
     pub fn merge_indicators(&mut self, finding_id: &str, extra: &[String]) {
         let Some(&seq) = self.index.get(finding_id) else {
             return;

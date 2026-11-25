@@ -51,6 +51,70 @@ pub struct Correlation {
     /// Krok 33: co korelace nezařadila (viditelná ztráta; prázdné a nevypisuje se).
     #[serde(default, skip_serializing_if = "CorrStats::is_empty")]
     pub stats: CorrStats,
+    /// Krok 38 (S1): souhrn dne, jeden řádek na incident (nejdůležitější nahoře).
+    #[serde(default, rename = "daySummary", skip_serializing_if = "Vec::is_empty")]
+    pub day_summary: Vec<IncidentRow>,
+    /// Krok 38: klíče incidentů podle členů pro příští běh (neposílá se v reportu).
+    #[serde(skip)]
+    pub next_keys: std::collections::BTreeMap<String, String>,
+}
+
+/// Řádek souhrnu dne: stabilní klíč, hosté, fáze, počet nálezů po typech, časy, počet
+/// souvisejících a příznak „nový od minulého běhu“.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IncidentRow {
+    pub key: String,
+    pub hosts: Vec<String>,
+    pub phases: Vec<String>,
+    pub findings: usize,
+    pub kinds: Vec<(String, usize)>,
+    pub first_ts: i64,
+    pub last_ts: i64,
+    pub related: usize,
+    pub is_new: bool,
+}
+
+/// Souhrn dne: incidenty seřazené podle počtu fází kill-chainu, nových a velikosti; opakované
+/// nálezy téhož typu se sbalí do počtu.
+fn build_day_summary(
+    all: &[Incident],
+    history: &History,
+    prev: Option<&std::collections::BTreeMap<String, String>>,
+) -> Vec<IncidentRow> {
+    let mut rows: Vec<IncidentRow> = all
+        .iter()
+        .map(|i| {
+            let mut kinds: std::collections::BTreeMap<String, usize> =
+                std::collections::BTreeMap::new();
+            for f in &i.findings {
+                *kinds.entry(history.kind_of(f)).or_default() += 1;
+            }
+            let mut kinds: Vec<(String, usize)> = kinds.into_iter().collect();
+            kinds.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+            kinds.truncate(5);
+            let is_new = prev.is_none_or(|p| !i.findings.iter().any(|f| p.contains_key(f)));
+            IncidentRow {
+                key: i.key.clone(),
+                hosts: i.hosts.iter().take(3).cloned().collect(),
+                phases: i.phases.clone(),
+                findings: i.findings.len(),
+                kinds,
+                first_ts: i.first_ts,
+                last_ts: i.last_ts,
+                related: i.related.len(),
+                is_new,
+            }
+        })
+        .collect();
+    rows.sort_by_key(|r| {
+        (
+            std::cmp::Reverse(r.phases.len()),
+            std::cmp::Reverse(r.is_new),
+            std::cmp::Reverse(r.findings),
+        )
+    });
+    rows.truncate(50);
+    rows
 }
 
 /// Čítače nálezů, které korelace nezařadila do incidentu (krok 33, `corr_v2`).
@@ -85,8 +149,40 @@ pub struct Options<'a> {
     /// Krok 37: k incidentům z `v3` přidat související incidenty podle sdílené adresy
     /// (`incidents_union`), s důvodem; incidenty se tím neslučují.
     pub related: bool,
+    /// Klíče incidentů z minulého běhu (nález -> klíč), pro stabilní klíč přes běhy.
+    pub prev_keys: Option<&'a std::collections::BTreeMap<String, String>>,
     /// `finding_id` -> čas prvního výskytu (z paměti nálezů).
     pub first_seen: Option<&'a std::collections::BTreeMap<String, i64>>,
+}
+
+/// Krok 38: klíč incidentu se dědí od členů z minulého běhu (nejmenší z jejich klíčů), takže
+/// přežije růst i sloučení; při rozdělení si klíč nechá větší část, menší dostane nový.
+fn assign_sticky_keys(
+    all: &mut [Incident],
+    prev: &std::collections::BTreeMap<String, String>,
+) -> std::collections::BTreeMap<String, String> {
+    let mut order: Vec<usize> = (0..all.len()).collect();
+    order.sort_by_key(|i| std::cmp::Reverse(all[*i].findings.len()));
+    let mut used: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for i in order {
+        let inherited = all[i]
+            .findings
+            .iter()
+            .filter_map(|f| prev.get(f))
+            .filter(|k| !used.contains(*k))
+            .min()
+            .cloned();
+        let key = inherited.unwrap_or_else(|| all[i].key.clone());
+        used.insert(key.clone());
+        all[i].key = key;
+    }
+    let mut next = std::collections::BTreeMap::new();
+    for inc in all.iter() {
+        for f in &inc.findings {
+            next.insert(f.clone(), inc.key.clone());
+        }
+    }
+    next
 }
 
 /// Krok 37: incidenty, které slabě spojuje sdílená adresa (komponenta `incidents_union`),
@@ -397,9 +493,13 @@ pub fn run(
         all.retain(|i| i.findings.len() > 1);
         stats.truncated = all.len().saturating_sub(MAX_INCIDENTS);
         keep_newest(&mut all, MAX_INCIDENTS);
+        if let Some(prev) = opts.prev_keys {
+            out.next_keys = assign_sticky_keys(&mut all, prev);
+        }
         if opts.related {
             attach_related(&mut all, history);
         }
+        out.day_summary = build_day_summary(&all, history, opts.prev_keys);
         out.incidents = all;
         out.stats = stats;
         return out;
@@ -562,6 +662,7 @@ mod tests {
             v3: true,
             union: false,
             related: false,
+            prev_keys: None,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -654,6 +755,7 @@ mod tests {
             v3: true,
             union: false,
             related: false,
+            prev_keys: None,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -707,6 +809,7 @@ mod tests {
             v3: true,
             union: false,
             related: false,
+            prev_keys: None,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -787,6 +890,7 @@ mod tests {
                 ext,
                 union: false,
                 related: false,
+                prev_keys: None,
                 first_seen: Some(&seen),
             };
             let mut h = History::new(100);
@@ -872,6 +976,7 @@ mod tests {
             v2: true,
             v3: true,
             related: true,
+            prev_keys: None,
             first_seen: Some(&seen),
             ..Default::default()
         };
@@ -932,6 +1037,7 @@ mod tests {
             v3: true,
             ext: true,
             related: true,
+            prev_keys: None,
             first_seen: Some(&seen),
             ..Default::default()
         };
@@ -1017,5 +1123,101 @@ mod tests {
                 .len(),
             2
         );
+    }
+
+    #[test]
+    fn incident_key_is_sticky_across_growth_and_merge() {
+        use std::collections::BTreeMap;
+        let inc = |findings: &[&str], first: &str| Incident {
+            id: 0,
+            findings: findings.iter().map(|f| f.to_string()).collect(),
+            hosts: vec![],
+            first_ts: 0,
+            last_ts: 1,
+            phases: vec![],
+            cause: Cause::Attack,
+            first_finding: first.to_string(),
+            key: crate::retro::stable_key(first),
+            related: vec![],
+        };
+        // běh 1: incident {a,b}
+        let mut run1 = vec![inc(&["a", "b"], "a")];
+        let keys1 = assign_sticky_keys(&mut run1, &BTreeMap::new());
+        let k = run1[0].key.clone();
+        // běh 2: roste o c a starší nález z jiného incidentu ho nezmění (první je starší nález z)
+        let mut run2 = vec![inc(&["z", "a", "b", "c"], "z")];
+        assign_sticky_keys(&mut run2, &keys1);
+        assert_eq!(
+            run2[0].key, k,
+            "klíč přežije růst i změnu nejstaršího nálezu"
+        );
+        // rozdělení: větší část si klíč nechá, menší dostane nový
+        let keys2: BTreeMap<String, String> = ["a", "b", "c", "d"]
+            .iter()
+            .map(|f| (f.to_string(), k.clone()))
+            .collect();
+        let mut run3 = vec![inc(&["a", "b", "c"], "a"), inc(&["d", "e"], "d")];
+        assign_sticky_keys(&mut run3, &keys2);
+        assert_eq!(run3[0].key, k);
+        assert_ne!(run3[1].key, k);
+    }
+
+    #[test]
+    fn day_summary_collapses_repeats_and_flags_new() {
+        use std::collections::BTreeMap;
+        let mut all = Vec::new();
+        let mut seen: BTreeMap<String, i64> = BTreeMap::new();
+        for k in 0..6 {
+            let id = format!("s{k}");
+            all.push(finding(
+                &id,
+                "scan_attempts",
+                "10.0.0.5",
+                "10.0.0.5 -> 198.51.100.4:445",
+            ));
+            seen.insert(id, k as i64);
+        }
+        let prev: BTreeMap<String, String> = BTreeMap::new();
+        let o = Options {
+            v2: true,
+            v3: true,
+            prev_keys: Some(&prev),
+            first_seen: Some(&seen),
+            ..Default::default()
+        };
+        let mut h = History::new(100);
+        let mut l = Ledger::new();
+        let out = run(
+            &mut h,
+            &mut l,
+            &all,
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            99,
+            &o,
+        );
+        assert_eq!(out.day_summary.len(), 1);
+        let row = &out.day_summary[0];
+        assert!(row.is_new);
+        assert_eq!(row.findings, 6);
+        assert_eq!(row.kinds, vec![("scan_attempts".to_string(), 6)]);
+        // další běh: stejné nálezy, klíče z minula => už ne nový
+        let o2 = Options {
+            prev_keys: Some(&out.next_keys),
+            ..o.clone()
+        };
+        let out2 = run(
+            &mut h,
+            &mut l,
+            &all,
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            100,
+            &o2,
+        );
+        assert!(!out2.day_summary[0].is_new);
+        assert_eq!(out2.day_summary[0].key, row.key);
     }
 }
