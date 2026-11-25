@@ -44,7 +44,7 @@ Co se vědomě nedělá: další detekční pravidla, další datasety, ATT&CK p
 
 Největší incident ≤ 20 % zobrazených nálezů dne; žádná hrana bez důvodu; zachycení 8 rodin stále 10/10 i s druhým útočníkem; 0 uzavřených chráněných nálezů; opakování okna dává shodný výstup; po 20 náhodných přerušeních 0 duplicitních a 0 ztracených incidentů; ≤ 2 s CPU a ≤ 150 MB na 50 000 událostí; zápis za okno ≤ 1 MB; při vypnutém zdroji běh nespadne a incident hlásí mezery pokrytí.
 
-## 6. Neshody mezi agenty a rozhodnutí
+## 6. Neshody mezi posuzovateli a rozhodnutí
 
 - Architekt chtěl hned entitní graf; pragmatik a skeptik: nejdřív měřit, co dnes je. Rozhodnuto: nejdřív K1 až K5, graf (L1 až L4) jen pokud K5 ukáže, že v2 nestačí.
 - Pragmatik chtěl zapnout `attempts`, `attr_calib`, `upload_horizon`, `case_files` ve výchozím profilu; skeptik upozornil, že všechna měření jsou na vývojových datech. Rozhodnuto: o výchozím profilu až po K5 a K8 na neviděných seedech.

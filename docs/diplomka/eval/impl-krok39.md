@@ -30,7 +30,7 @@ Podklad: `predreg-krok39.md`, kód zmrazen commitem `7e2204e`. Data: PicoDomain 
 
 ## Negativní pokus: omezení `related` podle četnosti adresy
 
-Z návrhu agenta: adresa ve víc než 3 incidentech je hub a `related` nevytváří. Vyzkoušeno na LLDOS (popisně, data již použitá): úplnost uzávěru klesla z 0,71 na 0,39 (1.0) a z 0,80 na 0,40 (2.0.2), kontaminace zůstala 0,28 a 0,71. Útočník kampaně je sdílený mnoha incidenty, takže ho pravidlo označilo za hub. Změna vrácena, nezapojena. Negativní výsledek: jednoduché omezení podle četnosti adresy nerozliší hub od útočníka; k rozlišení by byla potřeba role adresy (server vs. klient) nebo skóre s časem.
+Z návrhu nezávislého posuzovatele: adresa ve víc než 3 incidentech je hub a `related` nevytváří. Vyzkoušeno na LLDOS (popisně, data již použitá): úplnost uzávěru klesla z 0,71 na 0,39 (1.0) a z 0,80 na 0,40 (2.0.2), kontaminace zůstala 0,28 a 0,71. Útočník kampaně je sdílený mnoha incidenty, takže ho pravidlo označilo za hub. Změna vrácena, nezapojena. Negativní výsledek: jednoduché omezení podle četnosti adresy nerozliší hub od útočníka; k rozlišení by byla potřeba role adresy (server vs. klient) nebo skóre s časem.
 
 ## Další krok
 

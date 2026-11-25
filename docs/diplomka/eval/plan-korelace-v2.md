@@ -27,7 +27,7 @@ Pořadí: K9 a K10 nejdřív (rozhodují, zda `corr_v3` vůbec stojí za provoz)
 ## 3. Definice „prokazatelně splněno“
 
 1. Všechna kritéria K9 až K16 splněna s dokumentem kroku, předregistrací před měřením a nepoužitými seedy pro test.
-2. Nezávislé review po kroku, který sahá na stav, souběh nebo rozhodování (jeden subagent, jen čtení).
+2. Nezávislé review po kroku, který sahá na stav, souběh nebo rozhodování (jeden nezávislý posuzovatel, jen čtení).
 3. 0 uzavřených chráněných nálezů a 0 změn zobrazení způsobených korelací (H1 v každém měření).
 4. Negativní výsledky zapsané; žádné ladění prahů na testovacích datech; změna prahu = nový krok s novým seedem.
 5. `cargo test --lib` pro dotčené moduly, `cargo fmt`, README stav, commit a push po každém kroku.

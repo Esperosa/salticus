@@ -1,6 +1,6 @@
-# Plán korelace, finální verze (po debatě čtyř agentů)
+# Plán korelace, finální verze (po debatě čtyř nezávislých posuzovatelů)
 
-Vznikl ve dvou kolech: tři nezávislé rozbory (architekt, skeptik a metrolog, pragmatik provozu), pak připomínky ke konkrétnímu návrhu (`plan-korelace-v2.md`) od těch tří plus čtvrtého, adversariálního oponenta na Opusu, který četl i kód. Nahrazuje `plan-korelace.md` §2 a `plan-korelace-v2.md` §2 až §3. Stav: kroky K1 až K5 hotové (`impl-krok34.md`), zbytek je tento plán.
+Vznikl ve dvou kolech: tři nezávislé rozbory (architekt, skeptik a metrolog, pragmatik provozu), pak připomínky ke konkrétnímu návrhu (`plan-korelace-v2.md`) od těch tří plus čtvrtého, adversariálního oponenta, který četl i kód. Nahrazuje `plan-korelace.md` §2 a `plan-korelace-v2.md` §2 až §3. Stav: kroky K1 až K5 hotové (`impl-krok34.md`), zbytek je tento plán.
 
 ## 1. Co debata změnila
 
@@ -18,8 +18,8 @@ Metodika kroku 34 má slabiny, které jsem přiznal jen částečně: pravidla i
 | otázka | rozhodnutí |
 |---|---|
 | Entitní graf hned? | Ne (architekt i skeptik). Až po K9, pokud hrany „host = řetěz“ nestačí. |
-| Zdroj skenu (K12) hned? | Až po opravě pravidla (c) a přeměření; pokud po ní zůstanou slité dvojice, K12 se udělá s polem `srcs` mimo `finding_id` (architekt, `anomaly.rs:18-34`). Pragmatik ho chtěl škrtnout, Opus ukázal, že část slévání je chyba pravidla; proto nejdřív oprava. |
-| Rozhodnutí o výchozím profilu radou (council)? | Ne. Číselná tabulka kritérií, předem daná (pragmatik, Opus). Council jen pro review kódu. |
+| Zdroj skenu (K12) hned? | Až po opravě pravidla (c) a přeměření; pokud po ní zůstanou slité dvojice, K12 se udělá s polem `srcs` mimo `finding_id` (architekt, `anomaly.rs:18-34`). Pragmatik ho chtěl škrtnout, oponent ukázal, že část slévání je chyba pravidla; proto nejdřív oprava. |
+| Rozhodnutí o výchozím profilu radou (council)? | Ne. Číselná tabulka kritérií, předem daná (pragmatik, oponent). Council jen pro review kódu. |
 | Strop „největší incident ≤ 20 %“ | Škrtnuto pro jednohostové botnety (architekt); nahrazeno čistotou podle štítků. |
 | Soak ±25 % týden 1 vs. 2 | Nahrazeno mediánem a rozptylem denních počtů plus absolutním stropem (pragmatik, architekt). |
 | Zapnout `case_files`/`corr_v3` dřív? | Ne dřív než po K9 a K10 (skeptik, pragmatik). V1 je horší než triviální seskupení, ale přepnutí musí projít měřením. |
