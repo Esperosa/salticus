@@ -19,6 +19,7 @@ pub mod context_gate;
 pub mod correlation;
 pub mod correlation_layer;
 pub mod correlation_v2;
+pub mod corroboration;
 pub mod coverage_status;
 pub mod cpe;
 pub mod decision;

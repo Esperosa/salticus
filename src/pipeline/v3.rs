@@ -1229,6 +1229,11 @@ impl V3Session {
                 .iter()
                 .map(|r| (r.finding_id.clone(), r.first_seen.timestamp()))
                 .collect();
+            let veto_pairs = if self.engine.corr_identity() {
+                crate::corroboration::load_veto_pairs_from_env()
+            } else {
+                None
+            };
             let overrides: Vec<crate::incident_overrides::Override> =
                 crate::incident_overrides::active(self.store.conn())
                     .unwrap_or_default()
@@ -1252,6 +1257,7 @@ impl V3Session {
                     union: self.engine.corr_union(),
                     tactic: self.engine.corr_tactic(),
                     core: self.engine.corr_core(),
+                    veto: veto_pairs.as_ref(),
                     graph: self.engine.corr_graph(),
                     related: self.engine.corr_related(),
                     prev_keys: Some(&prev_keys),

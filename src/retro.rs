@@ -442,6 +442,7 @@ impl History {
         ext_links: bool,
         tactic_gate: bool,
         core_only: bool,
+        veto: Option<&std::collections::BTreeSet<(String, String)>>,
     ) -> Vec<Incident> {
         let n = self.events.len();
         let mut parent: Vec<usize> = (0..n).collect();
@@ -478,9 +479,20 @@ impl History {
         for &i in &order {
             let e = &self.events[i];
             // `cap`: nejvýš tolik použití klíče v jednom časovém okně (hub se v čase uvolní)
+            let vetoed = |a: &str, b: &str| {
+                veto.is_some_and(|v| {
+                    let pair = if a <= b {
+                        (a.to_string(), b.to_string())
+                    } else {
+                        (b.to_string(), a.to_string())
+                    };
+                    v.contains(&pair)
+                })
+            };
             let link = |rule: &'static str,
                         map: &mut BTreeMap<String, (usize, usize)>,
                         key: &str,
+                        other: &str,
                         parent: &mut Vec<usize>,
                         register: bool,
                         cap: usize| {
@@ -494,6 +506,8 @@ impl History {
                     );
                 if let Some(&(j, used)) = map.get(key)
                     && e.ts - self.events[j].ts <= max_gap_s
+                    && !vetoed(&e.host, &self.events[j].host)
+                    && !vetoed(&e.host, other)
                 {
                     {
                         used_now = used;
@@ -531,6 +545,7 @@ impl History {
                     "peer_victim",
                     &mut peer_seen,
                     &e.host,
+                    &e.host,
                     &mut parent,
                     false,
                     max_degree,
@@ -538,6 +553,7 @@ impl History {
                 link(
                     "actor_victim",
                     &mut actor_seen,
+                    &e.host,
                     &e.host,
                     &mut parent,
                     false,
@@ -549,6 +565,7 @@ impl History {
                         "victim_shared",
                         &mut victim_seen,
                         &e.host,
+                        &e.host,
                         &mut parent,
                         true,
                         max_degree,
@@ -559,7 +576,15 @@ impl History {
                 if ext_links {
                     for p in &peers {
                         if is_public_unicast(p) {
-                            link("ext_peer", &mut ext_seen, p, &mut parent, true, max_degree);
+                            link(
+                                "ext_peer",
+                                &mut ext_seen,
+                                p,
+                                p,
+                                &mut parent,
+                                true,
+                                max_degree,
+                            );
                         }
                     }
                 }
@@ -570,6 +595,7 @@ impl History {
                 "peer_actor",
                 &mut peer_seen,
                 &e.host,
+                &e.host,
                 &mut parent,
                 false,
                 max_degree,
@@ -578,6 +604,7 @@ impl History {
             link(
                 "victim_actor",
                 &mut victim_seen,
+                &e.host,
                 &e.host,
                 &mut parent,
                 false,
@@ -588,6 +615,7 @@ impl History {
                     "pair",
                     &mut pair_seen,
                     &format!("{}|{p}", e.host),
+                    p,
                     &mut parent,
                     true,
                     usize::MAX,
@@ -596,6 +624,7 @@ impl History {
                 link(
                     "victim_peer",
                     &mut victim_seen,
+                    p,
                     p,
                     &mut parent,
                     false,
@@ -607,6 +636,7 @@ impl History {
                     "actor_attack",
                     &mut actor_seen,
                     &e.host,
+                    &e.host,
                     &mut parent,
                     true,
                     max_actor_degree,
@@ -616,7 +646,15 @@ impl History {
                 // stejný vnější protějšek u dvou nálezů (útočník zasáhl víc obětí, společný cíl C2)
                 for p in &peers {
                     if is_public_unicast(p) {
-                        link("ext_peer", &mut ext_seen, p, &mut parent, true, max_degree);
+                        link(
+                            "ext_peer",
+                            &mut ext_seen,
+                            p,
+                            p,
+                            &mut parent,
+                            true,
+                            max_degree,
+                        );
                     }
                 }
             }
@@ -1088,5 +1126,63 @@ mod tests {
             "novější události přežijí poškozený řádek"
         );
         assert!(back.has_finding("f5") && !back.has_finding("f1"));
+    }
+
+    #[test]
+    fn corr_v3_veto_blocks_only_the_confirmed_pair_channel() {
+        // dva "Unknown" nálezy (ne Attack, aby se neuplatnilo pravidlo actor_attack) ze
+        // stejného hostitele na stejný protějšek: bez veta je spojí pravidlo "pair"
+        let mk = |ts: i64, id: &str| {
+            ev(
+                ts,
+                "10.0.0.1",
+                id,
+                &["10.0.0.1", "10.0.0.2"],
+                None,
+                Cause::Unknown,
+            )
+        };
+        let mut without_veto = History::new(100);
+        without_veto.add(mk(0, "a"));
+        without_veto.add(mk(60, "b"));
+        assert_eq!(
+            without_veto
+                .incidents_v3(3600, 25, 100, false, false, false, None)
+                .len(),
+            1
+        );
+        let mut veto = BTreeSet::new();
+        veto.insert(("10.0.0.1".to_string(), "10.0.0.2".to_string()));
+        let mut with_veto = History::new(100);
+        with_veto.add(mk(0, "c"));
+        with_veto.add(mk(60, "d"));
+        assert_eq!(
+            with_veto
+                .incidents_v3(3600, 25, 100, false, false, false, Some(&veto))
+                .len(),
+            2,
+            "potvrzeny kanal se nesmi stat hranou incidentu (zustanou 2 osamocene skupiny)"
+        );
+        // nevetovany par se pres stejne pravidlo spoji i kdyz je veto aktivni pro jiny par
+        let mk2 = |ts: i64, id: &str| {
+            ev(
+                ts,
+                "10.0.0.5",
+                id,
+                &["10.0.0.5", "10.0.0.9"],
+                None,
+                Cause::Unknown,
+            )
+        };
+        let mut other_pair = History::new(100);
+        other_pair.add(mk2(0, "e"));
+        other_pair.add(mk2(60, "f"));
+        assert_eq!(
+            other_pair
+                .incidents_v3(3600, 25, 100, false, false, false, Some(&veto))
+                .len(),
+            1,
+            "veto se netyka jineho paru adres"
+        );
     }
 }

@@ -179,6 +179,10 @@ pub struct Options<'a> {
     pub core: bool,
     /// Krok 44: vážený graf nálezů s komunitami (`incidents_graph`); vyžaduje `v2`.
     pub graph: bool,
+    /// Krok 46: potvrzené administrativní dvojice (host, protějšek) z druhého zdroje
+    /// (autentizační log); přes ně `incidents_v3` nespojí. Nikdy nemaže nález ani nemění
+    /// závažnost nebo zavření.
+    pub veto: Option<&'a std::collections::BTreeSet<(String, String)>>,
     /// Krok 37: k incidentům z `v3` přidat související incidenty podle sdílené adresy
     /// (`incidents_union`), s důvodem; incidenty se tím neslučují.
     pub related: bool,
@@ -586,6 +590,7 @@ pub fn run(
                 opts.ext,
                 opts.tactic,
                 opts.core,
+                opts.veto,
             )
         } else {
             history.incidents_v2(INCIDENT_GAP_S)
@@ -775,6 +780,7 @@ mod tests {
             tactic: false,
             core: false,
             graph: false,
+            veto: None,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -841,7 +847,7 @@ mod tests {
                 services: Vec::new(),
             });
         }
-        let inc = h.incidents_v3(3600, 25, 100, false, false, false);
+        let inc = h.incidents_v3(3600, 25, 100, false, false, false, None);
         assert_eq!(
             inc.len(),
             1,
@@ -874,6 +880,7 @@ mod tests {
             tactic: false,
             core: false,
             graph: false,
+            veto: None,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -932,6 +939,7 @@ mod tests {
             tactic: false,
             core: false,
             graph: false,
+            veto: None,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -1018,6 +1026,7 @@ mod tests {
                 tactic: false,
                 core: false,
                 graph: false,
+                veto: None,
                 first_seen: Some(&seen),
             };
             let mut h = History::new(100);
