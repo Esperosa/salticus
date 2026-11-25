@@ -15,5 +15,8 @@ dump.rdb
 labs/datasets
 tests
 docs
+!docs/diplomka
+!docs/diplomka/studie
+!docs/diplomka/studie/09-attack-technik.txt
 tools/projectdiscovery
 ui-src/node_modules

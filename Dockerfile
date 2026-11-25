@@ -22,6 +22,11 @@ FROM rust:1-slim-bookworm AS rust-builder
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
+# produkcni gap audit (26.11.2026): build padal na 2 chybejicich include_str! cestach
+# (data/incident-catalog.json, docs/diplomka/studie/09-attack-technik.txt), protoze
+# predchozi verze kopirovala jen src/ - overeno realnym `docker build`, ne jen cteni.
+COPY data ./data
+COPY docs/diplomka/studie/09-attack-technik.txt ./docs/diplomka/studie/09-attack-technik.txt
 RUN cargo build --release --bin salticus-program
 
 FROM debian:bookworm-slim AS runtime
