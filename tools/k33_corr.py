@@ -250,6 +250,57 @@ def bootstrap(truth, arms_stats, n_boot=2000, seed=11):
     return {k: {"f1_ci": ci(sims[k]), "diff_vs_B1_ci": ci(diffs[k])} for k in arms_stats}
 
 
+def cluster_bootstrap(truth, arms_stats, n_boot=2000, seed=11):
+    """Bootstrap přes jednotky pravdy (samostatný řetězec nebo kolizní dvojice, která sdílí vnější
+    cíl). Dvojice uvnitř jednotky se násobí násobností jednotky, dvojice mezi dvěma jednotkami
+    součinem násobností; kopie téže jednotky se navzájem nespojují (každá kopie je nezávislá).
+    Správnější než kopie jednotlivých řetězců, kde se kopie téhož nálezu spojily do skupiny."""
+    unit = {}
+    for c in truth:
+        unit[c["chain"]] = ("x", c["ext"]) if c["shared"] else ("c", c["chain"])
+    units = sorted(set(unit.values()))
+    members = {u: [c for c in unit if unit[c] == u] for u in units}
+
+    def f1(tp, fp, fn):
+        p = tp / (tp + fp) if tp + fp else 0.0
+        r = tp / (tp + fn) if tp + fn else 0.0
+        return 2 * p * r / (p + r) if p + r else 0.0
+
+    def counts(stat, mult):
+        n, N, S, W = stat
+        tp = fn = fp = 0.0
+        for u, m in mult.items():
+            for c in members[u]:
+                tp += m * S.get(c, 0)
+                fn += m * (N.get(c, 0) - S.get(c, 0))
+        for (c, d), w in W.items():
+            if c not in unit or d not in unit:
+                continue
+            uc, ud = unit[c], unit[d]
+            if uc == ud:
+                fp += mult.get(uc, 0) * w
+            else:
+                fp += mult.get(uc, 0) * mult.get(ud, 0) * w
+        return tp, fp, fn
+    rng = random.Random(seed)
+    sims = {k: [] for k in arms_stats}
+    diffs = {k: [] for k in arms_stats}
+    for _ in range(n_boot):
+        mult = defaultdict(int)
+        for _ in units:
+            mult[rng.choice(units)] += 1
+        vals = {k: f1(*counts(st, mult)) for k, st in arms_stats.items()}
+        for k in arms_stats:
+            sims[k].append(vals[k])
+            diffs[k].append(vals[k] - vals["B1_ip"])
+
+    def ci(v):
+        v = sorted(v)
+        return [round(v[int(0.025 * len(v))], 3), round(v[int(0.975 * len(v)) - 1], 3)]
+    return {"units": len(units),
+            "arms": {k: {"f1_ci": ci(sims[k]), "diff_vs_B1_ci": ci(diffs[k])} for k in arms_stats}}
+
+
 def cmd_eval(a):
     res = json.load(open(a.result, encoding="utf-8"))
     truth = json.load(open(a.truth, encoding="utf-8"))
@@ -277,7 +328,8 @@ def cmd_eval(a):
     for name, groups in arms.items():
         out["arms"][name] = metrics(groups, truth, label_of)
         stats[name] = pair_stats(groups, label_of)
-    out["bootstrap"] = bootstrap(truth, stats)
+    out["bootstrap_chain_copies"] = bootstrap(truth, stats)
+    out["bootstrap"] = cluster_bootstrap(truth, stats)
     # ztráta zachycení: řetězec je zachycen, když ho zobrazená položka (nález) obsahuje; incident ho
     # nesmí skrýt (nález zůstává zobrazený), proto je ztráta 0 z konstrukce zobrazení; měří se
     # jen pokrytí řetězců nálezy
