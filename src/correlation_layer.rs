@@ -171,6 +171,9 @@ pub struct Options<'a> {
     /// Krok 42: řetězení přes role aktér a protějšek jen mezi nálezy s mapovanou taktikou;
     /// vyžaduje `v3`.
     pub tactic: bool,
+    /// Krok 43: jádro incidentu jen z nejsilnějších vazeb, ostatní spojení jen jako `related`;
+    /// vyžaduje `v3`.
+    pub core: bool,
     /// Krok 37: k incidentům z `v3` přidat související incidenty podle sdílené adresy
     /// (`incidents_union`), s důvodem; incidenty se tím neslučují.
     pub related: bool,
@@ -518,6 +521,7 @@ pub fn run(
                 MAX_ACTOR_DEGREE,
                 opts.ext,
                 opts.tactic,
+                opts.core,
             )
         } else {
             history.incidents_v2(INCIDENT_GAP_S)
@@ -705,6 +709,7 @@ mod tests {
             prev_keys: None,
             overrides: None,
             tactic: false,
+            core: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -770,7 +775,7 @@ mod tests {
                 hostless: false,
             });
         }
-        let inc = h.incidents_v3(3600, 25, 100, false, false);
+        let inc = h.incidents_v3(3600, 25, 100, false, false, false);
         assert_eq!(
             inc.len(),
             1,
@@ -801,6 +806,7 @@ mod tests {
             prev_keys: None,
             overrides: None,
             tactic: false,
+            core: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -857,6 +863,7 @@ mod tests {
             prev_keys: None,
             overrides: None,
             tactic: false,
+            core: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -940,6 +947,7 @@ mod tests {
                 prev_keys: None,
                 overrides: None,
                 tactic: false,
+                core: false,
                 first_seen: Some(&seen),
             };
             let mut h = History::new(100);
@@ -1451,5 +1459,48 @@ mod tests {
             1,
             "nálezy s taktikou se řetězí i s bránou"
         );
+    }
+
+    #[test]
+    fn corr_core_keeps_role_chains_out_of_the_incident() {
+        use std::collections::BTreeMap;
+        let a = finding(
+            "s1",
+            "interactive_session",
+            "10.0.0.1",
+            "10.0.0.1 -> 10.0.0.2:22",
+        );
+        let b = finding(
+            "s2",
+            "interactive_session",
+            "10.0.0.2",
+            "10.0.0.2 -> 10.0.0.3:22",
+        );
+        let seen: BTreeMap<String, i64> = [("s1", 0), ("s2", 60)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        for (core, expected) in [(false, 1), (true, 0)] {
+            let o = Options {
+                v2: true,
+                v3: true,
+                core,
+                first_seen: Some(&seen),
+                ..Default::default()
+            };
+            let mut h = History::new(100);
+            let mut l = Ledger::new();
+            let out = run(
+                &mut h,
+                &mut l,
+                &[a.clone(), b.clone()],
+                &[],
+                &CoverageStatus::default(),
+                0.2,
+                99,
+                &o,
+            );
+            assert_eq!(out.incidents.len(), expected, "core={core}");
+        }
     }
 }

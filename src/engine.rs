@@ -240,6 +240,9 @@ pub struct V3Features {
     /// přes vnitřní servery). Vyžaduje `corr_v3`.
     #[serde(default)]
     pub corr_tactic: bool,
+    /// Krok 43: jádro incidentu jen z nejsilnějších vazeb, zbytek jako `related`. Vyžaduje `corr_v3`.
+    #[serde(default)]
+    pub corr_core: bool,
     /// Krok 37: související incidenty podle sdílené adresy s důvodem (bez slučování). Vyžaduje `corr_v3`.
     #[serde(default)]
     pub corr_related: bool,
@@ -285,7 +288,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 69] = [
+    pub const NAMES: [&'static str; 70] = [
         "memory",
         "rate",
         "volume",
@@ -346,6 +349,7 @@ impl V3Features {
         "corr_ext",
         "corr_union",
         "corr_tactic",
+        "corr_core",
         "corr_related",
         "case_folder",
         "confirm_evidence",
@@ -419,6 +423,7 @@ impl V3Features {
             corr_ext: false,
             corr_union: false,
             corr_tactic: false,
+            corr_core: false,
             corr_related: false,
             case_folder: true,
             confirm_evidence: true,
@@ -500,6 +505,7 @@ impl V3Features {
             corr_ext: false,
             corr_union: false,
             corr_tactic: false,
+            corr_core: false,
             corr_related: false,
             case_folder: false,
             confirm_evidence: false,
@@ -584,6 +590,7 @@ impl V3Features {
             corr_ext: false,
             corr_union: false,
             corr_tactic: false,
+            corr_core: false,
             corr_related: false,
             case_folder: false,
             confirm_evidence: false,
@@ -682,6 +689,7 @@ impl V3Features {
             "corr_ext" => &mut self.corr_ext,
             "corr_union" => &mut self.corr_union,
             "corr_tactic" => &mut self.corr_tactic,
+            "corr_core" => &mut self.corr_core,
             "corr_related" => &mut self.corr_related,
             "case_folder" => &mut self.case_folder,
             "confirm_evidence" => &mut self.confirm_evidence,
@@ -934,6 +942,9 @@ impl EngineConfig {
     }
     pub fn corr_tactic(&self) -> bool {
         self.corr_v3() && self.v3.corr_tactic
+    }
+    pub fn corr_core(&self) -> bool {
+        self.corr_v3() && self.v3.corr_core
     }
     pub fn l7_ladder(&self) -> bool {
         self.on(|f| f.l7_ladder && f.ladder && (f.l7_tls || f.l7_dns))

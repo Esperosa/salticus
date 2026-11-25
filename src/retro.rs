@@ -438,6 +438,7 @@ impl History {
         max_actor_degree: usize,
         ext_links: bool,
         tactic_gate: bool,
+        core_only: bool,
     ) -> Vec<Incident> {
         let n = self.events.len();
         let mut parent: Vec<usize> = (0..n).collect();
@@ -491,8 +492,15 @@ impl History {
                 if let Some(&(j, used)) = map.get(key) {
                     if e.ts - self.events[j].ts <= max_gap_s {
                         used_now = used;
-                        let allowed =
-                            !gated || (e.tactic.is_some() && self.events[j].tactic.is_some());
+                        let role_rule = matches!(
+                            rule,
+                            "actor_victim" | "peer_actor" | "victim_actor" | "actor_attack"
+                        );
+                        // krok 43: jádro incidentu jen z nejsilnějších vazeb (stejný aktér a
+                        // protějšek, sdílená oběť, sdílený vnější protějšek); role aktér a
+                        // protějšek tvoří jen odkazy `related`
+                        let allowed = !(core_only && role_rule)
+                            && (!gated || (e.tactic.is_some() && self.events[j].tactic.is_some()));
                         if allowed && used < cap && union(parent, i, j) {
                             edges.borrow_mut().push((i, j, rule, key.to_string()));
                         }

@@ -1251,6 +1251,7 @@ impl V3Session {
                     ext: self.engine.corr_ext(),
                     union: self.engine.corr_union(),
                     tactic: self.engine.corr_tactic(),
+                    core: self.engine.corr_core(),
                     related: self.engine.corr_related(),
                     prev_keys: Some(&prev_keys),
                     overrides: Some(&overrides),

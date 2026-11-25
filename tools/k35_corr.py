@@ -108,6 +108,23 @@ def evaluate(res, truth, seed):
         b2.append(ids[pos:pos + s])
         pos += s
     arms["B2_random"] = b2
+    inc = res["incidents"]
+    idx = {i.get("key"): n for n, i in enumerate(inc)}
+    parent = list(range(len(inc)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for n, i in enumerate(inc):
+        for r in i.get("related", []):
+            if r["key"] in idx:
+                parent[find(n)] = find(idx[r["key"]])
+    clo = defaultdict(list)
+    for n, i in enumerate(inc):
+        clo[find(n)].extend(i["findings"])
+    arms["INC_closure"] = list(clo.values())
     out = {"shown": len(shown), "incidents": len(res["incidents"]), "arms": {}}
     stats = {}
     for name, groups in arms.items():
