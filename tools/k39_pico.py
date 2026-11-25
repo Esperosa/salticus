@@ -134,6 +134,15 @@ def evaluate(res, redlog, window=1800):
     for n, i in enumerate(inc):
         clo[find(n)].extend(i["findings"])
     arms["INC_closure"] = list(clo.values())
+    # jeden skok: incident a incidenty, na které přímo odkazuje (bez tranzitivity)
+    hop = []
+    for n, i in enumerate(inc):
+        fs = list(i["findings"])
+        for r in i.get("related", []):
+            if r["key"] in idx:
+                fs.extend(inc[idx[r["key"]]]["findings"])
+        hop.append(sorted(set(fs)))
+    arms["INC_hop1"] = hop
     for lv in rank:
         chain = {i for i, v in lev.items() if v and rank[v] >= rank[lv]}
         for name, groups in arms.items():

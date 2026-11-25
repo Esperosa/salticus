@@ -87,6 +87,17 @@ def groups_of(res, arm):
         for n, i in enumerate(inc):
             out[find(n)].extend(i["findings"])
         return list(out.values())
+    if arm == "INC_hop1":
+        inc = res["incidents"]
+        idx = {i.get("key"): n for n, i in enumerate(inc)}
+        hop = []
+        for i in inc:
+            fs = list(i["findings"])
+            for r in i.get("related", []):
+                if r["key"] in idx:
+                    fs.extend(inc[idx[r["key"]]]["findings"])
+            hop.append(sorted(set(fs)))
+        return hop
     return [i["findings"] for i in res["incidents"]]
 
 
@@ -100,7 +111,7 @@ def evaluate(res, lists_dir, window):
         return {n for n, (a, b) in phases.items() if a - window <= t <= b + window}
     out = {"campaign_ips": sorted(ips), "phases": {n: [a, b] for n, (a, b) in phases.items()},
            "shown": len(shown), "chain_findings": len(chain), "arms": {}}
-    for arm in ("B1", "B1b", "INC", "INC_closure"):
+    for arm in ("B1", "B1b", "INC", "INC_closure", "INC_hop1"):
         groups = [g for g in groups_of(res, arm) if len(g) >= 2]
         ci = [g for g in groups if any(f in chain for f in g)]
         sizes = [len(g) for g in ci]
