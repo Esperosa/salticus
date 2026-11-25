@@ -3073,6 +3073,7 @@ fn run_episode_inner(
                     },
                     kind: finding.finding_type.clone(),
                     hostless: false,
+                    services: Vec::new(),
                 });
                 inc_labels.insert(finding.finding_id.clone(), first_truth.map(|x| x.0));
             }

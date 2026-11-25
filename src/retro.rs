@@ -52,6 +52,9 @@ pub struct Event {
     /// Krok 34: nález bez hosta (nespárovaná pasivní událost); `host` je tu cíl (oběť).
     #[serde(default)]
     pub hostless: bool,
+    /// Krok 44: služby (`proto/port`) zmíněné v nálezu, nejvýš 6 (rys podobnosti hrany).
+    #[serde(default)]
+    pub services: Vec<String>,
 }
 
 /// Veřejná jednosměrová IPv4 adresa (vnější protějšek); privátní, loopback, link-local,
@@ -624,6 +627,151 @@ impl History {
         self.assemble(parent, &edges.into_inner())
     }
 
+    /// Krok 44: vážený graf nálezů. Hrana vznikne mezi nálezy se sdílenou adresou v odstupu
+    /// nejvýš `max_gap_s`; váha je součet pevných vah rysů (adresa 0,4, typ a taktika 0,2, služba
+    /// 0,2, čas 0,2); hrany pod `threshold` se zahodí a komunity se hledají šířením štítků
+    /// (deterministické pořadí), takže slabé mosty přes server nespojí celou síť jako
+    /// komponenta souvislosti. Váhy a práh jsou předem dané, ne ladění na datech.
+    pub fn incidents_graph(&self, max_gap_s: i64, threshold: f64) -> Vec<Incident> {
+        let n = self.events.len();
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by(|a, b| {
+            let (x, y) = (&self.events[*a], &self.events[*b]);
+            (x.ts, &x.finding_id).cmp(&(y.ts, &y.finding_id))
+        });
+        let mut by_key: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+        for &i in &order {
+            let e = &self.events[i];
+            by_key.entry(e.host.as_str()).or_default().push(i);
+            for x in &e.indicators {
+                if *x != e.host {
+                    by_key.entry(x.as_str()).or_default().push(i);
+                }
+            }
+        }
+        // kandidátní dvojice: každý nález s nejvýš 8 následujícími v okně téhož klíče
+        let mut pairs: BTreeMap<(usize, usize), ()> = BTreeMap::new();
+        for list in by_key.values() {
+            for (pos, &i) in list.iter().enumerate() {
+                for &j in list[pos + 1..].iter().take(8) {
+                    if self.events[j].ts - self.events[i].ts > max_gap_s {
+                        break;
+                    }
+                    if i != j {
+                        pairs.insert((i.min(j), i.max(j)), ());
+                    }
+                }
+            }
+        }
+        let rank = |e: &Event| {
+            e.tactic
+                .as_deref()
+                .and_then(|t| TACTIC_ORDER.iter().position(|x| *x == t))
+        };
+        let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
+        let mut edge_w: BTreeMap<(usize, usize), f64> = BTreeMap::new();
+        for (&(i, j), _) in &pairs {
+            let (a, b) = if (self.events[i].ts, i) <= (self.events[j].ts, j) {
+                (&self.events[i], &self.events[j])
+            } else {
+                (&self.events[j], &self.events[i])
+            };
+            let peers_a: Vec<&String> = a.indicators.iter().filter(|x| **x != a.host).collect();
+            let shared_peer = peers_a
+                .iter()
+                .any(|p| b.indicators.contains(*p) && **p != b.host);
+            let shared_public = a
+                .indicators
+                .iter()
+                .chain(std::iter::once(&a.host))
+                .any(|x| is_public_unicast(x) && (b.host == *x || b.indicators.contains(x)));
+            let causal = b.indicators.contains(&a.host) || a.indicators.contains(&b.host);
+            let s_addr = if a.host == b.host && shared_peer {
+                1.0
+            } else if shared_public {
+                0.9
+            } else if causal {
+                0.8
+            } else {
+                0.5
+            };
+            let s_tactic = if a.kind == b.kind && !a.kind.is_empty() {
+                1.0
+            } else {
+                match (rank(a), rank(b)) {
+                    (Some(x), Some(y)) if y >= x => 1.0,
+                    (Some(_), Some(_)) => 0.3,
+                    _ => 0.3,
+                }
+            };
+            let s_service = if a.services.is_empty() && b.services.is_empty() {
+                0.3
+            } else {
+                let inter = a
+                    .services
+                    .iter()
+                    .filter(|s| b.services.contains(*s))
+                    .count();
+                let union = a.services.len() + b.services.len() - inter;
+                if union == 0 {
+                    0.0
+                } else {
+                    inter as f64 / union as f64
+                }
+            };
+            let dt = (b.ts - a.ts).abs() as f64;
+            let s_time = (-dt / 600.0).exp();
+            let w = 0.4 * s_addr + 0.2 * s_tactic + 0.2 * s_service + 0.2 * s_time;
+            if w >= threshold {
+                adj[i].push((j, w));
+                adj[j].push((i, w));
+                edge_w.insert((i, j), w);
+            }
+        }
+        // šíření štítků v pevném pořadí (deterministické)
+        let mut label: Vec<usize> = (0..n).collect();
+        for _ in 0..20 {
+            let mut changed = false;
+            for &i in &order {
+                if adj[i].is_empty() {
+                    continue;
+                }
+                let mut votes: BTreeMap<usize, f64> = BTreeMap::new();
+                for &(j, w) in &adj[i] {
+                    *votes.entry(label[j]).or_default() += w;
+                }
+                let best = votes
+                    .iter()
+                    .max_by(|x, y| {
+                        x.1.partial_cmp(y.1)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                            .then(y.0.cmp(x.0))
+                    })
+                    .map(|(l, _)| *l)
+                    .unwrap_or(label[i]);
+                if best != label[i] {
+                    label[i] = best;
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        let mut parent: Vec<usize> = (0..n).collect();
+        let mut rep: BTreeMap<usize, usize> = BTreeMap::new();
+        for i in 0..n {
+            let r = *rep.entry(label[i]).or_insert(i);
+            parent[i] = r;
+        }
+        let edges: Vec<(usize, usize, &'static str, String)> = edge_w
+            .iter()
+            .filter(|((i, j), _)| label[*i] == label[*j])
+            .map(|((i, j), w)| (*i, *j, "graph", format!("w={w:.2}")))
+            .collect();
+        self.assemble(parent, &edges)
+    }
+
     /// Krok 37: seskupení podle sdílené adresy (host a všechny indikátory). Spojuje nálezy, které
     /// sdílejí adresu v odstupu nejvýš `max_gap_s`, dokud adresa nespojila `max_degree` nálezů
     /// v okně (hub). Bez rolí aktér a protějšek: sdílený útočník, oběť i cíl jsou stejně vazba.
@@ -745,6 +893,7 @@ mod tests {
             cause,
             kind: String::new(),
             hostless: false,
+            services: Vec::new(),
         }
     }
 
@@ -865,6 +1014,7 @@ mod tests {
             cause: Cause::Attack,
             kind: String::new(),
             hostless: false,
+            services: Vec::new(),
         };
         let mut h = History::new(5);
         for k in 0..4 {
@@ -917,6 +1067,7 @@ mod tests {
             cause: Cause::Attack,
             kind: String::new(),
             hostless: false,
+            services: Vec::new(),
         };
         let mut h = History::new(100);
         for k in 0..6 {

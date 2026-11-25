@@ -1252,6 +1252,7 @@ impl V3Session {
                     union: self.engine.corr_union(),
                     tactic: self.engine.corr_tactic(),
                     core: self.engine.corr_core(),
+                    graph: self.engine.corr_graph(),
                     related: self.engine.corr_related(),
                     prev_keys: Some(&prev_keys),
                     overrides: Some(&overrides),

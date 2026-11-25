@@ -29,6 +29,9 @@ pub const MAX_KEY_DEGREE: usize = 25;
 /// Krok 35: aktér s víc útočnými nálezy v jednom okně už dál nespojuje (beacon z jednoho hosta
 /// na stovky cílů); u skutečného aktéra řetězce je nálezů málo.
 pub const MAX_ACTOR_DEGREE: usize = 100;
+/// Krok 44: okno hran grafu (30 min) a práh váhy (předem dané, neladěné).
+pub const GRAPH_GAP_S: i64 = 30 * 60;
+pub const GRAPH_THRESHOLD: f64 = 0.6;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Correlation {
@@ -174,6 +177,8 @@ pub struct Options<'a> {
     /// Krok 43: jádro incidentu jen z nejsilnějších vazeb, ostatní spojení jen jako `related`;
     /// vyžaduje `v3`.
     pub core: bool,
+    /// Krok 44: vážený graf nálezů s komunitami (`incidents_graph`); vyžaduje `v2`.
+    pub graph: bool,
     /// Krok 37: k incidentům z `v3` přidat související incidenty podle sdílené adresy
     /// (`incidents_union`), s důvodem; incidenty se tím neslučují.
     pub related: bool,
@@ -327,6 +332,55 @@ pub fn indicators_of(f: &Finding) -> Vec<String> {
     indicators
 }
 
+/// Služby (`proto/port`) zmíněné v textu nálezu: `tcp/22`, `:tcp:139:` nebo `IP:port`.
+fn services_in(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let b = text.as_bytes();
+    let digits_after = |mut k: usize| -> Option<(String, usize)> {
+        let start = k;
+        while k < b.len() && b[k].is_ascii_digit() && k - start < 5 {
+            k += 1;
+        }
+        (k > start).then(|| (text[start..k].to_string(), k))
+    };
+    for proto in ["tcp", "udp"] {
+        for sep in ["/", ":"] {
+            let pat = format!("{proto}{sep}");
+            let mut from = 0;
+            while let Some(p) = text[from..].find(&pat) {
+                let at = from + p + pat.len();
+                if let Some((port, _)) = digits_after(at) {
+                    let s = format!("{proto}/{port}");
+                    if !out.contains(&s) {
+                        out.push(s);
+                    }
+                }
+                from = at;
+            }
+        }
+    }
+    // `IPv4:port`
+    for (i, c) in text.char_indices() {
+        if c == ':'
+            && i > 0
+            && b[i - 1].is_ascii_digit()
+            && let Some((port, _)) = digits_after(i + 1)
+        {
+            let tok_start = text[..i]
+                .rfind(|ch: char| !(ch.is_ascii_digit() || ch == '.'))
+                .map_or(0, |p| p + 1);
+            if text[tok_start..i].matches('.').count() == 3 {
+                let s = format!("any/{port}");
+                if !out.contains(&s) {
+                    out.push(s);
+                }
+            }
+        }
+    }
+    out.truncate(6);
+    out
+}
+
 fn ips_in(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for token in text.split(|c: char| !(c.is_ascii_digit() || c == '.')) {
@@ -378,7 +432,7 @@ pub fn run(
         let mut hostless = false;
         let host = match f.host_key.clone() {
             Some(h) => h,
-            None if opts.v2 && (opts.v3 || opts.union) => {
+            None if opts.v2 && (opts.v3 || opts.union || opts.graph) => {
                 // nespárovaná pasivní událost: první adresa v důkazu je oběť
                 match f.evidence.iter().find_map(|e| ips_in(e).into_iter().next()) {
                     Some(v) => {
@@ -434,6 +488,14 @@ pub fn run(
             },
             kind: f.finding_type.clone(),
             hostless,
+            services: {
+                let mut text = f.title.clone();
+                for e in &f.evidence {
+                    text.push(' ');
+                    text.push_str(e);
+                }
+                services_in(&text)
+            },
         });
     }
     let mut out = Correlation::default();
@@ -512,7 +574,9 @@ pub fn run(
         }
     }
     if opts.v2 {
-        let mut all = if opts.union {
+        let mut all = if opts.graph {
+            history.incidents_graph(INCIDENT_GAP_S.min(GRAPH_GAP_S), GRAPH_THRESHOLD)
+        } else if opts.union {
             history.incidents_union(INCIDENT_GAP_S, MAX_KEY_DEGREE)
         } else if opts.v3 {
             history.incidents_v3(
@@ -710,6 +774,7 @@ mod tests {
             overrides: None,
             tactic: false,
             core: false,
+            graph: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -773,6 +838,7 @@ mod tests {
                 cause: Cause::Attack,
                 kind: "beacon_periodic".into(),
                 hostless: false,
+                services: Vec::new(),
             });
         }
         let inc = h.incidents_v3(3600, 25, 100, false, false, false);
@@ -807,6 +873,7 @@ mod tests {
             overrides: None,
             tactic: false,
             core: false,
+            graph: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -864,6 +931,7 @@ mod tests {
             overrides: None,
             tactic: false,
             core: false,
+            graph: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -900,6 +968,7 @@ mod tests {
                 cause: Cause::Attack,
                 kind: String::new(),
                 hostless: false,
+                services: Vec::new(),
             });
         }
         assert!(!h.has_finding("f0") && !h.has_finding("f1"));
@@ -948,6 +1017,7 @@ mod tests {
                 overrides: None,
                 tactic: false,
                 core: false,
+                graph: false,
                 first_seen: Some(&seen),
             };
             let mut h = History::new(100);
@@ -1502,5 +1572,75 @@ mod tests {
             );
             assert_eq!(out.incidents.len(), expected, "core={core}");
         }
+    }
+
+    #[test]
+    fn services_are_parsed_from_finding_text() {
+        let s = services_in(
+            "event_id=anomaly-v3:scan:10.0.0.9/tcp/19 a 10.0.0.5 -> 10.0.0.9:22 x :udp:137:",
+        );
+        assert!(s.contains(&"tcp/19".to_string()), "{s:?}");
+        assert!(s.contains(&"any/22".to_string()), "{s:?}");
+        assert!(s.contains(&"udp/137".to_string()), "{s:?}");
+        assert!(services_in("bez adres").is_empty());
+    }
+
+    #[test]
+    fn corr_graph_groups_strongly_similar_findings_and_cuts_weak_bridges() {
+        use std::collections::BTreeMap;
+        // dva silné páry (stejný aktér a protějšek, stejný typ a služba, těsně za sebou) spojené
+        // jedním slabým mostem přes sdílený server v jiném čase a typu
+        let mut all = Vec::new();
+        let mut seen: BTreeMap<String, i64> = BTreeMap::new();
+        for (k, host, peer, t) in [
+            ("a1", "10.0.0.1", "203.0.113.9", 0),
+            ("a2", "10.0.0.1", "203.0.113.9", 20),
+            ("b1", "10.0.0.2", "203.0.113.70", 30000),
+            ("b2", "10.0.0.2", "203.0.113.70", 30020),
+        ] {
+            all.push(finding(
+                k,
+                "scan_attempts",
+                host,
+                &format!("{host} -> {peer}:445"),
+            ));
+            seen.insert(k.to_string(), t);
+        }
+        let o = Options {
+            v2: true,
+            graph: true,
+            first_seen: Some(&seen),
+            ..Default::default()
+        };
+        let mut h = History::new(100);
+        let mut l = Ledger::new();
+        let out = run(
+            &mut h,
+            &mut l,
+            &all,
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            99,
+            &o,
+        );
+        let mut groups: Vec<Vec<String>> =
+            out.incidents.iter().map(|i| i.findings.clone()).collect();
+        for g in &mut groups {
+            g.sort();
+        }
+        groups.sort();
+        assert_eq!(
+            groups,
+            vec![
+                vec!["a1".to_string(), "a2".to_string()],
+                vec!["b1".to_string(), "b2".to_string()]
+            ]
+        );
+        assert!(
+            out.incidents
+                .iter()
+                .all(|i| i.links.iter().all(|l| l.rule == "graph"))
+        );
     }
 }

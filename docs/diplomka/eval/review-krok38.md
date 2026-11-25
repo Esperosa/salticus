@@ -28,3 +28,7 @@ Nálezy 1 a 2 byly skutečné chyby ve stavu, které jednotkové testy původně
 ## Celé `cargo test --lib` po opravách
 
 Selhání: pět testů `broker` (vyžadují Redis, který tu neběží), `identity_lab::identity_resolver_correctly_classifies_real_dhcp_renewal_and_nat_swap` (už dříve známé) a `platform::worker_cycle_renews_lease_during_long_executor_preventing_concurrent_double_claim`, který při samostatném spuštění prochází (9 s) a při plném běhu spolu s jinou zátěží selhal; považuji ho za citlivý na čas, příčinu jsem nezkoumal. Pro dotčené moduly (`correlation_layer`, `retro`, `incident_overrides`, `case_folder`, `engine`, `pipeline`, `server`) testy procházejí. Součty celého běhu jsem neuložil (výpis byl zkrácen), proto uvádím jen seznam selhání.
+
+## Úplný běh `cargo test --lib` (26. 11. 2026, po krocích 38 až 43)
+
+799 prošlo, 7 selhalo, 32 ignorováno (658 s; celý výpis uložen mimo repozitář). Selhání: pět testů `broker` (vyžadují Redis), `identity_lab::identity_resolver_correctly_classifies_real_dhcp_renewal_and_nat_swap` (dříve známé) a `platform::worker_cycle_does_not_block_on_lease_renewal_when_executor_finishes_quickly`; ten i `worker_cycle_renews_lease_…` (selhal v dřívějším běhu) při samostatném spuštění procházejí. Jde o testy citlivé na čas při zátěži (běh souběžně s dlouhými měřeními); příčinu jsem nezkoumal. Žádné selhání v modulech korelace.
