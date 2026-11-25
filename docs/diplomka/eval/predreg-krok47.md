@@ -16,7 +16,7 @@ A (v1), C (`corr_v2`+`corr_v3`+`corr_ext`+`corr_related`), offline B1, B1b, uzá
 
 - **H1 (bez ztráty):** zobrazené nálezy v A a C totožné.
 - **H2 (propojení kampaně):** nejlepší incident C obsahuje nálezy aspoň 3 z 5 fází/hostitelů kampaně (útočník, web, app, db, sink).
-- **H3 (oddělení útočníků):** žádný incident obsahující kampaň neobsahuje i nález druhého útočníka ().
+- **H3 (oddělení útočníků):** žádný incident obsahující kampaň neobsahuje i nález druhého útočníka (metrika `mixed_with_independent_attacker2` je 0).
 - **H4 (čistota):** největší incident ≤ 50 % zobrazených nálezů (laboratoř je malá, 1234 toků, přísnější mez z předchozích kroků by byla nesmyslná na tak malém vzorku).
 - **H5 (proti baseline):** C má aspoň tak dobrou úplnost jako B1b a nemá horší oddělení útočníků.
 
