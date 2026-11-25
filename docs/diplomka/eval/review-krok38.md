@@ -1,6 +1,6 @@
 # Review kroků 33 až 39 (stav, souběh, zásahy do seskupení)
 
-Provedeno čtením kódu autorem (jiného posuzovatele nebylo k dispozici, protože souběžně smí běžet jen jeden pomocný proces); není to nezávislé review a tak se tak nesmí citovat. Rozsah: `src/retro.rs` (perzistence po událostech, `incidents_v3`, `assemble`), `src/correlation_layer.rs` (`run`, klíče, `attach_related`, souhrn), `src/incident_overrides.rs`, endpointy v `src/server.rs`, napojení v `src/pipeline/v3.rs`.
+Provedeno čtením kódu autorem (jiného posuzovatele nebylo k dispozici, protože souběžně smí běžet jen jeden pomocný proces); není to nezávislé review a nesmí se tak citovat. Rozsah: `src/retro.rs` (perzistence po událostech, `incidents_v3`, `assemble`), `src/correlation_layer.rs` (`run`, klíče, `attach_related`, souhrn), `src/incident_overrides.rs`, endpointy v `src/server.rs`, napojení v `src/pipeline/v3.rs`.
 
 ## Nálezy a rozhodnutí
 
@@ -24,3 +24,7 @@ Provedeno čtením kódu autorem (jiného posuzovatele nebylo k dispozici, proto
 ## Co z toho plyne
 
 Nálezy 1 a 2 byly skutečné chyby ve stavu, které jednotkové testy původně nezachytily; po opravě jsou pokryty testem. Tento dokument nenahrazuje nezávislé review a dokud se neudělá, kroky 38 (perzistence), ruční zásahy a stabilní klíč se nesmějí označit za hotové ve smyslu CLAUDE.md.
+
+## Celé `cargo test --lib` po opravách
+
+Selhání: pět testů `broker` (vyžadují Redis, který tu neběží), `identity_lab::identity_resolver_correctly_classifies_real_dhcp_renewal_and_nat_swap` (už dříve známé) a `platform::worker_cycle_renews_lease_during_long_executor_preventing_concurrent_double_claim`, který při samostatném spuštění prochází (9 s) a při plném běhu spolu s jinou zátěží selhal; považuji ho za citlivý na čas, příčinu jsem nezkoumal. Pro dotčené moduly (`correlation_layer`, `retro`, `incident_overrides`, `case_folder`, `engine`, `pipeline`, `server`) testy procházejí. Součty celého běhu jsem neuložil (výpis byl zkrácen), proto uvádím jen seznam selhání.
