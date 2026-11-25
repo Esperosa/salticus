@@ -437,6 +437,7 @@ impl History {
         max_degree: usize,
         max_actor_degree: usize,
         ext_links: bool,
+        tactic_gate: bool,
     ) -> Vec<Incident> {
         let n = self.events.len();
         let mut parent: Vec<usize> = (0..n).collect();
@@ -480,10 +481,19 @@ impl History {
                             register: bool,
                             cap: usize| {
                 let mut used_now = 0;
+                // krok 42: řetězení přes role aktér a protějšek jen mezi nálezy s mapovanou
+                // taktikou; běžné relace (bez taktiky) nevytvářejí mosty přes vnitřní servery
+                let gated = tactic_gate
+                    && matches!(
+                        rule,
+                        "actor_victim" | "peer_actor" | "victim_actor" | "actor_attack"
+                    );
                 if let Some(&(j, used)) = map.get(key) {
                     if e.ts - self.events[j].ts <= max_gap_s {
                         used_now = used;
-                        if used < cap && union(parent, i, j) {
+                        let allowed =
+                            !gated || (e.tactic.is_some() && self.events[j].tactic.is_some());
+                        if allowed && used < cap && union(parent, i, j) {
                             edges.borrow_mut().push((i, j, rule, key.to_string()));
                         }
                     }

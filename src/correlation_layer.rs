@@ -168,6 +168,9 @@ pub struct Options<'a> {
     pub ext: bool,
     /// Krok 37: seskupení podle sdílené adresy s oknem a mezí hubu (`incidents_union`); vyžaduje `v2`.
     pub union: bool,
+    /// Krok 42: řetězení přes role aktér a protějšek jen mezi nálezy s mapovanou taktikou;
+    /// vyžaduje `v3`.
+    pub tactic: bool,
     /// Krok 37: k incidentům z `v3` přidat související incidenty podle sdílené adresy
     /// (`incidents_union`), s důvodem; incidenty se tím neslučují.
     pub related: bool,
@@ -277,7 +280,11 @@ pub const MAX_CASE_FOLDERS: usize = 2000;
 /// Taktika ATT&CK podle typu nálezu (hrubé mapování; nezná-li typ, `None`).
 pub fn tactic_of(finding_type: &str) -> Option<&'static str> {
     Some(match finding_type {
-        "scan_attempts" | "port_scan" | "dns_zone_enumeration" | "network_discovery" => "discovery",
+        "scan_attempts"
+        | "port_scan"
+        | "dns_zone_enumeration"
+        | "network_discovery"
+        | "outbound_scan" => "discovery",
         "beacon_periodic" | "dns_tunnel_names" | "doh_suspected" | "icmp_payload_anomaly" => {
             "command-and-control"
         }
@@ -287,7 +294,7 @@ pub fn tactic_of(finding_type: &str) -> Option<&'static str> {
         | "novel_persistent_peer" => "exfiltration",
         "lateral_movement" | "novel_fanout" => "lateral-movement",
         "exploit_attempt" | "suricata_alert" | "ids_alert" => "initial-access",
-        "credential_stuffing" | "ssh_bruteforce" => "credential-access",
+        "credential_stuffing" | "ssh_bruteforce" | "bruteforce_attempts" => "credential-access",
         _ => return None,
     })
 }
@@ -505,7 +512,13 @@ pub fn run(
         let mut all = if opts.union {
             history.incidents_union(INCIDENT_GAP_S, MAX_KEY_DEGREE)
         } else if opts.v3 {
-            history.incidents_v3(INCIDENT_GAP_S, MAX_KEY_DEGREE, MAX_ACTOR_DEGREE, opts.ext)
+            history.incidents_v3(
+                INCIDENT_GAP_S,
+                MAX_KEY_DEGREE,
+                MAX_ACTOR_DEGREE,
+                opts.ext,
+                opts.tactic,
+            )
         } else {
             history.incidents_v2(INCIDENT_GAP_S)
         };
@@ -691,6 +704,7 @@ mod tests {
             related: false,
             prev_keys: None,
             overrides: None,
+            tactic: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -756,7 +770,7 @@ mod tests {
                 hostless: false,
             });
         }
-        let inc = h.incidents_v3(3600, 25, 100, false);
+        let inc = h.incidents_v3(3600, 25, 100, false, false);
         assert_eq!(
             inc.len(),
             1,
@@ -786,6 +800,7 @@ mod tests {
             related: false,
             prev_keys: None,
             overrides: None,
+            tactic: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -841,6 +856,7 @@ mod tests {
             related: false,
             prev_keys: None,
             overrides: None,
+            tactic: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -923,6 +939,7 @@ mod tests {
                 related: false,
                 prev_keys: None,
                 overrides: None,
+                tactic: false,
                 first_seen: Some(&seen),
             };
             let mut h = History::new(100);
@@ -1348,6 +1365,91 @@ mod tests {
             inc.links
                 .iter()
                 .all(|l| !l.rule.is_empty() && !l.via.is_empty())
+        );
+    }
+
+    #[test]
+    fn corr_tactic_stops_chaining_unclassified_sessions_through_servers() {
+        use std::collections::BTreeMap;
+        // klient A -> server B (interactive), server B -> klient C (interactive): bez taktiky
+        // nemají mosty tvořit; nález s taktikou (beacon) se řetězí dál
+        let a = finding(
+            "s1",
+            "interactive_session",
+            "10.0.0.1",
+            "10.0.0.1 -> 10.0.0.2:22",
+        );
+        let b = finding(
+            "s2",
+            "interactive_session",
+            "10.0.0.2",
+            "10.0.0.2 -> 10.0.0.3:22",
+        );
+        let seen: BTreeMap<String, i64> = [("s1", 0), ("s2", 60)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        for (tactic, expected) in [(false, 1), (true, 0)] {
+            let o = Options {
+                v2: true,
+                v3: true,
+                tactic,
+                first_seen: Some(&seen),
+                ..Default::default()
+            };
+            let mut h = History::new(100);
+            let mut l = Ledger::new();
+            let out = run(
+                &mut h,
+                &mut l,
+                &[a.clone(), b.clone()],
+                &[],
+                &CoverageStatus::default(),
+                0.2,
+                99,
+                &o,
+            );
+            assert_eq!(out.incidents.len(), expected, "tactic={tactic}");
+        }
+        let c = finding(
+            "c1",
+            "beacon_periodic",
+            "10.0.0.1",
+            "10.0.0.1 -> 10.0.0.2:443",
+        );
+        let d = finding(
+            "c2",
+            "beacon_periodic",
+            "10.0.0.2",
+            "10.0.0.2 -> 10.0.0.3:443",
+        );
+        let seen2: BTreeMap<String, i64> = [("c1", 0), ("c2", 60)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        let o2 = Options {
+            v2: true,
+            v3: true,
+            tactic: true,
+            first_seen: Some(&seen2),
+            ..Default::default()
+        };
+        let mut h = History::new(100);
+        let mut l = Ledger::new();
+        let out = run(
+            &mut h,
+            &mut l,
+            &[c, d],
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            99,
+            &o2,
+        );
+        assert_eq!(
+            out.incidents.len(),
+            1,
+            "nálezy s taktikou se řetězí i s bránou"
         );
     }
 }
