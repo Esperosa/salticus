@@ -10,9 +10,9 @@ Podle `plan-korelace-final.md`. „Hotovo“ znamená splněné kritérium kroku
 | M3 druhý tvar řetězců | hotovo | `k35_chain.py` (fanout, samewin) |
 | M4 předregistrace | hotovo | `predreg-krok35.md`, `predreg-krok36.md` |
 | M5 churn po oknech | hotovo | 0 přesunutých nálezů z 88 810 (syntetika) a 70 326 (domácí síť) |
-| K9 skutečná data | částečně | DARPA 2000 LLDOS 1.0 a 2.0.2 (jedna kampaň každý, N = 1); CTU-13 a IoT-23 neprovedeno (jednohostové botnety, rozlišovací síla pro seskupení nízká) |
+| K9 skutečná data | částečně | DARPA 2000 LLDOS 1.0 a 2.0.2 a PicoDomain (3 skutečné kampaně, N = 1 každá); CTU-13 a IoT-23 neprovedeno (jednohostové botnety); výsledek: finální konfigurace nad jednoduchým seskupením nic zřetelně nepřidává (`impl-krok36.md`, `impl-krok39.md`) |
 | K10 šum pozadí | hotovo | 7,7 incidentů/den na 2,6 dne domácí sítě (cíl ≤ 15), největší incident 5,7 % zobrazených (jeden hub-host, 466 nálezů) |
-| K11 důvod spojení | částečně | `related[].via` u souvisejících incidentů; uvnitř incidentu důvod hrany zatím není |
+| K11 důvod spojení | hotovo | `Incident.links[]` (pravidlo, adresa, odstup; kostra incidentu) a `related[].via`; test: počet hran = nálezy − 1 |
 | K12 zdroj skenu | odloženo | po F0-4 kolizní dvojice už nesplývají; nález skenu bez zdroje zůstává limitem |
 | K13 perzistence a idempotence | hotovo | tabulky `retro_events`, opakování okna po pádu dává shodný výstup (test); 20 reálných přerušení procesu neprovedeno |
 | K14 ruční zásahy | hotovo | `incident_overrides`, endpointy, append-only audit; test jednotek a revokace; test přežití restartu procesu neprovedeno |
@@ -36,11 +36,11 @@ Podle `plan-korelace-final.md`. „Hotovo“ znamená splněné kritérium kroku
 | klíč incidentu stabilní | ≥ 99 % | 99,95 % (1 ze 1 896) |
 | churn nálezů | ≤ 10 % | 0 % |
 | výkon 50 000 událostí | ≤ 2 s CPU | 0,2 s |
-| úplnost na skutečné kampani (samotný incident) | předem daný práh | 0,39 a 0,40 (nízká) |
-| nezávislý přínos nad silnou baseline | dolní mez > 0 | neprokázáno (LLDOS N = 2, čistota ano, úplnost ne) |
+| úplnost na skutečné kampani (samotný incident) | předem daný práh | 0,39, 0,40 a 0,38 (nízká); uzávěr přes `related` 0,71, 0,80, 0,46 |
+| nezávislý přínos nad silnou baseline | dolní mez > 0 | **neprokázáno** (LLDOS ×2 a PicoDomain: srovnatelné s B1b; H3 a H4 kroku 39 neplatí) |
 | 14denní soak | bez porušení | neproběhl |
 
-Doporučení: výchozí profil nezapínat. Korelaci (`corr_v2` + `corr_v3` + `corr_ext` + `corr_related`) nechat zapnout v shadow konfiguraci pro soak.
+Doporučení: výchozí profil nezapínat. Kauzální pravidla (`corr_v3`, `corr_ext`) se na třech skutečných kampaních neprokázala jako lepší než jednoduché seskupení s oknem a mezí hubu; hodnota opravené korelace je v opravách (čas nálezu, nálezy bez hosta, hub, perzistence, stabilní klíč, souhrn dne, důvody hran). Korelaci (`corr_v2` + `corr_v3` + `corr_ext` + `corr_related`) nechat zapnout v shadow konfiguraci pro soak.
 
 ## Co zbývá a proč to nejde autonomně hned
 
