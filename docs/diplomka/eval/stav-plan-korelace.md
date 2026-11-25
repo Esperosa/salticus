@@ -10,7 +10,7 @@ Podle `plan-korelace-final.md`. „Hotovo“ znamená splněné kritérium kroku
 | M3 druhý tvar řetězců | hotovo | `k35_chain.py` (fanout, samewin) |
 | M4 předregistrace | hotovo | `predreg-krok35.md`, `predreg-krok36.md` |
 | M5 churn po oknech | hotovo | 0 přesunutých nálezů z 88 810 (syntetika) a 70 326 (domácí síť) |
-| K9 skutečná data | částečně | DARPA 2000 LLDOS 1.0 a 2.0.2 a PicoDomain (3 skutečné kampaně, N = 1 každá); CTU-13 a IoT-23 neprovedeno (jednohostové botnety); výsledek: finální konfigurace nad jednoduchým seskupením nic zřetelně nepřidává (`impl-krok36.md`, `impl-krok39.md`) |
+| K9 skutečná data | částečně | DARPA 2000 LLDOS 1.0 a 2.0.2, PicoDomain a DAPT2021 (4 skutečné kampaně, N = 1 každá; DAPT2021 neinformativní, 1 nález kampaně za den); CTU-13 a IoT-23 neprovedeno (jednohostové botnety); výsledek: finální konfigurace nad jednoduchým seskupením nic zřetelně nepřidává (`impl-krok36.md`, `impl-krok39.md`, `impl-krok40.md`); jediný přínos prokázaný na všech datech je odstranění duplicit nálezů ve v1 |
 | K10 šum pozadí | hotovo | 7,7 incidentů/den na 2,6 dne domácí sítě (cíl ≤ 15), největší incident 5,7 % zobrazených (jeden hub-host, 466 nálezů) |
 | K11 důvod spojení | hotovo | `Incident.links[]` (pravidlo, adresa, odstup; kostra incidentu) a `related[].via`; test: počet hran = nálezy − 1 |
 | K12 zdroj skenu | odloženo | po F0-4 kolizní dvojice už nesplývají; nález skenu bez zdroje zůstává limitem |
