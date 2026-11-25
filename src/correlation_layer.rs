@@ -78,6 +78,8 @@ pub struct Options<'a> {
     pub v2: bool,
     /// Krok 34: kauzální seskupení (`incidents_v3`) a nálezy bez hosta jako oběť; vyžaduje `v2`.
     pub v3: bool,
+    /// Krok 36: stejný vnější protějšek spojuje nálezy (s mezí hubu); vyžaduje `v3`.
+    pub ext: bool,
     /// `finding_id` -> čas prvního výskytu (z paměti nálezů).
     pub first_seen: Option<&'a std::collections::BTreeMap<String, i64>>,
 }
@@ -328,7 +330,7 @@ pub fn run(
     }
     if opts.v2 {
         let mut all = if opts.v3 {
-            history.incidents_v3(INCIDENT_GAP_S, MAX_KEY_DEGREE, MAX_ACTOR_DEGREE)
+            history.incidents_v3(INCIDENT_GAP_S, MAX_KEY_DEGREE, MAX_ACTOR_DEGREE, opts.ext)
         } else {
             history.incidents_v2(INCIDENT_GAP_S)
         };
@@ -501,6 +503,7 @@ mod tests {
             v2: true,
             v3: true,
             first_seen: Some(&seen),
+            ext: false,
         };
         let mut h = History::new(100);
         let mut l = Ledger::new();
@@ -562,7 +565,7 @@ mod tests {
                 hostless: false,
             });
         }
-        let inc = h.incidents_v3(3600, 25, 100);
+        let inc = h.incidents_v3(3600, 25, 100, false);
         assert_eq!(
             inc.len(),
             1,
@@ -589,6 +592,7 @@ mod tests {
             v2: true,
             v3: true,
             first_seen: Some(&seen),
+            ext: false,
         };
         let mut h = History::new(100);
         let mut l = Ledger::new();
@@ -639,6 +643,7 @@ mod tests {
             v2: true,
             v3: true,
             first_seen: Some(&seen),
+            ext: false,
         };
         for perm in [[0, 1, 2], [2, 1, 0], [1, 2, 0], [2, 0, 1]] {
             let base = [scan.clone(), brute.clone(), exfil.clone()];
@@ -690,5 +695,46 @@ mod tests {
         assert!(!back.has_finding("f4"), "index se neukládá");
         back.reindex();
         assert!(back.has_finding("f4") && !back.has_finding("f0"));
+    }
+
+    #[test]
+    fn corr_ext_links_victims_of_one_external_attacker_only_when_enabled() {
+        use std::collections::BTreeMap;
+        let mk = |id: &str, v: &str| {
+            let mut f = finding(
+                id,
+                "unmapped_passive_event",
+                "x",
+                &format!("event_id=anomaly-v3:scan:{v}/tcp/19 src=202.77.162.213"),
+            );
+            f.host_key = None;
+            f
+        };
+        let all = vec![mk("e1", "172.16.112.10"), mk("e2", "172.16.115.20")];
+        let seen: BTreeMap<String, i64> = [("e1", 0), ("e2", 60)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        for (ext, expected) in [(false, 0), (true, 1)] {
+            let o = Options {
+                v2: true,
+                v3: true,
+                ext,
+                first_seen: Some(&seen),
+            };
+            let mut h = History::new(100);
+            let mut l = Ledger::new();
+            let out = run(
+                &mut h,
+                &mut l,
+                &all,
+                &[],
+                &CoverageStatus::default(),
+                0.2,
+                99,
+                &o,
+            );
+            assert_eq!(out.incidents.len(), expected, "ext={ext}");
+        }
     }
 }

@@ -54,6 +54,22 @@ pub struct Event {
     pub hostless: bool,
 }
 
+/// Veřejná jednosměrová IPv4 adresa (vnější protějšek); privátní, loopback, link-local,
+/// broadcast a multicast ne.
+fn is_public_unicast(ip: &str) -> bool {
+    match ip.parse::<std::net::Ipv4Addr>() {
+        Ok(a) => {
+            !(a.is_private()
+                || a.is_loopback()
+                || a.is_link_local()
+                || a.is_broadcast()
+                || a.is_multicast()
+                || a.is_unspecified())
+        }
+        Err(_) => false,
+    }
+}
+
 fn find_root(p: &mut [usize], x: usize) -> usize {
     let mut r = x;
     while p[r] != r {
@@ -264,6 +280,7 @@ impl History {
         max_gap_s: i64,
         max_degree: usize,
         max_actor_degree: usize,
+        ext_links: bool,
     ) -> Vec<Incident> {
         let n = self.events.len();
         let mut parent: Vec<usize> = (0..n).collect();
@@ -285,7 +302,8 @@ impl History {
         let mut actor_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
         let mut pair_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
         let mut victim_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
-        let mut union = |parent: &mut Vec<usize>, a: usize, b: usize| {
+        let mut ext_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+        let union = |parent: &mut Vec<usize>, a: usize, b: usize| {
             let (ra, rb) = (find_root(parent, a), find_root(parent, b));
             if ra != rb {
                 parent[ra] = rb;
@@ -333,6 +351,13 @@ impl History {
                     max_actor_degree,
                 );
                 register(&mut victim_seen, &e.host);
+                if ext_links {
+                    for p in &peers {
+                        if is_public_unicast(p) {
+                            link(&mut ext_seen, p, &mut parent, true, max_degree);
+                        }
+                    }
+                }
                 continue;
             }
             // protějšek dřívějšího nálezu, který teď jedná
@@ -358,6 +383,14 @@ impl History {
                     true,
                     max_actor_degree,
                 );
+            }
+            if ext_links {
+                // stejný vnější protějšek u dvou nálezů (útočník zasáhl víc obětí, společný cíl C2)
+                for p in &peers {
+                    if is_public_unicast(p) {
+                        link(&mut ext_seen, p, &mut parent, true, max_degree);
+                    }
+                }
             }
             for p in &peers {
                 register(&mut peer_seen, p);

@@ -1230,6 +1230,7 @@ impl V3Session {
                 &crate::correlation_layer::Options {
                     v2: self.engine.corr_v2(),
                     v3: self.engine.corr_v3(),
+                    ext: self.engine.corr_ext(),
                     first_seen: Some(&first_seen),
                 },
             );
