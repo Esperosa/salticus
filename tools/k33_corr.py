@@ -56,6 +56,7 @@ def cmd_run(a):
         h.write(replay.EMPTY_NMAP)
     shown = {}
     last = {}
+    snapshots = []
     failures = 0
     order = sorted(windows)
     for n, index in enumerate(order):
@@ -86,6 +87,9 @@ def cmd_run(a):
                 shown[fid] = {"id": fid, "type": f.get("finding_type"), "severity": f.get("severity"),
                               "t": start, "text": json.dumps(f, ensure_ascii=False)}
         last = report.get("correlation") or {}
+        snapshots.append({"t": start, "incidents": [
+            {"key": i.get("key", ""), "findings": i.get("findings", [])}
+            for i in last.get("incidents", [])]})
         runs = os.path.join(workspace, "runs")
         for old in sorted(os.listdir(runs))[:-3]:
             if old.startswith("run-"):
@@ -94,7 +98,7 @@ def cmd_run(a):
             print(f"okno {n}/{len(order)} zobrazeno {len(shown)}", flush=True)
     json.dump({"windows": len(order), "failures": failures, "t0": t0, "window": a.window,
                "shown": list(shown.values()), "incidents": last.get("incidents", []),
-               "stats": last.get("stats", {})},
+               "stats": last.get("stats", {}), "snapshots": snapshots},
               open(os.path.join(a.work, "result.json"), "w", encoding="utf-8"))
     print(f"hotovo: okna {len(order)}, selhani {failures}, zobrazeno {len(shown)}, "
           f"incidentu {len(last.get('incidents', []))}")
