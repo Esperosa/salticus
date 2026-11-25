@@ -28,6 +28,8 @@ Podle `plan-korelace-final.md`. „Hotovo“ znamená splněné kritérium kroku
 
 **Krok 41 a 42 (DAPT2021, podniková síť):** `corr_v3` v síti s mnoha vnitřními servery perkoluje (největší incident 76 až 85 % zobrazených nálezů, kontaminace 0,9); `corr_tactic` perkolaci odstraní (17 %), ale rozbije propojení kampaně a byl zamítnut (H5 a H6 neplatí). Doporučení výchozího profilu zůstává: nezapínat.
 
+**Krok 43 (`corr_core` + `related`):** jádro bez rolových vazeb perkolaci nemá (největší 5 až 22), ale je roztříštěné; uzávěr vrací úplnost za cenu kontaminace; na syntetice F1 uzávěru 0,77 (H6 neplatí). Souhrnný závěr korelace je v `zaver-korelace.md`.
+
 ## Tabulka pro rozhodnutí o výchozím profilu (K17)
 
 | kritérium | cíl | změřeno |
