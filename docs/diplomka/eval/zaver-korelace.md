@@ -2,13 +2,13 @@
 
 ## Co je prokázané
 
-1. **Produkční seskupení (v1) mělo prokazatelné vady:** čas události byl čas běhu, nálezy bez hostitele se zahazovaly (u skutečných kampaní 22 z 28 nálezů), stejný nález se do incidentu opakoval při každém zobrazení (v jednom incidentu až 681 položek z 347 nálezů, na každém ze čtyř dnů DAPT2021 stovky duplicit), ořez ponechával nejstarší incidenty, stav byl jeden JSON blob. Opravené chování (`corr_v2`): jedna událost na nález, čas nálezu, stabilní klíč, perzistence po událostech, ořez nejnovějších, souhrn dne, důvody hran. **Toto je jediný přínos prokázaný na všech datech.**
-2. **Zachycení se korelací nemění**: v každém měření (syntetika, domácí síť, LLDOS ×2, PicoDomain, DAPT2021 ×4) jsou zobrazené nálezy před korelací a po ní totožné; korelace jen anotuje.
+1. **Produkční seskupení (v1) mělo prokazatelné vady:** čas události byl čas běhu, nálezy bez hostitele se zahazovaly (u skutečných kampaní 22 z 28 nálezů), stejný nález se do incidentu opakoval při každém zobrazení (v jednom incidentu až 681 položek z 347 nálezů, na dnech DAPT2021 od 11 po 524 duplicitních položek), ořez ponechával nejstarší incidenty, stav byl jeden JSON blob. Opravené chování (`corr_v2`): jedna událost na nález, čas nálezu, stabilní klíč, perzistence po událostech, ořez nejnovějších, souhrn dne, důvody hran. **Toto je jediný přínos prokázaný na všech datech.**
+2. **Zachycení se korelací nemění**: v každém měření (syntetika, domácí síť, LLDOS ×2, PicoDomain, DAPT2021 ×5 dnů) jsou zobrazené nálezy před korelací a po ní totožné; korelace jen anotuje.
 3. Na domácí síti vychází 7,7 incidentů za den a největší incident 5,7 % zobrazených nálezů; výkon 0,2 s CPU na 50 000 událostí.
 
 ## Co se neprokázalo
 
-**Žádné seskupení není na skutečných kampaních zároveň úplné a čisté.** Měřeno na 7 skutečných datových celcích (LLDOS 1.0, 2.0.2, PicoDomain, čtyři dny DAPT2021):
+**Žádné seskupení není na skutečných kampaních zároveň úplné a čisté.** Měřeno na 8 skutečných datových celcích (LLDOS 1.0, 2.0.2, PicoDomain, pět dnů DAPT2021; z nich informativní pro korelaci jen dny s aspoň 10 nálezy kampaně):
 
 | varianta | úplnost | kontaminace | největší incident | poznámka |
 |---|---|---|---|---|
@@ -29,7 +29,7 @@ Syntetické řetězce kauzální pravidla zvýhodňují (F1 0,99 proti 0,93), al
 
 ## Meze
 
-Čtyři dny DAPT2021 jsou jedna kampaň v jedné testbed síti, takže nejde o čtyři nezávislé kampaně; kampaně LLDOS a PicoDomain jsou jedna kampaň každá. Označení nálezu jako patřícího kampani podle zmínky její adresy je hrubé, zejména v malých sítích; kontaminace je proto nejistá a hlásí se po úrovních. Pravda je po tocích, nikoli po nálezech. Užitečnost pro analytika se bez analytika neprokáže; 14denní soak neproběhl.
+Pět dnů DAPT2021 je jedna kampaň v jedné testbed síti, takže nejde o pět nezávislých kampaní; kampaně LLDOS a PicoDomain jsou jedna kampaň každá. Označení nálezu jako patřícího kampani podle zmínky její adresy je hrubé, zejména v malých sítích; kontaminace je proto nejistá a hlásí se po úrovních. Pravda je po tocích, nikoli po nálezech. Užitečnost pro analytika se bez analytika neprokáže; 14denní soak neproběhl.
 
 ## Co by změnilo závěr
 
