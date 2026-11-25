@@ -80,6 +80,8 @@ pub struct Options<'a> {
     pub v3: bool,
     /// Krok 36: stejný vnější protějšek spojuje nálezy (s mezí hubu); vyžaduje `v3`.
     pub ext: bool,
+    /// Krok 37: seskupení podle sdílené adresy s oknem a mezí hubu (`incidents_union`); vyžaduje `v2`.
+    pub union: bool,
     /// `finding_id` -> čas prvního výskytu (z paměti nálezů).
     pub first_seen: Option<&'a std::collections::BTreeMap<String, i64>>,
 }
@@ -195,7 +197,7 @@ pub fn run(
         let mut hostless = false;
         let host = match f.host_key.clone() {
             Some(h) => h,
-            None if opts.v2 && opts.v3 => {
+            None if opts.v2 && (opts.v3 || opts.union) => {
                 // nespárovaná pasivní událost: první adresa v důkazu je oběť
                 match f.evidence.iter().find_map(|e| ips_in(e).into_iter().next()) {
                     Some(v) => {
@@ -329,7 +331,9 @@ pub fn run(
         }
     }
     if opts.v2 {
-        let mut all = if opts.v3 {
+        let mut all = if opts.union {
+            history.incidents_union(INCIDENT_GAP_S, MAX_KEY_DEGREE)
+        } else if opts.v3 {
             history.incidents_v3(INCIDENT_GAP_S, MAX_KEY_DEGREE, MAX_ACTOR_DEGREE, opts.ext)
         } else {
             history.incidents_v2(INCIDENT_GAP_S)
@@ -502,6 +506,7 @@ mod tests {
         let o = Options {
             v2: true,
             v3: true,
+            union: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -591,6 +596,7 @@ mod tests {
         let o = Options {
             v2: true,
             v3: true,
+            union: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -642,6 +648,7 @@ mod tests {
         let o = Options {
             v2: true,
             v3: true,
+            union: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -720,6 +727,7 @@ mod tests {
                 v2: true,
                 v3: true,
                 ext,
+                union: false,
                 first_seen: Some(&seen),
             };
             let mut h = History::new(100);
@@ -736,5 +744,51 @@ mod tests {
             );
             assert_eq!(out.incidents.len(), expected, "ext={ext}");
         }
+    }
+
+    #[test]
+    fn corr_union_links_shared_address_but_hub_caps_it() {
+        use std::collections::BTreeMap;
+        let mk = |id: &str, host: &str| {
+            finding(
+                id,
+                "scan_attempts",
+                host,
+                &format!("{host} -> 203.0.113.9:445"),
+            )
+        };
+        let mut all = Vec::new();
+        let mut seen: BTreeMap<String, i64> = BTreeMap::new();
+        for k in 0..30 {
+            let id = format!("f{k}");
+            all.push(mk(&id, &format!("10.0.0.{}", k + 1)));
+            seen.insert(id, k as i64);
+        }
+        let o = Options {
+            v2: true,
+            union: true,
+            first_seen: Some(&seen),
+            ..Default::default()
+        };
+        let mut h = History::new(1000);
+        let mut l = Ledger::new();
+        let out = run(
+            &mut h,
+            &mut l,
+            &all,
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            99,
+            &o,
+        );
+        // společný cíl spojí prvních 25 nálezů, zbylé už ne (hub)
+        let biggest = out
+            .incidents
+            .iter()
+            .map(|i| i.findings.len())
+            .max()
+            .unwrap_or(0);
+        assert!((20..=26).contains(&biggest), "biggest={biggest}");
     }
 }

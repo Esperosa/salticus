@@ -233,6 +233,9 @@ pub struct V3Features {
     /// Krok 36: stejný vnější protějšek spojuje nálezy do incidentu (s mezí hubu). Vyžaduje `corr_v3`.
     #[serde(default)]
     pub corr_ext: bool,
+    /// Krok 37: seskupení incidentů podle sdílené adresy s oknem a mezí hubu. Vyžaduje `corr_v2`.
+    #[serde(default)]
+    pub corr_union: bool,
     /// Krok 16: případová složka pro seniora (shrnutí, aktéři, hypotézy, důkazy pro a
     /// proti, co zbývá ověřit, slepá místa, důvod předání, uzávěr L1). Nic nerozhoduje.
     #[serde(default)]
@@ -275,7 +278,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 66] = [
+    pub const NAMES: [&'static str; 67] = [
         "memory",
         "rate",
         "volume",
@@ -334,6 +337,7 @@ impl V3Features {
         "corr_v2",
         "corr_v3",
         "corr_ext",
+        "corr_union",
         "case_folder",
         "confirm_evidence",
         "close_gate",
@@ -404,6 +408,7 @@ impl V3Features {
             corr_v2: false,
             corr_v3: false,
             corr_ext: false,
+            corr_union: false,
             case_folder: true,
             confirm_evidence: true,
             close_gate: true,
@@ -482,6 +487,7 @@ impl V3Features {
             corr_v2: false,
             corr_v3: false,
             corr_ext: false,
+            corr_union: false,
             case_folder: false,
             confirm_evidence: false,
             close_gate: false,
@@ -563,6 +569,7 @@ impl V3Features {
             corr_v2: false,
             corr_v3: false,
             corr_ext: false,
+            corr_union: false,
             case_folder: false,
             confirm_evidence: false,
             close_gate: false,
@@ -658,6 +665,7 @@ impl V3Features {
             "corr_v2" => &mut self.corr_v2,
             "corr_v3" => &mut self.corr_v3,
             "corr_ext" => &mut self.corr_ext,
+            "corr_union" => &mut self.corr_union,
             "case_folder" => &mut self.case_folder,
             "confirm_evidence" => &mut self.confirm_evidence,
             "close_gate" => &mut self.close_gate,
@@ -900,6 +908,9 @@ impl EngineConfig {
     }
     pub fn corr_ext(&self) -> bool {
         self.corr_v3() && self.v3.corr_ext
+    }
+    pub fn corr_union(&self) -> bool {
+        self.corr_v2() && self.v3.corr_union
     }
     pub fn l7_ladder(&self) -> bool {
         self.on(|f| f.l7_ladder && f.ladder && (f.l7_tls || f.l7_dns))

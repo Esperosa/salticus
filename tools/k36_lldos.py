@@ -44,8 +44,10 @@ def parse_lists(dirpath):
             p = line.split()
             if len(p) < 9 or not re.match(r"\d\d/\d\d/\d{4}", p[1]):
                 continue
-            ts = datetime.strptime(p[1] + " " + p[2], "%m/%d/%Y %H:%M:%S").replace(
-                tzinfo=timezone.utc) + timedelta(hours=5)
+            local = datetime.strptime(p[1] + " " + p[2], "%m/%d/%Y %H:%M:%S")
+            # lokální čas USA východ: od 2. 4. 2000 letní čas (UTC-4), před ním UTC-5
+            hours = 4 if local >= datetime(2000, 4, 2) else 5
+            ts = local.replace(tzinfo=timezone.utc) + timedelta(hours=hours)
             times.append(ts.timestamp())
             for a in (p[7], p[8]):
                 if re.fullmatch(r"\d+\.\d+\.\d+\.\d+", a):

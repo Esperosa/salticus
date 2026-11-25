@@ -1231,6 +1231,7 @@ impl V3Session {
                     v2: self.engine.corr_v2(),
                     v3: self.engine.corr_v3(),
                     ext: self.engine.corr_ext(),
+                    union: self.engine.corr_union(),
                     first_seen: Some(&first_seen),
                 },
             );

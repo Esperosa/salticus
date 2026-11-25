@@ -404,6 +404,41 @@ impl History {
         self.assemble(parent)
     }
 
+    /// Krok 37: seskupení podle sdílené adresy (host a všechny indikátory). Spojuje nálezy, které
+    /// sdílejí adresu v odstupu nejvýš `max_gap_s`, dokud adresa nespojila `max_degree` nálezů
+    /// v okně (hub). Bez rolí aktér a protějšek: sdílený útočník, oběť i cíl jsou stejně vazba.
+    pub fn incidents_union(&self, max_gap_s: i64, max_degree: usize) -> Vec<Incident> {
+        let n = self.events.len();
+        let mut parent: Vec<usize> = (0..n).collect();
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by(|a, b| {
+            let (x, y) = (&self.events[*a], &self.events[*b]);
+            (x.ts, &x.finding_id).cmp(&(y.ts, &y.finding_id))
+        });
+        let mut last: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+        for &i in &order {
+            let e = &self.events[i];
+            let keys =
+                std::iter::once(e.host.as_str()).chain(e.indicators.iter().map(String::as_str));
+            for key in keys {
+                let mut used = 0;
+                if let Some(&(j, u)) = last.get(key)
+                    && e.ts - self.events[j].ts <= max_gap_s
+                {
+                    used = u;
+                    if u < max_degree {
+                        let (ra, rb) = (find_root(&mut parent, i), find_root(&mut parent, j));
+                        if ra != rb {
+                            parent[ra] = rb;
+                        }
+                    }
+                }
+                last.insert(key, (i, used + 1));
+            }
+        }
+        self.assemble(parent)
+    }
+
     fn assemble(&self, mut parent: Vec<usize>) -> Vec<Incident> {
         let n = self.events.len();
         let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
