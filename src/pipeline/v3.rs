@@ -1214,6 +1214,10 @@ impl V3Session {
                 .load("ledger")?
                 .unwrap_or_else(crate::reassess::Ledger::new);
             let coverage = report.coverage_status.clone().unwrap_or_default();
+            let first_seen: std::collections::BTreeMap<String, i64> = lifecycle
+                .iter()
+                .map(|r| (r.finding_id.clone(), r.first_seen.timestamp()))
+                .collect();
             let correlation = crate::correlation_layer::run(
                 &mut history,
                 &mut ledger,
@@ -1222,6 +1226,10 @@ impl V3Session {
                 &coverage,
                 crate::verify_ladder::DEFAULT_PRIOR,
                 now.timestamp(),
+                &crate::correlation_layer::Options {
+                    v2: self.engine.corr_v2(),
+                    first_seen: Some(&first_seen),
+                },
             );
             self.store.save("retro", &history)?;
             self.store.save("ledger", &ledger)?;

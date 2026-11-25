@@ -63,6 +63,19 @@ pub struct Incident {
     pub cause: Cause,
     /// Nález s nejstarším časem (pacient nula incidentu).
     pub first_finding: String,
+    /// Krok 33: stabilní klíč incidentu (hash nejstaršího nálezu); `id` je jen pořadí v běhu.
+    #[serde(default)]
+    pub key: String,
+}
+
+/// FNV-1a 64 bit jako hex; stabilní mezi běhy a platformami (na rozdíl od `DefaultHasher`).
+pub fn stable_key(text: &str) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in text.bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{h:016x}")
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -78,6 +91,11 @@ impl History {
             events: Vec::new(),
             cap: cap.max(1),
         }
+    }
+
+    /// Je nález už v historii (krok 33: jedna událost na nález, ne na každé zobrazení)?
+    pub fn has_finding(&self, finding_id: &str) -> bool {
+        self.events.iter().any(|e| e.finding_id == finding_id)
     }
 
     pub fn add(&mut self, event: Event) {
@@ -214,6 +232,7 @@ impl History {
                     phases,
                     cause,
                     first_finding: first.finding_id.clone(),
+                    key: stable_key(&first.finding_id),
                 }
             })
             .collect();
