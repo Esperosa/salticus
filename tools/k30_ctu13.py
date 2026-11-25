@@ -163,6 +163,7 @@ def main():
     ap.add_argument("--arm", required=True, choices=sorted(ARM_FLAGS))
     ap.add_argument("--scope")
     ap.add_argument("--window", type=int, default=1800)
+    ap.add_argument("--max-windows", type=int, default=0, help="jen prvních N oken (0 = všechna)")
     ap.add_argument("--converter", default="v2", choices=["v1", "v2"])
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
@@ -227,6 +228,8 @@ def main():
     types = defaultdict(int)
     scan_hosts = set()
     order = sorted(windows)
+    if a.max_windows:
+        order = order[: a.max_windows]
     for index in order:
         start = t0 + index * a.window
         wdir = os.path.join(a.work, "z")
