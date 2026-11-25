@@ -902,4 +902,120 @@ mod tests {
                 .contains(&"203.0.113.9".to_string())
         );
     }
+
+    /// Krok 38 (K15): výkon korelace na plné historii. Spouští se ručně:
+    /// `cargo test --release --lib corr_perf -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn corr_perf_on_full_history() {
+        use std::collections::BTreeMap;
+        let n = 50_000usize;
+        let mut h = History::new(n);
+        let mut seen: BTreeMap<String, i64> = BTreeMap::new();
+        let mut findings = Vec::with_capacity(n);
+        for k in 0..n {
+            let id = format!("f{k}");
+            let host = format!("10.{}.{}.{}", (k / 60_000) % 250, (k / 250) % 250, k % 250);
+            let peer = format!("198.51.{}.{}", (k * 7) % 200, (k * 13) % 250);
+            let mut f = finding(
+                &id,
+                "scan_attempts",
+                &host,
+                &format!("{host} -> {peer}:445"),
+            );
+            f.host_key = Some(host);
+            seen.insert(id, (k as i64) * 5);
+            findings.push(f);
+        }
+        let o = Options {
+            v2: true,
+            v3: true,
+            ext: true,
+            related: true,
+            first_seen: Some(&seen),
+            ..Default::default()
+        };
+        let mut l = Ledger::new();
+        let t0 = std::time::Instant::now();
+        let out = run(
+            &mut h,
+            &mut l,
+            &findings,
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            1,
+            &o,
+        );
+        let first = t0.elapsed();
+        // druhý běh: všechny nálezy už jsou v historii (aktualizace a přepočet incidentů)
+        let t1 = std::time::Instant::now();
+        let out2 = run(
+            &mut h,
+            &mut l,
+            &findings,
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            2,
+            &o,
+        );
+        let second = t1.elapsed();
+        let json = serde_json::to_string(&h).unwrap().len();
+        println!(
+            "udalosti {n}: prvni beh {first:?} (incidentu {}), opakovany {second:?} (incidentu {}), stav JSON {} MB",
+            out.incidents.len(),
+            out2.incidents.len(),
+            json / 1_000_000
+        );
+    }
+
+    #[test]
+    fn corr_window_replay_after_crash_gives_same_state() {
+        use std::collections::BTreeMap;
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let all = vec![
+            finding("a", "scan_attempts", "10.0.0.5", "z 198.51.100.4"),
+            finding("b", "beacon_periodic", "10.0.0.5", "na 198.51.100.4"),
+        ];
+        let seen: BTreeMap<String, i64> = [("a", 0), ("b", 30)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        let o = Options {
+            v2: true,
+            v3: true,
+            first_seen: Some(&seen),
+            ..Default::default()
+        };
+        let cov = CoverageStatus::default();
+        let run_once = |conn: &mut rusqlite::Connection, flush: bool| {
+            let mut h = History::load_db(conn, 100)
+                .unwrap()
+                .unwrap_or_else(|| History::new(100));
+            let mut l = Ledger::new();
+            let out = run(&mut h, &mut l, &all, &[], &cov, 0.2, 99, &o);
+            if flush {
+                h.flush(conn).unwrap();
+            }
+            out.incidents
+        };
+        let clean = run_once(&mut conn, true);
+        // pád před zápisem: změny se nezapsaly, opakování okna dá tentýž výsledek
+        let mut conn2 = rusqlite::Connection::open_in_memory().unwrap();
+        let _lost = run_once(&mut conn2, false);
+        let replay = run_once(&mut conn2, true);
+        assert_eq!(clean, replay);
+        // a opakování po úspěšném zápisu nic nepřidá
+        let again = run_once(&mut conn2, true);
+        assert_eq!(clean, again);
+        assert_eq!(
+            History::load_db(&conn2, 100)
+                .unwrap()
+                .unwrap()
+                .events()
+                .len(),
+            2
+        );
+    }
 }

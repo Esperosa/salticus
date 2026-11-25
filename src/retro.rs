@@ -131,6 +131,9 @@ pub struct History {
     /// `finding_id` -> pořadové číslo události; neukládá se, po načtení `reindex`.
     #[serde(skip)]
     index: std::collections::HashMap<String, u64>,
+    /// Pořadová čísla událostí změněných od posledního `flush` (neukládá se).
+    #[serde(skip)]
+    dirty: std::collections::BTreeSet<u64>,
 }
 
 impl History {
@@ -140,7 +143,92 @@ impl History {
             cap: cap.max(1),
             base: 0,
             index: std::collections::HashMap::new(),
+            dirty: std::collections::BTreeSet::new(),
         }
+    }
+
+    /// Krok 38 (K13): tabulky pro perzistenci po událostech. Zápis za běh je úměrný počtu nových
+    /// a změněných událostí, ne celé historii.
+    pub fn migrate(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS retro_events (
+                seq INTEGER PRIMARY KEY,
+                json TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS retro_meta (
+                name TEXT PRIMARY KEY,
+                value INTEGER NOT NULL
+            );",
+        )
+    }
+
+    /// Načte historii z tabulek; `None`, když tabulky ještě žádnou historii nemají.
+    pub fn load_db(conn: &rusqlite::Connection, cap: usize) -> rusqlite::Result<Option<Self>> {
+        Self::migrate(conn)?;
+        let base: Option<i64> = conn
+            .query_row(
+                "SELECT value FROM retro_meta WHERE name = 'base'",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+        let Some(base) = base else {
+            return Ok(None);
+        };
+        let mut stmt = conn.prepare("SELECT seq, json FROM retro_events ORDER BY seq")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+        let mut h = Self::new(cap);
+        h.base = base.max(0) as u64;
+        let mut expect = h.base;
+        for row in rows {
+            let (seq, json) = row?;
+            // mezera v číslech (poškozený zápis) = zbytek historie se zahodí, ne přečíslovat
+            if seq as u64 != expect {
+                break;
+            }
+            if let Ok(e) = serde_json::from_str::<Event>(&json) {
+                h.events.push(e);
+                expect += 1;
+            } else {
+                break;
+            }
+        }
+        h.reindex();
+        Ok(Some(h))
+    }
+
+    /// Zapíše změny v jedné transakci: nové a změněné události, odstranění vyřazených, základ.
+    pub fn flush(&mut self, conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
+        Self::migrate(conn)?;
+        let tx = conn.transaction()?;
+        for seq in std::mem::take(&mut self.dirty) {
+            let Some(pos) = seq.checked_sub(self.base) else {
+                continue;
+            };
+            if let Some(e) = self.events.get(pos as usize) {
+                let json = serde_json::to_string(e).unwrap_or_default();
+                tx.execute(
+                    "INSERT OR REPLACE INTO retro_events (seq, json) VALUES (?1, ?2)",
+                    rusqlite::params![seq as i64, json],
+                )?;
+            }
+        }
+        tx.execute(
+            "DELETE FROM retro_events WHERE seq < ?1",
+            rusqlite::params![self.base as i64],
+        )?;
+        tx.execute(
+            "INSERT OR REPLACE INTO retro_meta (name, value) VALUES ('base', ?1)",
+            rusqlite::params![self.base as i64],
+        )?;
+        tx.commit()
+    }
+
+    /// Označí všechny události jako změněné (po importu ze starého JSON stavu).
+    pub fn mark_all_dirty(&mut self) {
+        self.dirty = (0..self.events.len() as u64)
+            .map(|i| self.base + i)
+            .collect();
     }
 
     /// Po načtení ze stavu: znovu postaví index (neukládá se).
@@ -182,10 +270,14 @@ impl History {
             return;
         };
         if let Some(e) = self.events.get_mut(pos as usize) {
+            let before = e.indicators.len();
             for x in extra {
                 if e.indicators.len() < 8 && !e.indicators.contains(x) {
                     e.indicators.push(x.clone());
                 }
+            }
+            if e.indicators.len() != before {
+                self.dirty.insert(seq);
             }
         }
     }
@@ -193,6 +285,7 @@ impl History {
     pub fn add(&mut self, event: Event) {
         let seq = self.base + self.events.len() as u64;
         self.index.insert(event.finding_id.clone(), seq);
+        self.dirty.insert(seq);
         self.events.push(event);
         let cap = self.cap.max(1);
         if self.events.len() > cap {
@@ -640,5 +733,57 @@ mod tests {
             h.add(ev(t, "h", &format!("f{t}"), &[], None, Cause::Unknown));
         }
         assert_eq!(h.host_timeline("h").len(), 3);
+    }
+
+    #[test]
+    fn history_persists_per_event_idempotently_and_survives_cap() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let mk = |k: u64| Event {
+            ts: k as i64,
+            host: "h".into(),
+            finding_id: format!("f{k}"),
+            indicators: vec!["h".into()],
+            tactic: None,
+            cause: Cause::Attack,
+            kind: String::new(),
+            hostless: false,
+        };
+        let mut h = History::new(5);
+        for k in 0..4 {
+            h.add(mk(k));
+        }
+        h.flush(&mut conn).unwrap();
+        // opakovani stejneho behu: zadne nove zmeny, stav stejny
+        h.flush(&mut conn).unwrap();
+        let back = History::load_db(&conn, 5).unwrap().unwrap();
+        assert_eq!(back.events().len(), 4);
+        assert!(back.has_finding("f3"));
+        // pretekani stropu: nejstarsi vypadnou i z tabulky
+        for k in 4..9 {
+            h.add(mk(k));
+        }
+        h.merge_indicators("f8", &["1.2.3.4".to_string()]);
+        h.flush(&mut conn).unwrap();
+        let back = History::load_db(&conn, 5).unwrap().unwrap();
+        let ids: Vec<&str> = back
+            .events()
+            .iter()
+            .map(|e| e.finding_id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["f4", "f5", "f6", "f7", "f8"]);
+        assert!(
+            back.events()
+                .last()
+                .unwrap()
+                .indicators
+                .contains(&"1.2.3.4".to_string())
+        );
+        // novy beh nad nactenym stavem pokracuje cislovanim
+        let mut next = back;
+        next.add(mk(9));
+        next.flush(&mut conn).unwrap();
+        let again = History::load_db(&conn, 5).unwrap().unwrap();
+        assert_eq!(again.events().len(), 5);
+        assert!(again.has_finding("f9") && !again.has_finding("f4"));
     }
 }

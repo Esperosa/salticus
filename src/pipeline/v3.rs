@@ -1205,11 +1205,21 @@ impl V3Session {
         report.closure_audit = Some(audit.status(&audit_policy, now));
         report.coverage_status = Some(self.coverage(report, &mut behavior_state, sensor_gap, now));
         if self.engine.case_files() {
-            let mut history: crate::retro::History = self
-                .store
-                .load("retro")?
-                .unwrap_or_else(|| crate::retro::History::new(50_000));
-            history.reindex();
+            // krok 38: historie korelace po událostech (tabulky), starý JSON stav se jednou převezme
+            let mut history = match crate::retro::History::load_db(self.store.conn(), 50_000)
+                .map_err(|e| crate::error::SalticusError::Processing(format!("retro: {e}")))?
+            {
+                Some(h) => h,
+                None => {
+                    let mut h: crate::retro::History = self
+                        .store
+                        .load("retro")?
+                        .unwrap_or_else(|| crate::retro::History::new(50_000));
+                    h.reindex();
+                    h.mark_all_dirty();
+                    h
+                }
+            };
             let mut ledger: crate::reassess::Ledger = self
                 .store
                 .load("ledger")?
@@ -1236,7 +1246,9 @@ impl V3Session {
                     first_seen: Some(&first_seen),
                 },
             );
-            self.store.save("retro", &history)?;
+            history
+                .flush(self.store.conn_mut())
+                .map_err(|e| crate::error::SalticusError::Processing(format!("retro: {e}")))?;
             self.store.save("ledger", &ledger)?;
             let mut correlation = correlation;
             if self.engine.case_folder() {
