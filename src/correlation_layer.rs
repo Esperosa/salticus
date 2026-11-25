@@ -72,6 +72,10 @@ pub struct IncidentRow {
     pub last_ts: i64,
     pub related: usize,
     pub is_new: bool,
+    /// Mezery pokrytí, kvůli kterým incident nemusí být úplný (host bez telemetrie, tmavý
+    /// segment, neúplné zdroje). Prázdné neznamená úplné pokrytí, jen že mezera není hlášena.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub coverage_gaps: Vec<String>,
 }
 
 /// Souhrn dne: incidenty seřazené podle počtu fází kill-chainu, nových a velikosti; opakované
@@ -80,6 +84,7 @@ fn build_day_summary(
     all: &[Incident],
     history: &History,
     prev: Option<&std::collections::BTreeMap<String, String>>,
+    coverage: &CoverageStatus,
 ) -> Vec<IncidentRow> {
     let mut rows: Vec<IncidentRow> = all
         .iter()
@@ -93,6 +98,22 @@ fn build_day_summary(
             kinds.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
             kinds.truncate(5);
             let is_new = prev.is_none_or(|p| !i.findings.iter().any(|f| p.contains_key(f)));
+            let mut coverage_gaps: Vec<String> = Vec::new();
+            for h in &i.hosts {
+                if coverage.silent_hosts.iter().any(|s| s == h) {
+                    coverage_gaps.push(format!("host {h} bez telemetrie"));
+                }
+                if let Some((p, _)) = h.rsplit_once('.')
+                    && coverage.dark_segments.iter().any(|s| s.starts_with(p))
+                {
+                    coverage_gaps.push(format!("segment hostu {h} je tmavý"));
+                }
+            }
+            for r in &coverage.reasons {
+                coverage_gaps.push(format!("pokrytí: {r}"));
+            }
+            coverage_gaps.sort();
+            coverage_gaps.dedup();
             IncidentRow {
                 key: i.key.clone(),
                 hosts: i.hosts.iter().take(3).cloned().collect(),
@@ -103,6 +124,7 @@ fn build_day_summary(
                 last_ts: i.last_ts,
                 related: i.related.len(),
                 is_new,
+                coverage_gaps,
             }
         })
         .collect();
@@ -504,7 +526,7 @@ pub fn run(
         if opts.related {
             attach_related(&mut all, history);
         }
-        out.day_summary = build_day_summary(&all, history, opts.prev_keys);
+        out.day_summary = build_day_summary(&all, history, opts.prev_keys, coverage);
         out.incidents = all;
         out.stats = stats;
         return out;
@@ -1228,5 +1250,48 @@ mod tests {
         );
         assert!(!out2.day_summary[0].is_new);
         assert_eq!(out2.day_summary[0].key, row.key);
+    }
+
+    #[test]
+    fn day_summary_reports_coverage_gaps_and_never_claims_full_coverage() {
+        use std::collections::BTreeMap;
+        let all = vec![
+            finding(
+                "a",
+                "scan_attempts",
+                "10.0.0.5",
+                "10.0.0.5 -> 198.51.100.4:445",
+            ),
+            finding(
+                "b",
+                "beacon_periodic",
+                "10.0.0.5",
+                "10.0.0.5 -> 198.51.100.4:443",
+            ),
+        ];
+        let seen: BTreeMap<String, i64> = [("a", 0), ("b", 5)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        let o = Options {
+            v2: true,
+            v3: true,
+            first_seen: Some(&seen),
+            ..Default::default()
+        };
+        let cov = CoverageStatus {
+            silent_hosts: vec!["10.0.0.5".into()],
+            reasons: vec!["telemetry_gap".into()],
+            ..Default::default()
+        };
+        let mut h = History::new(100);
+        let mut l = Ledger::new();
+        let out = run(&mut h, &mut l, &all, &[], &cov, 0.2, 9, &o);
+        let gaps = &out.day_summary[0].coverage_gaps;
+        assert!(
+            gaps.iter().any(|g| g.contains("bez telemetrie")),
+            "{gaps:?}"
+        );
+        assert!(gaps.iter().any(|g| g.contains("telemetry_gap")), "{gaps:?}");
     }
 }
