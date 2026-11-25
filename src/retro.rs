@@ -195,15 +195,25 @@ impl History {
         let mut expect = h.base;
         for row in rows {
             let (seq, json) = row?;
-            // mezera v číslech (poškozený zápis) = zbytek historie se zahodí, ne přečíslovat
-            if seq as u64 != expect {
-                break;
-            }
-            if let Ok(e) = serde_json::from_str::<Event>(&json) {
-                h.events.push(e);
-                expect += 1;
-            } else {
-                break;
+            // mezera v číslech nebo poškozený řádek: zahodí se starší část (a ten řádek), novější
+            // události zůstanou; nic se nepřečísluje
+            let parsed = serde_json::from_str::<Event>(&json).ok();
+            match parsed {
+                Some(e) if seq as u64 == expect => {
+                    h.events.push(e);
+                    expect += 1;
+                }
+                Some(e) if (seq as u64) > expect => {
+                    h.events.clear();
+                    h.base = seq as u64;
+                    h.events.push(e);
+                    expect = h.base + 1;
+                }
+                _ => {
+                    h.events.clear();
+                    h.base = seq as u64 + 1;
+                    expect = h.base;
+                }
             }
         }
         h.reindex();
@@ -214,12 +224,14 @@ impl History {
     pub fn flush(&mut self, conn: &mut rusqlite::Connection) -> rusqlite::Result<()> {
         Self::migrate(conn)?;
         let tx = conn.transaction()?;
-        for seq in std::mem::take(&mut self.dirty) {
+        let pending: Vec<u64> = self.dirty.iter().copied().collect();
+        for seq in pending {
             let Some(pos) = seq.checked_sub(self.base) else {
                 continue;
             };
             if let Some(e) = self.events.get(pos as usize) {
-                let json = serde_json::to_string(e).unwrap_or_default();
+                let json = serde_json::to_string(e)
+                    .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
                 tx.execute(
                     "INSERT OR REPLACE INTO retro_events (seq, json) VALUES (?1, ?2)",
                     rusqlite::params![seq as i64, json],
@@ -234,7 +246,10 @@ impl History {
             "INSERT OR REPLACE INTO retro_meta (name, value) VALUES ('base', ?1)",
             rusqlite::params![self.base as i64],
         )?;
-        tx.commit()
+        tx.commit()?;
+        // změny se zapomenou až po úspěšném zápisu; při chybě se při příštím běhu zapíšou znovu
+        self.dirty.clear();
+        Ok(())
     }
 
     /// Označí všechny události jako změněné (po importu ze starého JSON stavu).
@@ -868,5 +883,39 @@ mod tests {
         let again = History::load_db(&conn, 5).unwrap().unwrap();
         assert_eq!(again.events().len(), 5);
         assert!(again.has_finding("f9") && !again.has_finding("f4"));
+    }
+
+    #[test]
+    fn history_load_keeps_newest_events_after_a_corrupted_row() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        let mk = |k: u64| Event {
+            ts: k as i64,
+            host: "h".into(),
+            finding_id: format!("f{k}"),
+            indicators: vec!["h".into()],
+            tactic: None,
+            cause: Cause::Attack,
+            kind: String::new(),
+            hostless: false,
+        };
+        let mut h = History::new(100);
+        for k in 0..6 {
+            h.add(mk(k));
+        }
+        h.flush(&mut conn).unwrap();
+        conn.execute("UPDATE retro_events SET json = 'nesmysl' WHERE seq = 2", [])
+            .unwrap();
+        let back = History::load_db(&conn, 100).unwrap().unwrap();
+        let ids: Vec<&str> = back
+            .events()
+            .iter()
+            .map(|e| e.finding_id.as_str())
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["f3", "f4", "f5"],
+            "novější události přežijí poškozený řádek"
+        );
+        assert!(back.has_finding("f5") && !back.has_finding("f1"));
     }
 }

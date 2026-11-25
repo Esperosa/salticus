@@ -24,6 +24,25 @@ pub enum Override {
     Detach { a: String },
 }
 
+/// Identifikátor nálezu: neprázdný, rozumně dlouhý, bez řídicích znaků (ochrana databáze).
+fn valid_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control)
+}
+
+fn validate(over: &Override) -> Result<()> {
+    let ok = match over {
+        Override::Link { a, b } => valid_id(a) && valid_id(b) && a != b,
+        Override::Detach { a } => valid_id(a),
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(SalticusError::Processing(
+            "incident_overrides: neplatný identifikátor nálezu".into(),
+        ))
+    }
+}
+
 pub fn migrate(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS incident_overrides (
@@ -50,6 +69,7 @@ pub fn submit(
     at: chrono::DateTime<chrono::Utc>,
 ) -> Result<i64> {
     migrate(conn)?;
+    validate(over)?;
     let body = serde_json::to_string(over).map_err(SalticusError::Json)?;
     conn.execute(
         "INSERT INTO incident_overrides (body, actor, note, at, revokes) VALUES (?1, ?2, ?3, ?4, NULL)",
@@ -119,6 +139,9 @@ pub fn apply(incidents: &mut Vec<Incident>, overrides: &[Override]) {
             Override::Detach { a } => {
                 for inc in incidents.iter_mut() {
                     inc.findings.retain(|f| f != a);
+                    // hrany odpojeného nálezu zanikají; zbylé hrany zůstanou (kostra může být
+                    // nesouvislá, důvod hrany se neumyslně nevymýšlí)
+                    inc.links.retain(|l| l.a != *a && l.b != *a);
                 }
             }
             Override::Link { a, b } => {
@@ -130,6 +153,14 @@ pub fn apply(incidents: &mut Vec<Incident>, overrides: &[Override]) {
                     let (keep, drop) = if x < y { (x, y) } else { (y, x) };
                     let moved = incidents.remove(drop);
                     let target = &mut incidents[keep];
+                    target.links.extend(moved.links);
+                    target.links.push(crate::retro::Link {
+                        a: a.clone(),
+                        b: b.clone(),
+                        rule: "manual".into(),
+                        via: "zásah analytika".into(),
+                        dt_s: 0,
+                    });
                     for f in moved.findings {
                         if !target.findings.contains(&f) {
                             target.findings.push(f);
@@ -219,5 +250,51 @@ mod tests {
             !revoke(&conn, id, "analytik", "znovu", at).unwrap(),
             "druhé odvolání nic nedělá"
         );
+    }
+
+    #[test]
+    fn manual_link_keeps_spanning_links_and_ids_are_validated() {
+        let mut v = vec![inc(&["a", "b"]), inc(&["c", "d"])];
+        v[0].links.push(crate::retro::Link {
+            a: "a".into(),
+            b: "b".into(),
+            rule: "pair".into(),
+            via: "x".into(),
+            dt_s: 1,
+        });
+        v[1].links.push(crate::retro::Link {
+            a: "c".into(),
+            b: "d".into(),
+            rule: "pair".into(),
+            via: "y".into(),
+            dt_s: 1,
+        });
+        apply(
+            &mut v,
+            &[Override::Link {
+                a: "b".into(),
+                b: "c".into(),
+            }],
+        );
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].links.len(), 3, "kostra: 4 nálezů, 3 hrany");
+        assert!(v[0].links.iter().any(|l| l.rule == "manual"));
+        let conn = Connection::open_in_memory().unwrap();
+        let at = chrono::Utc::now();
+        assert!(submit(&conn, &Override::Detach { a: String::new() }, "x", "", at).is_err());
+        assert!(
+            submit(
+                &conn,
+                &Override::Link {
+                    a: "z".into(),
+                    b: "z".into()
+                },
+                "x",
+                "",
+                at
+            )
+            .is_err()
+        );
+        assert!(submit(&conn, &Override::Detach { a: "a\nb".into() }, "x", "", at).is_err());
     }
 }
