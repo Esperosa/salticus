@@ -350,7 +350,12 @@ impl History {
                     false,
                     max_actor_degree,
                 );
-                register(&mut victim_seen, &e.host);
+                if ext_links {
+                    // stejná oběť v dalších nálezech téže kampaně (sken, sonda, průnik na tentýž cíl)
+                    link(&mut victim_seen, &e.host, &mut parent, true, max_degree);
+                } else {
+                    register(&mut victim_seen, &e.host);
+                }
                 if ext_links {
                     for p in &peers {
                         if is_public_unicast(p) {
