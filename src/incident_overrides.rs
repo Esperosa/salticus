@@ -171,6 +171,7 @@ mod tests {
             first_finding: fs[0].to_string(),
             key: String::new(),
             related: vec![],
+            links: Vec::new(),
         }
     }
 

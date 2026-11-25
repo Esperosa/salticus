@@ -102,6 +102,19 @@ pub struct Incident {
     /// Krok 37: slabě spojené incidenty (sdílená adresa), s důvodem; nejsou součástí incidentu.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub related: Vec<Related>,
+    /// Krok 38: hrany kostry incidentu (proč jsou nálezy pohromadě); prázdné u seskupení v1.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<Link>,
+}
+
+/// Hrana, která spojila dva nálezy do incidentu: pravidlo, sdílená adresa nebo dvojice a odstup.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Link {
+    pub a: String,
+    pub b: String,
+    pub rule: String,
+    pub via: String,
+    pub dt_s: i64,
 }
 
 /// Související incident: klíč a adresy, které incidenty sdílejí (důvod spojení).
@@ -394,7 +407,7 @@ impl History {
                 last_by_key.insert(key, i);
             }
         }
-        self.assemble(parent)
+        self.assemble(parent, &[])
     }
 
     /// Krok 34: kauzální seskupení. Spojuje (1) stejného aktéra a stejný protějšek, (2) protějšek
@@ -431,16 +444,22 @@ impl History {
         let mut pair_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
         let mut victim_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
         let mut ext_seen: BTreeMap<String, (usize, usize)> = BTreeMap::new();
-        let union = |parent: &mut Vec<usize>, a: usize, b: usize| {
+        // hrany, které skutečně spojily dvě různé komponenty (kostra incidentů)
+        let edges: std::cell::RefCell<Vec<(usize, usize, &'static str, String)>> =
+            std::cell::RefCell::new(Vec::new());
+        let union = |parent: &mut Vec<usize>, a: usize, b: usize| -> bool {
             let (ra, rb) = (find_root(parent, a), find_root(parent, b));
             if ra != rb {
                 parent[ra] = rb;
+                return true;
             }
+            false
         };
         for &i in &order {
             let e = &self.events[i];
             // `cap`: nejvýš tolik použití klíče v jednom časovém okně (hub se v čase uvolní)
-            let mut link = |map: &mut BTreeMap<String, (usize, usize)>,
+            let mut link = |rule: &'static str,
+                            map: &mut BTreeMap<String, (usize, usize)>,
                             key: &str,
                             parent: &mut Vec<usize>,
                             register: bool,
@@ -449,8 +468,8 @@ impl History {
                 if let Some(&(j, used)) = map.get(key) {
                     if e.ts - self.events[j].ts <= max_gap_s {
                         used_now = used;
-                        if used < cap {
-                            union(parent, i, j);
+                        if used < cap && union(parent, i, j) {
+                            edges.borrow_mut().push((i, j, rule, key.to_string()));
                         }
                     }
                 }
@@ -470,8 +489,16 @@ impl History {
             if e.hostless {
                 // oběť: spojí se s nálezy, kde je adresa protějškem nebo aktérem; s jinými nálezy
                 // bez hosta na téže oběti se nespojuje (sdílená oběť není kauzální vazba)
-                link(&mut peer_seen, &e.host, &mut parent, false, max_degree);
                 link(
+                    "peer_victim",
+                    &mut peer_seen,
+                    &e.host,
+                    &mut parent,
+                    false,
+                    max_degree,
+                );
+                link(
+                    "actor_victim",
                     &mut actor_seen,
                     &e.host,
                     &mut parent,
@@ -480,25 +507,47 @@ impl History {
                 );
                 if ext_links {
                     // stejná oběť v dalších nálezech téže kampaně (sken, sonda, průnik na tentýž cíl)
-                    link(&mut victim_seen, &e.host, &mut parent, true, max_degree);
+                    link(
+                        "victim_shared",
+                        &mut victim_seen,
+                        &e.host,
+                        &mut parent,
+                        true,
+                        max_degree,
+                    );
                 } else {
                     register(&mut victim_seen, &e.host);
                 }
                 if ext_links {
                     for p in &peers {
                         if is_public_unicast(p) {
-                            link(&mut ext_seen, p, &mut parent, true, max_degree);
+                            link("ext_peer", &mut ext_seen, p, &mut parent, true, max_degree);
                         }
                     }
                 }
                 continue;
             }
             // protějšek dřívějšího nálezu, který teď jedná
-            link(&mut peer_seen, &e.host, &mut parent, false, max_degree);
+            link(
+                "peer_actor",
+                &mut peer_seen,
+                &e.host,
+                &mut parent,
+                false,
+                max_degree,
+            );
             // dřívější nález, kde byl tento host obětí
-            link(&mut victim_seen, &e.host, &mut parent, false, max_degree);
+            link(
+                "victim_actor",
+                &mut victim_seen,
+                &e.host,
+                &mut parent,
+                false,
+                max_degree,
+            );
             for p in &peers {
                 link(
+                    "pair",
                     &mut pair_seen,
                     &format!("{}|{p}", e.host),
                     &mut parent,
@@ -506,10 +555,18 @@ impl History {
                     usize::MAX,
                 );
                 // nález bez hosta, který míří na tento protějšek
-                link(&mut victim_seen, p, &mut parent, false, max_degree);
+                link(
+                    "victim_peer",
+                    &mut victim_seen,
+                    p,
+                    &mut parent,
+                    false,
+                    max_degree,
+                );
             }
             if e.cause == Cause::Attack {
                 link(
+                    "actor_attack",
                     &mut actor_seen,
                     &e.host,
                     &mut parent,
@@ -521,7 +578,7 @@ impl History {
                 // stejný vnější protějšek u dvou nálezů (útočník zasáhl víc obětí, společný cíl C2)
                 for p in &peers {
                     if is_public_unicast(p) {
-                        link(&mut ext_seen, p, &mut parent, true, max_degree);
+                        link("ext_peer", &mut ext_seen, p, &mut parent, true, max_degree);
                     }
                 }
             }
@@ -529,7 +586,7 @@ impl History {
                 register(&mut peer_seen, p);
             }
         }
-        self.assemble(parent)
+        self.assemble(parent, &edges.into_inner())
     }
 
     /// Krok 37: seskupení podle sdílené adresy (host a všechny indikátory). Spojuje nálezy, které
@@ -564,19 +621,34 @@ impl History {
                 last.insert(key, (i, used + 1));
             }
         }
-        self.assemble(parent)
+        self.assemble(parent, &[])
     }
 
-    fn assemble(&self, mut parent: Vec<usize>) -> Vec<Incident> {
+    fn assemble(
+        &self,
+        mut parent: Vec<usize>,
+        edges: &[(usize, usize, &'static str, String)],
+    ) -> Vec<Incident> {
         let n = self.events.len();
         let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
         for i in 0..n {
             let r = find_root(&mut parent, i);
             groups.entry(r).or_default().push(i);
         }
+        let mut links_of: BTreeMap<usize, Vec<Link>> = BTreeMap::new();
+        for (i, j, rule, via) in edges {
+            let root = find_root(&mut parent, *i);
+            links_of.entry(root).or_default().push(Link {
+                a: self.events[*i].finding_id.clone(),
+                b: self.events[*j].finding_id.clone(),
+                rule: (*rule).to_string(),
+                via: via.clone(),
+                dt_s: (self.events[*i].ts - self.events[*j].ts).abs(),
+            });
+        }
         let mut out: Vec<Incident> = groups
-            .into_values()
-            .map(|members| {
+            .into_iter()
+            .map(|(root, members)| {
                 let evs: Vec<&Event> = members.iter().map(|i| &self.events[*i]).collect();
                 let first = evs.iter().min_by_key(|e| e.ts).expect("neprazdna skupina");
                 let mut phases: Vec<String> = Vec::new();
@@ -605,6 +677,7 @@ impl History {
                     first_finding: first.finding_id.clone(),
                     key: stable_key(&first.finding_id),
                     related: Vec::new(),
+                    links: links_of.remove(&root).unwrap_or_default(),
                 }
             })
             .collect();

@@ -453,6 +453,7 @@ fn fuzz_random_decisions_never_panic_and_always_validate() {
         first_finding: "f-2".into(),
         key: String::new(),
         related: Vec::new(),
+        links: Vec::new(),
     }];
     for i in 0..20_000u32 {
         let n = (next() % 9) as usize;

@@ -731,6 +731,7 @@ mod tests {
                 first_finding: format!("f{k}"),
                 key: String::new(),
                 related: Vec::new(),
+                links: Vec::new(),
             })
             .collect();
         keep_newest(&mut v, 2);
@@ -1170,6 +1171,7 @@ mod tests {
             first_finding: first.to_string(),
             key: crate::retro::stable_key(first),
             related: vec![],
+            links: Vec::new(),
         };
         // běh 1: incident {a,b}
         let mut run1 = vec![inc(&["a", "b"], "a")];
@@ -1293,5 +1295,59 @@ mod tests {
             "{gaps:?}"
         );
         assert!(gaps.iter().any(|g| g.contains("telemetry_gap")), "{gaps:?}");
+    }
+
+    #[test]
+    fn every_incident_has_a_spanning_set_of_links_with_rule_and_address() {
+        use std::collections::BTreeMap;
+        let mut scan = finding(
+            "sc",
+            "unmapped_passive_event",
+            "x",
+            "event_id=anomaly-v3:scan:10.0.0.9/tcp/19",
+        );
+        scan.host_key = None;
+        let brute = finding(
+            "br",
+            "bruteforce_attempts",
+            "10.0.0.5",
+            "10.0.0.5 -> 10.0.0.9:22",
+        );
+        let exfil = finding(
+            "ex",
+            "egress_volume_anomaly",
+            "10.0.0.9",
+            "10.0.0.9 -> 198.51.100.7: 1500 MB",
+        );
+        let seen: BTreeMap<String, i64> = [("sc", 0), ("br", 900), ("ex", 2400)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        let o = Options {
+            v2: true,
+            v3: true,
+            first_seen: Some(&seen),
+            ..Default::default()
+        };
+        let mut h = History::new(100);
+        let mut l = Ledger::new();
+        let out = run(
+            &mut h,
+            &mut l,
+            &[scan, brute, exfil],
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            99,
+            &o,
+        );
+        assert_eq!(out.incidents.len(), 1);
+        let inc = &out.incidents[0];
+        assert_eq!(inc.links.len(), inc.findings.len() - 1, "{:?}", inc.links);
+        assert!(
+            inc.links
+                .iter()
+                .all(|l| !l.rule.is_empty() && !l.via.is_empty())
+        );
     }
 }
