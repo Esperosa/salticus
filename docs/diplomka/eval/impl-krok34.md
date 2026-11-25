@@ -25,10 +25,10 @@ Seed 233 (nový, v žádném dřívějším kroku nepoužitý). Pravidla (a) ste
 | rameno | F1 (95 % interval) | úplnost | přesnost | slité skupiny | fragmentace |
 |---|---|---|---|---|---|
 | B1 podle IP | 0,775 [0,652; 0,885] | 1,00 | 0,63 | 10 | 1,0 |
-| produkce v1 | 0,258 [0,285; 0,423]* | 0,16 | 0,60 | 10 | 1,0 |
+| produkce v1 | 0,258 [0,285; 0,423]† | 0,16 | 0,60 | 10 | 1,0 |
 | `corr_v3` | **0,931 [0,878; 0,976]** | 0,885 | 0,98 | **5** | 1,25 |
 
-\* interval v1 je z předregistrovaného bootstrapu zaokrouhlen z běhu A; bod odhadu 0,258 leží v [0,204; 0,306] podle starší metody, viz níže.
+† Bod odhadu v1 leží těsně pod vlastním intervalem: bootstrap poměrové metriky s 30 jednotkami je mírně vychýlený (slité skupiny v1 se při vzorkování násobí). Pořadí ramen to nemění (horní mez v1 0,42 je daleko pod dolní mezí B1 0,65), ale intervaly je třeba číst jako orientační.
 
 Rozdíl `corr_v3` − B1 = +0,156, 95 % interval [0,076; 0,255].
 
