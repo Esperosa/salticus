@@ -475,12 +475,12 @@ impl History {
         for &i in &order {
             let e = &self.events[i];
             // `cap`: nejvýš tolik použití klíče v jednom časovém okně (hub se v čase uvolní)
-            let mut link = |rule: &'static str,
-                            map: &mut BTreeMap<String, (usize, usize)>,
-                            key: &str,
-                            parent: &mut Vec<usize>,
-                            register: bool,
-                            cap: usize| {
+            let link = |rule: &'static str,
+                        map: &mut BTreeMap<String, (usize, usize)>,
+                        key: &str,
+                        parent: &mut Vec<usize>,
+                        register: bool,
+                        cap: usize| {
                 let mut used_now = 0;
                 // krok 42: řetězení přes role aktér a protějšek jen mezi nálezy s mapovanou
                 // taktikou; běžné relace (bez taktiky) nevytvářejí mosty přes vnitřní servery
@@ -489,8 +489,10 @@ impl History {
                         rule,
                         "actor_victim" | "peer_actor" | "victim_actor" | "actor_attack"
                     );
-                if let Some(&(j, used)) = map.get(key) {
-                    if e.ts - self.events[j].ts <= max_gap_s {
+                if let Some(&(j, used)) = map.get(key)
+                    && e.ts - self.events[j].ts <= max_gap_s
+                {
+                    {
                         used_now = used;
                         let role_rule = matches!(
                             rule,
