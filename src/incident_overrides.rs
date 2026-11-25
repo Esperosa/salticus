@@ -297,4 +297,42 @@ mod tests {
         );
         assert!(submit(&conn, &Override::Detach { a: "a\nb".into() }, "x", "", at).is_err());
     }
+
+    #[test]
+    fn overrides_survive_reopening_the_database_file() {
+        let dir = std::env::temp_dir().join(format!("salticus-ov-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("engine-state.sqlite");
+        let at = chrono::Utc::now();
+        {
+            let store = crate::engine_state::EngineStateStore::open(&path).unwrap();
+            submit(
+                store.conn(),
+                &Override::Detach { a: "f1".into() },
+                "analytik",
+                "chyba",
+                at,
+            )
+            .unwrap();
+            let id = submit(
+                store.conn(),
+                &Override::Link {
+                    a: "a".into(),
+                    b: "b".into(),
+                },
+                "analytik",
+                "",
+                at,
+            )
+            .unwrap();
+            revoke(store.conn(), id, "analytik", "omyl", at).unwrap();
+        }
+        // nové otevření souboru (restart procesu): aktivní zůstává jen neodvolaný zásah
+        let store = crate::engine_state::EngineStateStore::open(&path).unwrap();
+        let active = active(store.conn()).unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].1, Override::Detach { a: "f1".into() });
+        drop(store);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
