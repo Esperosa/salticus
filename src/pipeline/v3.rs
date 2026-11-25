@@ -526,7 +526,8 @@ impl V3Session {
                 ),
             }
         }
-        let auto_allowed = audit.auto_close_allowed(&audit_policy, now);
+        let auto_allowed =
+            audit.auto_close_allowed(&audit_policy, now) && !self.engine.observe_only();
         if !auto_allowed {
             tracing::warn!(
                 pending = audit.samples.len(),

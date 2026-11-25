@@ -250,6 +250,12 @@ pub struct V3Features {
     /// administrativního kanálu v seskupení. Vyžaduje `corr_v3`.
     #[serde(default)]
     pub corr_identity: bool,
+    /// Krok 47: skutečný observe-only režim — vynutí fail-safe cestu žebříku a kontextu
+    /// (vše jde člověku, nic se automaticky nezavře), nezávisle na `close_gate` a na stavu
+    /// auditu. Nahrazuje nepravdivý komentář v shadow konfiguraci, který toto tvrdil, aniž by
+    /// to kód vynucoval (zjištěno nezávislým přezkumem 26. 11. 2026).
+    #[serde(default)]
+    pub observe_only: bool,
     /// Krok 37: související incidenty podle sdílené adresy s důvodem (bez slučování). Vyžaduje `corr_v3`.
     #[serde(default)]
     pub corr_related: bool,
@@ -295,7 +301,7 @@ impl Default for V3Features {
 }
 
 impl V3Features {
-    pub const NAMES: [&'static str; 72] = [
+    pub const NAMES: [&'static str; 73] = [
         "memory",
         "rate",
         "volume",
@@ -359,6 +365,7 @@ impl V3Features {
         "corr_core",
         "corr_graph",
         "corr_identity",
+        "observe_only",
         "corr_related",
         "case_folder",
         "confirm_evidence",
@@ -435,6 +442,7 @@ impl V3Features {
             corr_core: false,
             corr_graph: false,
             corr_identity: false,
+            observe_only: false,
             corr_related: false,
             case_folder: true,
             confirm_evidence: true,
@@ -519,6 +527,7 @@ impl V3Features {
             corr_core: false,
             corr_graph: false,
             corr_identity: false,
+            observe_only: false,
             corr_related: false,
             case_folder: false,
             confirm_evidence: false,
@@ -606,6 +615,7 @@ impl V3Features {
             corr_core: false,
             corr_graph: false,
             corr_identity: false,
+            observe_only: false,
             corr_related: false,
             case_folder: false,
             confirm_evidence: false,
@@ -707,6 +717,7 @@ impl V3Features {
             "corr_core" => &mut self.corr_core,
             "corr_graph" => &mut self.corr_graph,
             "corr_identity" => &mut self.corr_identity,
+            "observe_only" => &mut self.observe_only,
             "corr_related" => &mut self.corr_related,
             "case_folder" => &mut self.case_folder,
             "confirm_evidence" => &mut self.confirm_evidence,
@@ -968,6 +979,9 @@ impl EngineConfig {
     }
     pub fn corr_identity(&self) -> bool {
         self.corr_v3() && self.v3.corr_identity
+    }
+    pub fn observe_only(&self) -> bool {
+        self.v3.observe_only
     }
     pub fn l7_ladder(&self) -> bool {
         self.on(|f| f.l7_ladder && f.ladder && (f.l7_tls || f.l7_dns))
@@ -1264,5 +1278,26 @@ mod tests {
             v3: V3Features::all(),
         };
         assert!(!legacy.attr_calib() && !legacy.sev_calib_o1() && !legacy.ctx_activity_guard());
+    }
+
+    /// Krok 47: `observe_only` je v presetech ve výchozím stavu vypnuté a je nezávislé na
+    /// `close_gate`; zapnutí přes `slot` ho nastaví bez vedlejších účinků na jiné přepínače.
+    #[test]
+    fn observe_only_defaults_off_and_is_independent_of_close_gate() {
+        for v3 in [
+            V3Features::recommended(),
+            V3Features::none(),
+            V3Features::all(),
+        ] {
+            assert!(!v3.observe_only, "{v3:?}");
+        }
+        let mut v3 = V3Features::recommended();
+        *v3.slot("observe_only").expect("prepinac") = true;
+        let cfg = EngineConfig {
+            mode: EngineMode::V3,
+            v3,
+        };
+        assert!(cfg.observe_only());
+        assert!(!cfg.close_gate(), "observe_only nezapina close_gate");
     }
 }
