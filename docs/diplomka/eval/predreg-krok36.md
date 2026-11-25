@@ -34,3 +34,7 @@ Ramena: v1 (produkční incidenty bez `corr_v2`), `corr_v3` (`corr_v2` + `corr_v
 ## Omezení
 
 Jedna kampaň na dataset, dva datasety: nelze mluvit o statistické významnosti. Síť z roku 2000 s jinými protokoly a jiným pozadím než domácí síť; pravda je po relacích, ne po nálezech. LLDOS 2.0.2 má v seznamech pravdy jen tři adresy.
+
+## Dodatek před spuštěním testu (zmrazení)
+
+Dev běh na LLDOS 1.0 ukázal, že `corr_v3` bez dalších pravidel spojí jen 11 % nálezů kampaně (nálezy bez hosta, útočník je sdílený vnější protějšek a oběť se opakuje). Přidal jsem proto přepínač `corr_ext` (stejný vnější protějšek a stejná oběť u nálezů bez hosta spojují, s mezí hubu 25 a oknem 6 h). Je to změna pravidel podle dev dat (ne oprava chyby), proto zde výslovně: **test LLDOS 2.0.2 se spouští až teď, s kódem ve stavu commitu b4193ef**, žádné další změny pravidel před testem. Ramena testu: A (v1), C0 (`corr_v2`+`corr_v3`), C (`corr_v2`+`corr_v3`+`corr_ext`), B1, B1b. Hypotézy H1 až H4 platí pro rameno C; C0 se uvádí pro srovnání. Dev výsledek: C0 completeness 0,11, C 0,39 (nejlepší incident pokrývá fáze 1 až 4), B1 0,64 (z toho část nálezů se týká hostu 172.16.112.100, který je v pravdě uveden, ale jeho timeouty nemusí patřit kampani: označení nálezu podle zmínky adresy kampaně je hrubé).
