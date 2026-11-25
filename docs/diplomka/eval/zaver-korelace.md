@@ -35,6 +35,10 @@ Pět dnů DAPT2021 je jedna kampaň v jedné testbed síti, takže nejde o pět 
 
 Zkoumáno na reálných autentizačních logách (ne syntetika — syntetický druhý zdroj by byl kruhový, viz diskuze před krokem 46). Jediný hostitel s použitelným autentizačním logem ve správném okně (10.1.1.11) potvrdil hypotézu přesně: 50 přihlášení stejným klíčem ze stejné adresy, 0 neúspěchů = administrátorský kanál. Veto tohoto jednoho páru ale změnilo největší incident jen o 1 nález ze 240, protože zbylých 6 z 7 hostitelů velkého incidentu má jen `syslog` bez autentizačních záznamů. **Mechanismus potvrzení druhým zdrojem je platný, ale na dostupných datech neměřitelný v potřebném rozsahu** — žádná veřejná sada nekombinuje hustou instrumentaci s velkou perkolující sítí. Detaily `impl-krok46.md`.
 
+## Kroky 47 a 48: vlastní laboratoř se skutečnými nástroji — detekce, ne korelace, je limitující
+
+Poprvé jsme zkusili skutečné útočné nástroje (nmap, curl, ssh, psql, hydra) na skutečně zachycené síti, ne generátor. Výsledek je nad rámec korelace: Salticus na reálnou pětifázovou kampaň (sken, nalezený klíč, laterální pohyb, dotaz na DB, exfiltrace 188 KB) nevygeneroval žádný nález specifický pro útok, ani se zralým profilem hostitele (ověřeno diagnostikou se zahřívacím oknem, krok 48). Příčina: absolutní práh objemové exfiltrace je 1 GB (realistická exfiltrace 188 KB je 5 300× pod ním) a vertikální sken na 1000 různých portů pravděpodobně nemá s čím se srovnat (anomálie se skóruje per-port proti vrstevníkům, a 1000 různých portů znamená 1000 osamocených klíčů). Korelaci jsme tím nemohli ověřit (nebylo co seskupovat), ale zjistili jsme něco důležitějšího: prahy jsou kalibrované na syntetické objemy a rychlosti, ne na to, co reálné nástroje na reálné síti produkují. Detaily `impl-krok47.md`.
+
 ## Co by změnilo závěr
 
 Označená vícefázová data z jiné než testbed sítě s nálezy na úrovni, kde nejde o IP-sdílení; kombinace sdílení adresy s dalšími rysy (podobnost chování, shoda času, shoda služby), nikoli s dalším omezením téže vazby; skutečný provoz analytika (K16 a zpětná vazba).
