@@ -99,6 +99,16 @@ pub struct Incident {
     /// Krok 33: stabilní klíč incidentu (hash nejstaršího nálezu); `id` je jen pořadí v běhu.
     #[serde(default)]
     pub key: String,
+    /// Krok 37: slabě spojené incidenty (sdílená adresa), s důvodem; nejsou součástí incidentu.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related: Vec<Related>,
+}
+
+/// Související incident: klíč a adresy, které incidenty sdílejí (důvod spojení).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Related {
+    pub key: String,
+    pub via: Vec<String>,
 }
 
 /// FNV-1a 64 bit jako hex; stabilní mezi běhy a platformami (na rozdíl od `DefaultHasher`).
@@ -149,6 +159,21 @@ impl History {
     }
 
     /// Krok 35: nové důkazy k už zapsanému nálezu (další protějšky); událost se nepřidává.
+    /// Adresy (host a indikátory) zapsané k nálezu; prázdné, když nález v historii není.
+    pub fn addresses_of(&self, finding_id: &str) -> Vec<String> {
+        let Some(&seq) = self.index.get(finding_id) else {
+            return Vec::new();
+        };
+        let Some(pos) = seq.checked_sub(self.base) else {
+            return Vec::new();
+        };
+        self.events.get(pos as usize).map_or_else(Vec::new, |e| {
+            std::iter::once(e.host.clone())
+                .chain(e.indicators.iter().cloned())
+                .collect()
+        })
+    }
+
     pub fn merge_indicators(&mut self, finding_id: &str, extra: &[String]) {
         let Some(&seq) = self.index.get(finding_id) else {
             return;
@@ -476,6 +501,7 @@ impl History {
                     cause,
                     first_finding: first.finding_id.clone(),
                     key: stable_key(&first.finding_id),
+                    related: Vec::new(),
                 }
             })
             .collect();

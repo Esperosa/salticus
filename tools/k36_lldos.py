@@ -67,6 +67,26 @@ def groups_of(res, arm):
         return k33.groups_ip(shown)
     if arm == "B1b":
         return k35.groups_ip_window(shown)
+    if arm == "INC_closure":
+        # incidenty spojené odkazem `related` tvoří jednu skupinu (uzávěr), samotné incidenty se
+        # neslučují; měří se úplnost, kterou analytik dostane přes odkazy
+        inc = res["incidents"]
+        idx = {i.get("key"): n for n, i in enumerate(inc)}
+        parent = list(range(len(inc)))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+        for n, i in enumerate(inc):
+            for r in i.get("related", []):
+                if r["key"] in idx:
+                    parent[find(n)] = find(idx[r["key"]])
+        out = defaultdict(list)
+        for n, i in enumerate(inc):
+            out[find(n)].extend(i["findings"])
+        return list(out.values())
     return [i["findings"] for i in res["incidents"]]
 
 
@@ -80,7 +100,7 @@ def evaluate(res, lists_dir, window):
         return {n for n, (a, b) in phases.items() if a - window <= t <= b + window}
     out = {"campaign_ips": sorted(ips), "phases": {n: [a, b] for n, (a, b) in phases.items()},
            "shown": len(shown), "chain_findings": len(chain), "arms": {}}
-    for arm in ("B1", "B1b", "INC"):
+    for arm in ("B1", "B1b", "INC", "INC_closure"):
         groups = [g for g in groups_of(res, arm) if len(g) >= 2]
         ci = [g for g in groups if any(f in chain for f in g)]
         sizes = [len(g) for g in ci]

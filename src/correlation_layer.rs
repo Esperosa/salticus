@@ -14,7 +14,7 @@ use crate::{
     coverage_status::CoverageStatus,
     model::Finding,
     reassess::{AuditEntry, Ledger},
-    retro::{Cause, Event, History, Incident},
+    retro::{Cause, Event, History, Incident, Related},
     verification_chain::CheckKind,
     verify_ladder::{CheckId, Decision, Status, competing_kind},
 };
@@ -82,8 +82,59 @@ pub struct Options<'a> {
     pub ext: bool,
     /// Krok 37: seskupení podle sdílené adresy s oknem a mezí hubu (`incidents_union`); vyžaduje `v2`.
     pub union: bool,
+    /// Krok 37: k incidentům z `v3` přidat související incidenty podle sdílené adresy
+    /// (`incidents_union`), s důvodem; incidenty se tím neslučují.
+    pub related: bool,
     /// `finding_id` -> čas prvního výskytu (z paměti nálezů).
     pub first_seen: Option<&'a std::collections::BTreeMap<String, i64>>,
+}
+
+/// Krok 37: incidenty, které slabě spojuje sdílená adresa (komponenta `incidents_union`),
+/// se odkážou navzájem; důvodem jsou sdílené adresy (nejvýš 3). Počet souvisejících je omezen.
+fn attach_related(all: &mut [Incident], history: &History) {
+    const MAX_RELATED: usize = 10;
+    let union = history.incidents_union(INCIDENT_GAP_S, MAX_KEY_DEGREE);
+    let mut comp: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for (n, u) in union.iter().enumerate() {
+        for f in &u.findings {
+            comp.insert(f.as_str(), n);
+        }
+    }
+    let addrs: Vec<std::collections::BTreeSet<String>> = all
+        .iter()
+        .map(|i| {
+            i.findings
+                .iter()
+                .flat_map(|f| history.addresses_of(f))
+                .collect()
+        })
+        .collect();
+    let comps: Vec<std::collections::BTreeSet<usize>> = all
+        .iter()
+        .map(|i| {
+            i.findings
+                .iter()
+                .filter_map(|f| comp.get(f.as_str()).copied())
+                .collect()
+        })
+        .collect();
+    for a in 0..all.len() {
+        let mut rel = Vec::new();
+        for b in 0..all.len() {
+            if a == b || comps[a].is_disjoint(&comps[b]) {
+                continue;
+            }
+            let via: Vec<String> = addrs[a].intersection(&addrs[b]).take(3).cloned().collect();
+            rel.push(Related {
+                key: all[b].key.clone(),
+                via,
+            });
+            if rel.len() >= MAX_RELATED {
+                break;
+            }
+        }
+        all[a].related = rel;
+    }
 }
 
 /// Ponechá nejvýš `max` nejnovějších incidentů (podle posledního nálezu), v pořadí vzniku.
@@ -346,6 +397,9 @@ pub fn run(
         all.retain(|i| i.findings.len() > 1);
         stats.truncated = all.len().saturating_sub(MAX_INCIDENTS);
         keep_newest(&mut all, MAX_INCIDENTS);
+        if opts.related {
+            attach_related(&mut all, history);
+        }
         out.incidents = all;
         out.stats = stats;
         return out;
@@ -507,6 +561,7 @@ mod tests {
             v2: true,
             v3: true,
             union: false,
+            related: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -546,6 +601,7 @@ mod tests {
                 cause: Cause::Attack,
                 first_finding: format!("f{k}"),
                 key: String::new(),
+                related: Vec::new(),
             })
             .collect();
         keep_newest(&mut v, 2);
@@ -597,6 +653,7 @@ mod tests {
             v2: true,
             v3: true,
             union: false,
+            related: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -649,6 +706,7 @@ mod tests {
             v2: true,
             v3: true,
             union: false,
+            related: false,
             first_seen: Some(&seen),
             ext: false,
         };
@@ -728,6 +786,7 @@ mod tests {
                 v3: true,
                 ext,
                 union: false,
+                related: false,
                 first_seen: Some(&seen),
             };
             let mut h = History::new(100);
@@ -790,5 +849,57 @@ mod tests {
             .max()
             .unwrap_or(0);
         assert!((20..=26).contains(&biggest), "biggest={biggest}");
+    }
+
+    #[test]
+    fn corr_related_links_incidents_via_shared_address_without_merging() {
+        use std::collections::BTreeMap;
+        let mk = |id: &str, host: &str, peer: &str| {
+            finding(id, "scan_attempts", host, &format!("{host} -> {peer}:445"))
+        };
+        // dvě dvojice nálezů (dva incidenty) a společný vnější cíl spojuje jen slabě
+        let all = vec![
+            mk("a1", "10.0.0.1", "203.0.113.9"),
+            mk("a2", "10.0.0.1", "203.0.113.9"),
+            mk("b1", "10.0.0.2", "203.0.113.9"),
+            mk("b2", "10.0.0.2", "203.0.113.9"),
+        ];
+        let seen: BTreeMap<String, i64> = [("a1", 0), ("a2", 10), ("b1", 20), ("b2", 30)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        let o = Options {
+            v2: true,
+            v3: true,
+            related: true,
+            first_seen: Some(&seen),
+            ..Default::default()
+        };
+        let mut h = History::new(100);
+        let mut l = Ledger::new();
+        let out = run(
+            &mut h,
+            &mut l,
+            &all,
+            &[],
+            &CoverageStatus::default(),
+            0.2,
+            99,
+            &o,
+        );
+        // v3 spojí (host,peer) pro každý host: aktér s dvěma nálezy tvoří incident; sdílený
+        // vnější cíl je slabá vazba a nesmí je slít, jen odkázat
+        assert!(out.incidents.len() >= 2, "{:?}", out.incidents);
+        let with_rel = out
+            .incidents
+            .iter()
+            .filter(|i| !i.related.is_empty())
+            .count();
+        assert!(with_rel >= 2, "{:?}", out.incidents);
+        assert!(
+            out.incidents[0].related[0]
+                .via
+                .contains(&"203.0.113.9".to_string())
+        );
     }
 }
