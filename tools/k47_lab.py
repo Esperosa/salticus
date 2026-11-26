@@ -102,7 +102,7 @@ def main():
     r.add_argument("--conn", required=True)
     r.add_argument("--bin", required=True)
     r.add_argument("--work", required=True)
-    r.add_argument("--scope", default="10.60.0.0/16")
+    r.add_argument("--scope", default="10.60.2.0/29,10.60.3.0/29,10.60.4.0/29,10.60.5.0/29,10.60.6.0/29")
     r.add_argument("--window", type=int, default=120)
     r.add_argument("--v3-on", default="")
     r.add_argument("--env", action="append", default=[])
